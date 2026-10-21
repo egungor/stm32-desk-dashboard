@@ -26,11 +26,11 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 4 (#10): the tabbed shell on the board (ADR-005):
-rail with Dashboard (placeholder) and Audio tabs, settings in sections
-with the startup screen. Done: step 1 (the audio controller renamed, USB
-PID `1209:0002`), step 2 (ADR-005, ADR-006, ADR-007) and step 3 (protocol
-v3; firmware and host use only its audio commands so far). The v1 steps
+Dashboard v1, step 5 (#12): on the host, `FrameRouter` and the
+`DashController` skeleton (card slots, details, actions, `TIME`; ADR-006).
+Done: step 1 (the audio controller renamed, USB PID `1209:0002`), step 2
+(ADR-005, ADR-006, ADR-007), step 3 (protocol v3) and step 4 (tabbed
+shell on the board, Dashboard tab still a placeholder). The v1 steps
 and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start
 a later step unless the current task asks for it.
 

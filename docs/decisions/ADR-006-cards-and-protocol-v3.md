@@ -2,9 +2,17 @@
 
 ## Status
 
-Proposed (issue #5). `protocol/protocol.md`, the codec and its tests
-follow in Dashboard v1 step 3; host routing in step 5; the board
-components in step 6 (`docs/roadmap.md`).
+Accepted (issue #5, PR #7). Protocol, codec and tests: step 3 (#8).
+Host routing and `DashController`: step 5 (#12). The board components:
+step 6 (`docs/roadmap.md`).
+
+Notes from step 5 (#12): `FrameRouter` decodes once and calls
+`HostController::onMessage` / `DashController::onMessage`;
+`HostController::onFrame` stays for code that runs it alone (the
+`watch` command). The single sequence counter is a `SequencedSink` in
+front of the transport. `TIME` also goes out when the local clock jumps
+by more than 2 s against the last value sent (time zone, daylight
+saving), without a Windows message hook.
 
 ## Context
 
