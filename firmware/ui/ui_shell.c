@@ -54,21 +54,6 @@ static lv_obj_t *make_tab(lv_obj_t *scr)
     return tab;
 }
 
-/* Until the dashboard cards exist (Dashboard v1 step 6): a title and a
- * short line in the middle of the tab. */
-static void build_dashboard_placeholder(void)
-{
-    lv_obj_t *box = ui_make_box(g_ui.dash_tab);
-
-    lv_obj_set_size(box, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_center(box);
-    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(box, 8, 0);
-    (void)ui_make_label(box, &ui_font_22, g_ui.pal.text, ui_text(TXT_DASH_TITLE));
-    (void)ui_make_label(box, &ui_font_16, g_ui.pal.muted, ui_text(TXT_DASH_SOON));
-}
-
 void ui_shell_build(void)
 {
     static const char *const tab_symbols[UI_APP_TAB_COUNT] = { SYM_GRID, SYM_VOLUME };
@@ -104,7 +89,7 @@ void ui_shell_build(void)
     lv_obj_set_style_pad_bottom(plug, 4, 0);
 
     g_ui.dash_tab = make_tab(scr);
-    build_dashboard_placeholder();
+    ui_dash_build();
     g_ui.audio_tab = make_tab(scr);
 }
 

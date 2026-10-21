@@ -1,0 +1,273 @@
+/**
+ * @file    dash_client.c
+ * @brief   STM32 side of the dashboard commands of protocol v3 (see
+ *          dash_client.h).
+ */
+#include "dash_client.h"
+
+#include <string.h>
+
+static bool send_message(DashClient *dash, ProtoMessage *msg)
+{
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    msg->sequence = (*dash->sequence)++;
+    if (Proto_Encode(msg, frame) != PROTO_OK)
+    {
+        return false;
+    }
+    return (dash->cb.send_frame != NULL) && dash->cb.send_frame(frame, dash->cb.ctx);
+}
+
+static void send_get_cards(DashClient *dash)
+{
+    ProtoMessage msg;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.command = PROTO_CMD_GET_CARDS;
+    (void)send_message(dash, &msg);
+}
+
+static bool send_open_detail(DashClient *dash, uint8_t slot, int8_t arg)
+{
+    ProtoMessage msg;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.command = PROTO_CMD_OPEN_DETAIL;
+    msg.u.open_detail.slot = slot;
+    msg.u.open_detail.arg = arg;
+    return send_message(dash, &msg);
+}
+
+static void notify(const DashClient *dash, DashNotice notice)
+{
+    if (dash->cb.notice != NULL)
+    {
+        dash->cb.notice(notice, dash->cb.ctx);
+    }
+}
+
+static void detail_failed(DashClient *dash)
+{
+    dash->detail_waiting = false;
+    dash->detail_slot = DASH_NO_SLOT;
+    Proto_AssemblerReset(&dash->detail_asm);
+    notify(dash, DASH_NOTICE_DETAIL_FAILED);
+}
+
+static void show_card(const DashClient *dash, uint8_t slot, const char *text)
+{
+    if (dash->cb.show_card != NULL)
+    {
+        dash->cb.show_card(slot, text, dash->cb.ctx);
+    }
+}
+
+static void on_card_part(DashClient *dash, const ProtoRecordPart *part, uint32_t now_ms)
+{
+    if (Proto_AssemblerAdd(&dash->card_asm, part) == PROTO_ASM_COMPLETE)
+    {
+        show_card(dash, part->id, (const char *)dash->card_buf);
+    }
+    else
+    {
+        dash->card_part_ms = now_ms;
+    }
+}
+
+static void on_detail_part(DashClient *dash, const ProtoRecordPart *part, uint32_t now_ms)
+{
+    if ((dash->detail_slot == DASH_NO_SLOT) || (part->id != dash->detail_slot))
+    {
+        dash->frames_ignored++;  /* the user left that detail */
+        return;
+    }
+    if (Proto_AssemblerAdd(&dash->detail_asm, part) == PROTO_ASM_COMPLETE)
+    {
+        dash->detail_waiting = false;
+        if (dash->cb.show_detail != NULL)
+        {
+            dash->cb.show_detail(part->id, (const char *)dash->detail_buf, dash->cb.ctx);
+        }
+    }
+    else
+    {
+        dash->detail_part_ms = now_ms;
+    }
+}
+
+static void on_error(DashClient *dash, const ProtoError *error)
+{
+    if ((error->ref_command == PROTO_CMD_OPEN_DETAIL) && dash->detail_waiting)
+    {
+        detail_failed(dash);
+    }
+    else if (error->ref_command == PROTO_CMD_ACTION)
+    {
+        notify(dash, DASH_NOTICE_ACTION_FAILED);
+    }
+    else
+    {
+        /* About a frame of ours the host could not read: nothing to undo. */
+    }
+}
+
+bool Dash_Owns(const ProtoMessage *msg)
+{
+    const uint8_t about = (msg->command == PROTO_CMD_ERROR) ? msg->u.error.ref_command : msg->command;
+
+    return (about >= 0x20U) && (about <= 0x3FU);
+}
+
+void Dash_SetSequenceCounter(DashClient *dash, uint8_t *counter)
+{
+    dash->sequence = (counter != NULL) ? counter : &dash->own_sequence;
+}
+
+void Dash_Init(DashClient *dash, const DashCallbacks *callbacks)
+{
+    memset(dash, 0, sizeof(*dash));
+    if (callbacks != NULL)
+    {
+        dash->cb = *callbacks;
+    }
+    dash->sequence = &dash->own_sequence;
+    Proto_AssemblerInit(&dash->card_asm, dash->card_buf, PROTO_CARD_MAX_BYTES);
+    Proto_AssemblerInit(&dash->detail_asm, dash->detail_buf, PROTO_DETAIL_MAX_BYTES);
+    dash->detail_slot = DASH_NO_SLOT;
+}
+
+void Dash_OnConnected(DashClient *dash, uint32_t now_ms)
+{
+    (void)now_ms;
+    dash->connected = true;
+    Proto_AssemblerReset(&dash->card_asm);
+    send_get_cards(dash);
+}
+
+void Dash_OnDisconnected(DashClient *dash)
+{
+    dash->connected = false;
+    Proto_AssemblerReset(&dash->card_asm);
+    Proto_AssemblerReset(&dash->detail_asm);
+    dash->detail_waiting = false;
+    dash->detail_slot = DASH_NO_SLOT;
+}
+
+void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
+{
+    switch (msg->command)
+    {
+    case PROTO_CMD_TIME:
+        dash->time_known = true;
+        dash->time_base = msg->u.local_time;
+        dash->time_base_ms = now_ms;
+        if (dash->cb.set_time != NULL)
+        {
+            dash->cb.set_time(msg->u.local_time, dash->cb.ctx);
+        }
+        break;
+    case PROTO_CMD_CARD_PART:
+        on_card_part(dash, &msg->u.part, now_ms);
+        break;
+    case PROTO_CMD_CARD_CLEAR:
+        show_card(dash, msg->u.slot, "");
+        break;
+    case PROTO_CMD_DETAIL_PART:
+        on_detail_part(dash, &msg->u.part, now_ms);
+        break;
+    case PROTO_CMD_ERROR:
+        on_error(dash, &msg->u.error);
+        break;
+    default:
+        /* PROMPT_* (ADR-007, v1 step 11) and STM32 -> host commands. */
+        dash->frames_ignored++;
+        break;
+    }
+}
+
+void Dash_Poll(DashClient *dash, uint32_t now_ms)
+{
+    if (!dash->connected)
+    {
+        return;
+    }
+    if ((dash->card_asm.active != 0U) && ((now_ms - dash->card_part_ms) >= DASH_RETRY_MS))
+    {
+        /* A card part was lost: ask for all cards again. */
+        Proto_AssemblerReset(&dash->card_asm);
+        send_get_cards(dash);
+    }
+    if (dash->detail_slot == DASH_NO_SLOT)
+    {
+        return;
+    }
+    if ((dash->detail_asm.active != 0U) && ((now_ms - dash->detail_part_ms) >= DASH_RETRY_MS))
+    {
+        Proto_AssemblerReset(&dash->detail_asm);
+        (void)send_open_detail(dash, dash->detail_slot, dash->detail_arg);
+        dash->detail_asked_ms = now_ms;
+        dash->detail_waiting = true;
+    }
+    else if (dash->detail_waiting && (dash->detail_asm.active == 0U) &&
+             ((now_ms - dash->detail_asked_ms) >= DASH_DETAIL_TIMEOUT_MS))
+    {
+        detail_failed(dash);
+    }
+    else
+    {
+        /* nothing due */
+    }
+}
+
+bool Dash_OpenDetail(DashClient *dash, uint8_t slot, int8_t arg, uint32_t now_ms)
+{
+    if (!dash->connected || (slot >= PROTO_MAX_CARDS))
+    {
+        return false;
+    }
+    Proto_AssemblerReset(&dash->detail_asm);
+    dash->detail_slot = slot;
+    dash->detail_arg = arg;
+    dash->detail_waiting = true;
+    dash->detail_asked_ms = now_ms;
+    if (!send_open_detail(dash, slot, arg))
+    {
+        dash->detail_waiting = false;
+        dash->detail_slot = DASH_NO_SLOT;
+        return false;
+    }
+    return true;
+}
+
+void Dash_CloseDetail(DashClient *dash)
+{
+    dash->detail_slot = DASH_NO_SLOT;
+    dash->detail_waiting = false;
+    Proto_AssemblerReset(&dash->detail_asm);
+}
+
+bool Dash_Action(DashClient *dash, uint8_t kind, uint8_t ref, uint8_t action)
+{
+    ProtoMessage msg;
+
+    if (!dash->connected)
+    {
+        return false;
+    }
+    memset(&msg, 0, sizeof(msg));
+    msg.command = PROTO_CMD_ACTION;
+    msg.u.action.kind = kind;
+    msg.u.action.ref = ref;
+    msg.u.action.action = action;
+    return send_message(dash, &msg);
+}
+
+uint32_t Dash_LocalTime(const DashClient *dash, uint32_t now_ms)
+{
+    if (!dash->time_known)
+    {
+        return 0U;
+    }
+    return dash->time_base + ((now_ms - dash->time_base_ms) / 1000U);
+}

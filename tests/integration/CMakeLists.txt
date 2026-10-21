@@ -16,7 +16,7 @@ set(REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/../..)
 add_subdirectory(${REPO_DIR}/host host)
 
 # The firmware's protocol client, compiled as in the firmware build.
-add_library(link_client STATIC ${REPO_DIR}/firmware/link/link_client.c)
+add_library(link_client STATIC ${REPO_DIR}/firmware/link/link_client.c ${REPO_DIR}/firmware/link/dash_client.c)
 target_include_directories(link_client PUBLIC ${REPO_DIR}/firmware/link ${REPO_DIR}/firmware/ui)
 target_link_libraries(link_client PUBLIC protocol)
 set_target_properties(link_client PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)

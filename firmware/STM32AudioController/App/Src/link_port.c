@@ -1,12 +1,20 @@
 /**
  * @file    link_port.c
- * @brief   Connects the protocol client to the USB HID interface and the UI.
+ * @brief   Connects the protocol clients to the USB HID interface and the UI.
+ *
+ * Two clients share the link (ADR-006): link_client.c for the audio
+ * commands and dash_client.c for the dashboard. Each received frame is
+ * decoded once here and given to the client it belongs to (Dash_Owns);
+ * frames the audio client must answer as invalid go to it undecoded.
+ * Both clients number their frames from the audio client's counter
+ * (Dash_SetSequenceCounter): one sequence counter for the board.
  */
 #include "link_port.h"
 
 #include <stdbool.h>
 #include <string.h>
 
+#include "dash_client.h"
 #include "link_client.h"
 #include "log.h"
 #include "stm32f7xx_hal.h"
@@ -18,6 +26,7 @@
 #define MAX_FRAMES_PER_RUN 8U /* bounds the time spent per UI loop */
 
 static LinkClient s_link;
+static DashClient s_dash;
 static bool s_usb_configured;
 static bool s_vbus;
 static uint32_t s_config_count;
@@ -27,6 +36,81 @@ static bool cb_send_frame(const uint8_t frame[PROTO_FRAME_SIZE], void *ctx)
     (void)ctx;
     return UsbLink_Send(frame, SEND_TIMEOUT_MS);
 }
+
+/* ------------------------------------------------------------- dashboard */
+
+static void cb_dash_card(uint8_t slot, const char *text, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH CARD slot=%u bytes=%u", (unsigned)slot, (unsigned)strlen(text));
+    Ui_SetCard(slot, text);
+}
+
+static void cb_dash_detail(uint8_t slot, const char *text, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH DETAIL slot=%u bytes=%u", (unsigned)slot, (unsigned)strlen(text));
+    Ui_ShowDetail(slot, text);
+}
+
+static void cb_dash_notice(DashNotice notice, void *ctx)
+{
+    (void)ctx;
+    if (notice == DASH_NOTICE_DETAIL_FAILED)
+    {
+        Log_Line("DASH DETAIL FAIL");
+        Ui_DetailFailed();
+    }
+    else
+    {
+        Log_Line("DASH ACTION FAIL");
+        Ui_ShowNotice(UI_NOTICE_ACTION_FAILED);
+    }
+}
+
+static void cb_dash_time(uint32_t local_time, void *ctx)
+{
+    (void)ctx;
+    Ui_SetTime(local_time);
+}
+
+static void on_ui_open_detail(uint8_t slot, int8_t arg, void *user)
+{
+    (void)user;
+    Log_Line("UI DETAIL slot=%u arg=%d", (unsigned)slot, (int)arg);
+    if (!Dash_OpenDetail(&s_dash, slot, arg, HAL_GetTick()))
+    {
+        Ui_DetailFailed();
+    }
+}
+
+static void on_ui_close_detail(void *user)
+{
+    (void)user;
+    Dash_CloseDetail(&s_dash);
+}
+
+static void on_ui_detail_action(uint8_t slot, uint8_t action, void *user)
+{
+    (void)user;
+    Log_Line("UI ACTION slot=%u action=%u", (unsigned)slot, (unsigned)action);
+    if (!Dash_Action(&s_dash, PROTO_ACTION_CARD, slot, action))
+    {
+        Ui_ShowNotice(UI_NOTICE_ACTION_FAILED);
+    }
+}
+
+static void on_ui_media(uint8_t action, void *user)
+{
+    (void)user;
+    Log_Line("UI MEDIA action=%u", (unsigned)action);
+    if (!Dash_Action(&s_dash, PROTO_ACTION_MEDIA, 0U, action))
+    {
+        Ui_ShowNotice(UI_NOTICE_ACTION_FAILED);
+    }
+}
+
+/* --------------------------------------------------------------- audio */
 
 static void cb_show_waiting(void *ctx)
 {
@@ -218,6 +302,16 @@ void LinkPort_Init(void)
         Ui_SetEditHandlers(&edit, NULL);
     }
     Link_Init(&s_link, &callbacks);
+    {
+        static const DashCallbacks dash = { cb_send_frame, cb_dash_card, cb_dash_detail, cb_dash_notice,
+                                            cb_dash_time, NULL };
+        static const UiDashHandlers ui_dash = { on_ui_open_detail, on_ui_close_detail, on_ui_detail_action,
+                                                on_ui_media };
+
+        Dash_Init(&s_dash, &dash);
+        Dash_SetSequenceCounter(&s_dash, &s_link.sequence);
+        Ui_SetDashHandlers(&ui_dash, NULL);
+    }
 }
 
 void LinkPort_Run(void)
@@ -247,18 +341,26 @@ void LinkPort_Run(void)
             Log_Line("USB %s", (config_count != s_config_count) ? "CONFIGURED" : "RESUMED");
             s_config_count = config_count;
             Link_OnConnected(&s_link, now);
+            Dash_OnConnected(&s_dash, now);
         }
         else
         {
             Log_Line("USB DISCONNECTED");
             Link_OnDisconnected(&s_link);
+            Dash_OnDisconnected(&s_dash);
         }
     }
 
     for (uint32_t i = 0U; (i < MAX_FRAMES_PER_RUN) && UsbLink_Receive(frame, 0U); i++)
     {
         const uint8_t active_before = s_link.active;
+        ProtoMessage msg;
 
+        if ((Proto_Decode(frame, &msg) == PROTO_OK) && Dash_Owns(&msg))
+        {
+            Dash_OnMessage(&s_dash, &msg, now);
+            continue;
+        }
         Link_OnFrame(&s_link, frame, now);
         if (s_link.active != active_before)
         {
@@ -266,6 +368,7 @@ void LinkPort_Run(void)
         }
     }
     Link_Poll(&s_link, now);
+    Dash_Poll(&s_dash, now);
 }
 
 void LinkPort_ToggleFlip(void)

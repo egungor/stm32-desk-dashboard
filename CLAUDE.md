@@ -26,13 +26,14 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 5 (#12): on the host, `FrameRouter` and the
-`DashController` skeleton (card slots, details, actions, `TIME`; ADR-006).
-Done: step 1 (the audio controller renamed, USB PID `1209:0002`), step 2
-(ADR-005, ADR-006, ADR-007), step 3 (protocol v3) and step 4 (tabbed
-shell on the board, Dashboard tab still a placeholder). The v1 steps
-and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start
-a later step unless the current task asks for it.
+Dashboard v1, step 6 (#14): the dashboard on the board (`dash_client.c`,
+`ui_dash.c`: clock, 2×2 cards, generic detail, media strip; ADR-006).
+Done: steps 1–5 (rename and USB PID `1209:0002`; ADR-005/006/007;
+protocol v3; tabbed shell; host `FrameRouter` and `DashController`).
+Features that fill the cards (weather, menu, media keys, Claude Code)
+come in steps 7–11. The v1 steps and their status are in
+`docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the
+current task asks for it.
 
 Inherited open work: the M7 board and Windows checks listed in
 `docs/hardware.md`, "Pending hardware and Windows tests".

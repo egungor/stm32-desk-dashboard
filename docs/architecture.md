@@ -76,10 +76,10 @@ Responsible for:
 
 | Module | Hardware dependent | Role |
 |---|---|---|
-| `ui/` | no (LVGL only) | Screens: device buttons (2×2 per page, icon, name, active and pending marks), bottom strip (mute, volume slider, page arrows), waiting screen, error screen, notices |
-| `link/` | no (C, protocol codec) | Protocol v3 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts |
+| `ui/` | no (LVGL only) | Rail and tabs (`ui_shell.c`); Dashboard tab: clock, 2×2 cards, generic detail, media strip (`ui_dash.c`); Audio tab: device buttons, bottom strip (mute, volume slider, page arrows); waiting screen, settings, edit mode, notices |
+| `link/` | no (C, protocol codec) | `link_client.c`: protocol v3 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts. `dash_client.c`: dashboard records (cards, detail, `TIME`, actions; ADR-006) |
 | `App/usb_link.c` | yes | Vendor HID class (ADR-003); the ISR only queues received frames |
-| `App/link_port.c` | yes | Connects USB, `link/` and `ui/` in the UI task |
+| `App/link_port.c` | yes | Connects USB, `link/` and `ui/` in the UI task; decodes each frame once and gives it to the audio or the dashboard client |
 | `App/ui_port.c` | yes | LVGL on the LTDC (two SDRAM framebuffers, swap on VBLANK) and the FT5336 |
 | `App/` others | yes | SDRAM, clock check, touch driver, log, M1 test screen |
 | `simulator/` | no | Headless Linux build of `ui/` that writes PNG screenshots |
@@ -111,8 +111,9 @@ changes to `HostController`, and ticks the `DashController` (every
 
 The main screen has a 56 px rail on the left (Dashboard and Audio tabs,
 settings, connection mark) and the shown tab beside it, 424 × 272
-(ADR-005, `firmware/ui/ui_shell.c`). The Dashboard tab is a placeholder
-until the cards of ADR-006. The Audio tab, layout A:
+(ADR-005, `firmware/ui/ui_shell.c`). The Dashboard tab (ADR-006, `ui_dash.c`): a clock strip,
+four cards whose text comes from the host, a detail view in the tab after
+a tap, and the media strip `<< || >>`. The Audio tab, layout A:
 
 Four large device buttons per page (2×2), each with an icon and the
 device name; the active device is marked by colour and text, a device

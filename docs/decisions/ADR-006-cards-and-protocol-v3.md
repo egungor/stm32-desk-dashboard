@@ -14,6 +14,17 @@ front of the transport. `TIME` also goes out when the local clock jumps
 by more than 2 s against the last value sent (time zone, daylight
 saving), without a Windows message hook.
 
+Notes from step 6 (#14): the detail's first line got a third field,
+`flags` (`n` = show previous / next), so the board shows ‹ › only where
+the host can answer them (the menu, not the weather). Missing trailing
+fields count as empty, so this needs no protocol version change. The
+board's two clients share one sequence counter by numbering from the
+audio client's counter (`Dash_SetSequenceCounter`), not by renumbering
+frames in the port: the audio client matches ERROR answers by their
+`ref_sequence`. The firmware keeps the four shown cards and the open
+detail in the UI (about 3 KB) and one card and one detail being
+assembled in `dash_client.c` (about 2.3 KB).
+
 ## Context
 
 The Dashboard tab (ADR-005) shows a clock, four cards on a fixed 2×2

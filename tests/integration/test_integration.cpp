@@ -32,6 +32,7 @@
 #include "FrameRouter.h"
 #include "HostController.h"
 #include "SequencedSink.h"
+#include "dash_client.h"
 #include "link_client.h"
 
 using namespace stm32_audio::host;
@@ -145,6 +146,14 @@ struct FirmwareScreen {
     std::uint8_t volume = UI_VOLUME_UNKNOWN;
     std::uint8_t muted = UI_VOLUME_UNKNOWN;
     std::vector<std::uint8_t> volumeShown;  // every value the slider was set to
+    // Dashboard tab (dash_client.c callbacks).
+    std::string cards[PROTO_MAX_CARDS];
+    int cardUpdates = 0;
+    std::string detail;
+    std::uint8_t detailSlot = DASH_NO_SLOT;
+    int detailFailed = 0;
+    int actionFailed = 0;
+    std::uint32_t time = 0;
 };
 
 struct WireStats {
@@ -153,6 +162,7 @@ struct WireStats {
     std::vector<std::uint8_t> errorCodesToHost;
     std::vector<std::uint8_t> errorCodesToDevice;
     std::vector<std::uint8_t> sequencesToDevice;
+    std::vector<std::uint8_t> sequencesToHost;
     unsigned firmwareRxDropped = 0;
 
     unsigned count(const std::vector<std::uint8_t>& v, std::uint8_t cmd) const
@@ -171,6 +181,7 @@ public:
     FirmwareScreen screen;
     WireStats wire;
     LinkClient link{};
+    DashClient dashClient{};
     SequencedSink hostSink{*this};  // HostService: one sequence for both controllers
     std::optional<HostController> host;
     std::optional<DashController> dash;
@@ -188,6 +199,10 @@ public:
         LinkCallbacks cb = callbacks;
         cb.ctx = this;
         Link_Init(&link, &cb);
+        const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard, &Rig::fwDetail, &Rig::fwDashNotice, &Rig::fwTime,
+                                   this};
+        Dash_Init(&dashClient, &dcb);
+        Dash_SetSequenceCounter(&dashClient, &link.sequence);  // link_port.c
     }
 
     Rig(const Rig&) = delete;
@@ -421,6 +436,30 @@ private:
         s.volumeShown.push_back(v);
     }
     static void fwMuted(std::uint8_t m, void* ctx) { self(ctx).screen.muted = m; }
+    static void fwCard(std::uint8_t slot, const char* text, void* ctx)
+    {
+        FirmwareScreen& s = self(ctx).screen;
+        if (slot < PROTO_MAX_CARDS) {
+            s.cards[slot] = text;
+            ++s.cardUpdates;
+        }
+    }
+    static void fwDetail(std::uint8_t slot, const char* text, void* ctx)
+    {
+        FirmwareScreen& s = self(ctx).screen;
+        s.detailSlot = slot;
+        s.detail = text;
+    }
+    static void fwDashNotice(DashNotice n, void* ctx)
+    {
+        FirmwareScreen& s = self(ctx).screen;
+        if (n == DASH_NOTICE_DETAIL_FAILED) {
+            ++s.detailFailed;
+        } else {
+            ++s.actionFailed;
+        }
+    }
+    static void fwTime(std::uint32_t t, void* ctx) { self(ctx).screen.time = t; }
     static void fwSettings(const ProtoSettings* s, void* ctx)
     {
         FirmwareScreen& screen = self(ctx).screen;
@@ -482,6 +521,7 @@ private:
                 firmwareTx_.pop_front();
                 if (hostOpen_) {  // no handle open: Windows discards the report
                     note(f, wire.toHost, wire.errorCodesToHost);
+                    wire.sequencesToHost.push_back(f[3]);
                     router->onFrame(f);
                 }
             }
@@ -494,16 +534,24 @@ private:
                 firmwareConfigured_ = cable_;
                 if (cable_) {
                     Link_OnConnected(&link, now);
+                    Dash_OnConnected(&dashClient, now);
                 } else {
                     Link_OnDisconnected(&link);
+                    Dash_OnDisconnected(&dashClient);
                 }
             }
             for (unsigned i = 0; i < kFirmwareFramesPerRun && !firmwareRx_.empty(); ++i) {
                 const Frame f = firmwareRx_.front();
                 firmwareRx_.pop_front();
-                Link_OnFrame(&link, f.data(), now);
+                ProtoMessage msg{};
+                if (Proto_Decode(f.data(), &msg) == PROTO_OK && Dash_Owns(&msg)) {
+                    Dash_OnMessage(&dashClient, &msg, now);
+                } else {
+                    Link_OnFrame(&link, f.data(), now);
+                }
             }
             Link_Poll(&link, now);
+            Dash_Poll(&dashClient, now);
         }
     }
 
@@ -1176,31 +1224,58 @@ void testDashboardNextToAudio()
     Rig r;
     addHomeSetup(r.audio);
     r.startHost();
+    r.dash->setCard(0, recordLine({"0", "Hava", ""}) + "\n14 C");
+    r.dash->setCard(1, recordLine({"0", "Yemek", ""}) + "\nKa\xC4\x9F\xC4\xB1t kebab\xC4\xB1");
+    r.dash->setDetailHandler([](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        if (slot != 1) {
+            return std::nullopt;
+        }
+        std::string text = recordLine({"Yemek", arg > 0 ? "6 Ekim" : "5 Ekim", "n"});
+        for (int i = 0; i < 30; ++i) {  // several parts
+            text += "\n" + recordLine({"0", "Sat\xC4\xB1r " + std::to_string(i), "Salata bar kalemi"});
+        }
+        return text;
+    });
+    std::vector<ProtoAction> actions;
+    r.dash->setActionHandler([&actions](const ProtoAction& a) {
+        actions.push_back(a);
+        return a.kind == PROTO_ACTION_MEDIA;
+    });
     r.plugIn();
     r.run(3000);
-    CHECK(r.inSync());
-    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_TIME) == 1U);
-    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_CARD_CLEAR) == PROTO_MAX_CARDS);
-    CHECK(r.wire.errorCodesToHost.empty());  // the board drops them without complaint
 
-    // A card set on the host reaches the board while the audio list stays.
-    r.dash->setCard(0, recordLine({"0", "Hava", ""}) + "\n14 C");
-    ProtoMessage get{};
-    get.command = PROTO_CMD_GET_CARDS;
-    r.boardSends(get);
-    r.run(500);
-    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_CARD_PART) == 2U);  // on change, then on GET_CARDS
-    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_TIME) == 2U);
+    // Audio and dashboard both arrive; the board drops nothing.
     CHECK(r.inSync());
+    CHECK(r.screen.cards[0] == r.dash->card(0) && r.screen.cards[1] == r.dash->card(1));
+    CHECK(r.screen.cards[2].empty());
+    CHECK(r.screen.time != 0U);
+    CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 
-    // OPEN_DETAIL without a detail handler: ERROR OPERATION_FAILED.
-    ProtoMessage open{};
-    open.command = PROTO_CMD_OPEN_DETAIL;
-    open.u.open_detail.slot = 0;
-    r.boardSends(open);
+    // A card changed on the host reaches the board.
+    r.dash->setCard(0, recordLine({"0", "Hava", "yeni"}) + "\n9 C");
     r.run(200);
-    CHECK(r.wire.errorCodesToDevice.size() == 1U &&
-          r.wire.errorCodesToDevice.back() == PROTO_ERROR_OPERATION_FAILED);
+    CHECK(r.screen.cards[0] == r.dash->card(0));
+
+    // The menu detail (several parts), then the next day.
+    CHECK(Dash_OpenDetail(&r.dashClient, 1, 0, r.now));
+    r.run(500);
+    CHECK(r.screen.detailSlot == 1U && r.screen.detail.find("5 Ekim") != std::string::npos);
+    CHECK(r.screen.detail.size() > PROTO_PART_DATA_BYTES * 10U);
+    CHECK(Dash_OpenDetail(&r.dashClient, 1, 1, r.now));
+    r.run(500);
+    CHECK(r.screen.detail.find("6 Ekim") != std::string::npos);
+
+    // No detail for the weather card: the board gets ERROR and says so.
+    CHECK(Dash_OpenDetail(&r.dashClient, 0, 0, r.now));
+    r.run(300);
+    CHECK(r.screen.detailFailed == 1);
+
+    // Media key: the host's handler gets it; a refused card action is a notice.
+    CHECK(Dash_Action(&r.dashClient, PROTO_ACTION_MEDIA, 0, PROTO_MEDIA_PLAY_PAUSE));
+    CHECK(Dash_Action(&r.dashClient, PROTO_ACTION_CARD, 1, 1));
+    r.run(300);
+    CHECK(actions.size() == 2U && actions[0].action == PROTO_MEDIA_PLAY_PAUSE);
+    CHECK(r.screen.actionFailed == 1);
 
     // Audio still works through the router.
     const std::optional<std::uint8_t> speakers = r.shownIdOf("Hoparl\xC3\xB6r");
@@ -1212,12 +1287,19 @@ void testDashboardNextToAudio()
     CHECK(r.audio.defaultId == "{spk}");
     CHECK(r.inSync());
 
-    // One counter for both controllers: 0, 1, 2, ... with no gap.
+    // One counter per side: the host's frames 0, 1, 2, ... with no gap;
+    // the board's audio and dashboard frames from one counter too.
     bool consecutive = true;
     for (std::size_t i = 0; i < r.wire.sequencesToDevice.size(); ++i) {
         consecutive = consecutive && (r.wire.sequencesToDevice[i] == static_cast<std::uint8_t>(i));
     }
     CHECK(consecutive);
+    bool boardConsecutive = !r.wire.sequencesToHost.empty();
+    for (std::size_t i = 1; i < r.wire.sequencesToHost.size(); ++i) {
+        boardConsecutive = boardConsecutive &&
+                           (r.wire.sequencesToHost[i] == static_cast<std::uint8_t>(r.wire.sequencesToHost[i - 1] + 1U));
+    }
+    CHECK(boardConsecutive);
 }
 
 int main()

@@ -51,11 +51,32 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "Varsay\xC4\xB1lan \xC3\xA7\xC4\xB1k\xC4\xB1\xC5\x9F yok", /* TXT_HERO_NONE */
         "ses", /* TXT_HERO_VOLUME */
         "Dashboard", /* TXT_DASH_TITLE */
-        "Kartlar yak\xC4\xB1nda burada", /* TXT_DASH_SOON */
         "A\xC3\xA7\xC4\xB1l\xC4\xB1\xC5\x9F ekran\xC4\xB1", /* TXT_SET_STARTUP_SCREEN */
         "Ses", /* TXT_SCREEN_AUDIO */
         "GENEL", /* TXT_SECTION_GENERAL */
         "SES", /* TXT_SECTION_AUDIO */
+        "Y\xC3\xBCkleniyor...", /* TXT_LOADING */
+        "Ayr\xC4\xB1nt\xC4\xB1 al\xC4\xB1namad\xC4\xB1", /* TXT_DETAIL_FAILED */
+        "\xC4\xB0\xC5\x9Flem yap\xC4\xB1lamad\xC4\xB1", /* TXT_ACTION_FAILED */
+        "Pazar", /* TXT_DAY_0 */
+        "Pazartesi", /* TXT_DAY_1 */
+        "Sal\xC4\xB1", /* TXT_DAY_2 */
+        "\xC3\x87" "ar\xC5\x9F" "amba", /* TXT_DAY_3 */
+        "Per\xC5\x9F" "embe", /* TXT_DAY_4 */
+        "Cuma", /* TXT_DAY_5 */
+        "Cumartesi", /* TXT_DAY_6 */
+        "Ocak", /* TXT_MONTH_1 */
+        "\xC5\x9Eubat", /* TXT_MONTH_2 */
+        "Mart", /* TXT_MONTH_3 */
+        "Nisan", /* TXT_MONTH_4 */
+        "May\xC4\xB1s", /* TXT_MONTH_5 */
+        "Haziran", /* TXT_MONTH_6 */
+        "Temmuz", /* TXT_MONTH_7 */
+        "A\xC4\x9Fustos", /* TXT_MONTH_8 */
+        "Eyl\xC3\xBCl", /* TXT_MONTH_9 */
+        "Ekim", /* TXT_MONTH_10 */
+        "Kas\xC4\xB1m", /* TXT_MONTH_11 */
+        "Aral\xC4\xB1k", /* TXT_MONTH_12 */
     },
     {
         "All", /* TXT_TAB_ALL */
@@ -101,11 +122,32 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "No default output", /* TXT_HERO_NONE */
         "volume", /* TXT_HERO_VOLUME */
         "Dashboard", /* TXT_DASH_TITLE */
-        "Cards will appear here", /* TXT_DASH_SOON */
         "Startup screen", /* TXT_SET_STARTUP_SCREEN */
         "Audio", /* TXT_SCREEN_AUDIO */
         "GENERAL", /* TXT_SECTION_GENERAL */
         "AUDIO", /* TXT_SECTION_AUDIO */
+        "Loading...", /* TXT_LOADING */
+        "Could not load the details", /* TXT_DETAIL_FAILED */
+        "Could not do that", /* TXT_ACTION_FAILED */
+        "Sunday", /* TXT_DAY_0 */
+        "Monday", /* TXT_DAY_1 */
+        "Tuesday", /* TXT_DAY_2 */
+        "Wednesday", /* TXT_DAY_3 */
+        "Thursday", /* TXT_DAY_4 */
+        "Friday", /* TXT_DAY_5 */
+        "Saturday", /* TXT_DAY_6 */
+        "January", /* TXT_MONTH_1 */
+        "February", /* TXT_MONTH_2 */
+        "March", /* TXT_MONTH_3 */
+        "April", /* TXT_MONTH_4 */
+        "May", /* TXT_MONTH_5 */
+        "June", /* TXT_MONTH_6 */
+        "July", /* TXT_MONTH_7 */
+        "August", /* TXT_MONTH_8 */
+        "September", /* TXT_MONTH_9 */
+        "October", /* TXT_MONTH_10 */
+        "November", /* TXT_MONTH_11 */
+        "December", /* TXT_MONTH_12 */
     },
 };
 

@@ -210,6 +210,24 @@ typedef struct
     uint8_t        kb_device;           /**< device being renamed */
     char           kb_draft[UI_MAX_ALIAS_BYTES + 1U]; /**< text kept over a rebuild */
 
+    /* Dashboard tab (ui_dash.c). Texts kept over a rebuild. */
+    UiDashHandlers dash;
+    void          *dash_user;
+    char           dash_cards[UI_DASH_CARDS][UI_DASH_CARD_BYTES + 1U];
+    char           dash_detail[UI_DASH_DETAIL_BYTES + 1U];
+    uint8_t        dash_slot;          /**< card whose detail is open, UI_DASH_NO_SLOT */
+    uint32_t       dash_view;          /**< UI_DASH_VIEW_* */
+    lv_obj_t      *dash_cards_view;    /**< clock strip, cards, media strip */
+    lv_obj_t      *dash_detail_view;   /**< built while a detail is shown */
+    lv_obj_t      *dash_card_objs[UI_DASH_CARDS];
+    lv_obj_t      *clock_label;
+    lv_obj_t      *date_label;
+    bool           time_known;
+    uint32_t       time_base;          /**< local time at time_tick */
+    uint32_t       time_tick;          /**< lv_tick_get() when it was set */
+    uint32_t       clock_shown;        /**< minute shown, to update once a minute */
+    lv_timer_t    *clock_timer;        /**< created once in Ui_Init */
+
     /* Screen timeout: created once in Ui_Init, never rebuilt. */
     UiBacklightCallback on_backlight;
     void               *backlight_user;
@@ -240,6 +258,10 @@ void ui_build_tab_bar(lv_obj_t *parent, int32_t width);
  * main screen objects. */
 void ui_build_list_main(void);
 void ui_build_tiles_main(void);
+
+/* Dashboard tab (ui_dash.c, ADR-006). */
+void ui_dash_build(void);           /**< build g_ui.dash_tab's content from the kept texts */
+void ui_dash_clock_tick(void);      /**< update the clock strip (timer, Ui_SetTime) */
 
 /* Application screen (ui_shell.c, ADR-005). */
 void ui_shell_build(void);          /**< create g_ui.main_screen, rail, dash_tab, audio_tab */
