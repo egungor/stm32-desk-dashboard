@@ -26,13 +26,13 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 7 (#16): media keys on the host (`App/MediaKeys`,
-`Platform/Windows/WinMediaKeys`: the media strip's `ACTION` presses
-previous / play-pause / next through `SendInput`). Done: steps 1–6
-(rename and USB PID `1209:0002`; ADR-005/006/007; protocol v3; tabbed
-shell; host `FrameRouter` and `DashController`; board dashboard
-components). Features that fill the cards (weather, menu, Claude Code)
-come in steps 8–11. The v1 steps and their status are in
+Dashboard v1, step 8 (#18): the weather card and its 10-day detail
+(`host/Weather`: Open-Meteo over WinHTTP, one fixed location in
+`%APPDATA%\stm32-desk-dashboard\weather.txt`; weather glyphs in the
+board's fonts). Done: steps 1–7 (rename and USB PID `1209:0002`;
+ADR-005/006/007; protocol v3; tabbed shell; host `FrameRouter` and
+`DashController`; board dashboard components; media keys). The menu and
+Claude Code come in steps 9–11. The v1 steps and their status are in
 `docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the
 current task asks for it.
 

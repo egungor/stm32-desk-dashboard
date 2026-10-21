@@ -44,11 +44,28 @@
 /* Working copy of a record, split in place. */
 static char s_scratch[UI_DASH_DETAIL_BYTES + 1U];
 
-/* Icon numbers of protocol.md ("Record text"); none yet beyond 0. */
+#define ICON_W      22    /**< icon column of a detail row */
+
+/* Icon numbers of protocol.md ("Icon"); NULL for 0, empty or unknown. */
 static const char *icon_symbol(const char *field)
 {
-    LV_UNUSED(field);
-    return NULL;
+    static const char *const symbols[] = {
+        NULL,          SYM_SUN,  SYM_MOON,       SYM_CLOUD_SUN, SYM_CLOUD_MOON, SYM_CLOUD,
+        SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,
+    };
+    char *end = NULL;
+    unsigned long n;
+
+    if ((field == NULL) || (field[0] < '0') || (field[0] > '9'))
+    {
+        return NULL;
+    }
+    n = strtoul(field, &end, 10);
+    if ((end == NULL) || (*end != '\0') || (n >= (sizeof(symbols) / sizeof(symbols[0]))))
+    {
+        return NULL;
+    }
+    return symbols[n];
 }
 
 /* Split @p text (modified) at '\n' into at most @p max lines. */
@@ -310,10 +327,14 @@ static void add_row(lv_obj_t *list, char *line)
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_column(row, 8, 0);
     lv_obj_set_style_pad_ver(row, 3, 0);
-    icon = icon_symbol(f[0]);
-    if (icon != NULL)
+    /* A row with an icon field (also 0) keeps the icon column, so that its
+     * label lines up with the rows that have an icon. */
+    if (f[0][0] != '\0')
     {
-        (void)ui_make_label(row, &ui_font_16, g_ui.pal.muted, icon);
+        icon = icon_symbol(f[0]);
+        label = ui_make_label(row, &ui_font_16, g_ui.pal.muted, (icon != NULL) ? icon : "");
+        lv_obj_set_width(label, ICON_W);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     }
     if (f[1][0] != '\0')
     {

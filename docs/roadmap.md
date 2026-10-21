@@ -133,8 +133,8 @@ parallel after step 3.
 - [x] 4. Tabbed shell (firmware) — left rail, tab containers, audio screens in a 424 px container, global settings (#10)
 - [x] 5. Host router and `DashController` skeleton — `GET_CARDS`, chunked records, `TIME`; integration test (#12)
 - [x] 6. Board dashboard components — `dash_client.c`, clock strip, 2×2 cards, generic detail screen, media strip (#14)
-- [ ] 7. Media keys — `SendInput` previous / play-pause / next (#16)
-- [ ] 8. Weather — Open-Meteo, one fixed location, card and 10-day detail
+- [x] 7. Media keys — `SendInput` previous / play-pause / next (#16)
+- [ ] 8. Weather — Open-Meteo, one fixed location, card and 10-day detail (#18)
 - [ ] 9. Menu of the day — menu images → Claude API → monthly JSON; card and daily detail with the salad bar
 - [ ] 10. Claude Code approval: spike — hook behaviour on Windows, timeouts
 - [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board

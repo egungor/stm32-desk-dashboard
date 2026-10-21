@@ -246,11 +246,24 @@ for 0, an empty field, or a number it does not know, so numbers can be
 added without a new protocol version. The board cuts text that does not
 fit with "…" and never wraps a card line.
 
-| Icon | Meaning |
-|---|---|
-| 0 | none |
+| Icon | Meaning | Glyph (Font Awesome 5) |
+|---|---|---|
+| 0 | none | |
+| 1 | clear, day | sun |
+| 2 | clear, night | moon |
+| 3 | partly cloudy, day | cloud-sun |
+| 4 | partly cloudy, night | cloud-moon |
+| 5 | overcast | cloud |
+| 6 | fog | smog |
+| 7 | drizzle, rain, showers | cloud-rain |
+| 8 | heavy or freezing rain, violent showers | cloud-showers-heavy |
+| 9 | snow | snowflake |
+| 10 | thunderstorm | bolt |
 
-(Numbers are added here with the features that use them.)
+(Numbers are added here with the features that use them; 1–10: weather,
+#18.) A detail row whose `icon` field is not empty keeps an icon column,
+also for 0, so that labels of rows with and without an icon line up; a
+row with an empty field has no column.
 
 ### Part header
 

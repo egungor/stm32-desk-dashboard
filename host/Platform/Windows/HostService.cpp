@@ -14,6 +14,8 @@
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
+#include "WeatherService.h"
+#include "WinHttpClient.h"
 #include "WinMediaKeys.h"
 
 namespace stm32_audio::host::win {
@@ -121,6 +123,17 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     // The media strip (<< || >>); card and prompt actions come with their
     // features (v1 steps 8-11) and are answered with ERROR until then.
     dash.setActionHandler([&](const ProtoAction& action) { return handleMediaAction(action, mediaKeys); });
+    // Weather card and detail (slot 0, ADR-006); the forecast is fetched on
+    // a worker thread.
+    WinHttpClient http;
+    WinPreferenceFile weatherFile(L"weather");
+    WeatherService weather(dash, weatherFile, http, localTimeNow, log);
+    dash.setDetailHandler([&weather](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        if (slot == WeatherService::kSlot) {
+            return weather.detail(arg);
+        }
+        return std::nullopt;
+    });
     WinPreferenceFile file;
     PreferenceStore store(file, controller.preferences());
     const bool saving = loadPreferences(file, store, false, log);
@@ -161,6 +174,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             controller.onPreferencesChanged();
         }
         reportLanguage();
+        weather.setLanguage(controller.preferences().settings().language);
+        weather.onTick(GetTickCount64());
         dash.onTick(GetTickCount64());
         if (!item) {
             continue;
