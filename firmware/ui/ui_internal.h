@@ -63,6 +63,8 @@
 #define SYM_HEAVY_RAIN "\xEF\x9D\x80" /* cloud-showers-heavy */
 #define SYM_SNOW       "\xEF\x8B\x9C" /* snowflake */
 #define SYM_STORM      "\xEF\x83\xA7" /* bolt */
+/* Menu of the day ("Icon" 11, #20) */
+#define SYM_UTENSILS   "\xEF\x8B\xA7" /* utensils */
 
 LV_FONT_DECLARE(ui_font_14)
 LV_FONT_DECLARE(ui_font_16)

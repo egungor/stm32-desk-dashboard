@@ -259,9 +259,10 @@ fit with "…" and never wraps a card line.
 | 8 | heavy or freezing rain, violent showers | cloud-showers-heavy |
 | 9 | snow | snowflake |
 | 10 | thunderstorm | bolt |
+| 11 | menu of the day | utensils |
 
 (Numbers are added here with the features that use them; 1–10: weather,
-#18.) A detail row whose `icon` field is not empty keeps an icon column,
+#18; 11: menu, #20.) A detail row whose `icon` field is not empty keeps an icon column,
 also for 0, so that labels of rows with and without an icon line up; a
 row with an empty field has no column.
 

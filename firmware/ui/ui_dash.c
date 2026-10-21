@@ -51,7 +51,7 @@ static const char *icon_symbol(const char *field)
 {
     static const char *const symbols[] = {
         NULL,          SYM_SUN,  SYM_MOON,       SYM_CLOUD_SUN, SYM_CLOUD_MOON, SYM_CLOUD,
-        SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,
+        SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,      SYM_UTENSILS,
     };
     char *end = NULL;
     unsigned long n;
