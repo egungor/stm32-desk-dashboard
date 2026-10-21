@@ -2,12 +2,15 @@
 
 ## Status
 
-**Protocol version 3.** Version 2 (audio: device list, selection,
-volume, mute, preferences and settings; ADR-004) plus the dashboard:
-time, cards, details, prompts and actions sent as chunked text records,
-and one more byte in the settings record (`startup_screen`). Design:
-`docs/decisions/ADR-006-cards-and-protocol-v3.md` and
-`docs/decisions/ADR-005-tabbed-shell-and-global-settings.md`.
+**Protocol version 4.** Version 2 (audio: device list, selection,
+volume, mute, preferences and settings; ADR-004) plus the dashboard of
+version 3: time, cards, details, prompts and actions sent as chunked
+text records, and one more byte in the settings record
+(`startup_screen`); plus, in version 4, what plays now: a media record,
+the playback state and a small cover (ADR-008). Design:
+`docs/decisions/ADR-006-cards-and-protocol-v3.md`,
+`docs/decisions/ADR-005-tabbed-shell-and-global-settings.md` and
+`docs/decisions/ADR-008-media-session-and-music-tab.md`.
 
 This document is the source of truth for communication between the STM32
 firmware and the Windows host application. The reference implementation
@@ -40,6 +43,7 @@ Timing, applied by the STM32:
 | `SET_VOLUME` while the user drags the slider | at most every 100 ms, the latest value; the last value is always sent |
 | A card, detail or prompt record stays incomplete | 1000 ms after its last part → `GET_CARDS` (card) or `OPEN_DETAIL` again (detail); an incomplete prompt is dropped |
 | No complete detail after `OPEN_DETAIL`, and no `ERROR` | 2000 ms → notice, the board stays on the dashboard |
+| The media record or the cover of the last `MEDIA_STATE` stays incomplete | 1000 ms after its last part → `GET_MEDIA` |
 | `VOLUME_CHANGED` during a local volume change | not shown until 300 ms after the last `SET_VOLUME`; then the host's value is shown |
 
 The host does not time out; it answers requests and reports changes.
@@ -64,7 +68,7 @@ All frames are 64 bytes. Multi-byte fields are little endian.
 | Offset | Size | Field | Value |
 |---|---|---|---|
 | 0 | 1 | magic | `0xA5` |
-| 1 | 1 | version | `3` |
+| 1 | 1 | version | `4` |
 | 2 | 1 | command | see message set |
 | 3 | 1 | sequence | sender's counter, incremented per frame sent, wraps 255 → 0 |
 | 4 | 1 | length | payload bytes, 0–57 |
@@ -83,9 +87,9 @@ Senders must zero the padding. Receivers do not check it beyond the CRC.
 `SELECT_DEVICE` with sequence `0x2A`, `generation` = 5, `device_index` = 2:
 
 ```text
-offset 0..6:   A5 03 03 2A 02 05 02
+offset 0..6:   A5 04 03 2A 02 05 02
 offset 7..61:  00 (55 bytes)
-offset 62..63: 6A 5D            (CRC 0x5D6A)
+offset 62..63: 5B C1            (CRC 0xC15B)
 ```
 
 ## Message set
@@ -112,9 +116,13 @@ offset 62..63: 6A 5D            (CRC 0x5D6A)
 | `0x23` | `DETAIL_PART` | Host → STM32 | part header (`id` = card slot 0–7) + record text |
 | `0x24` | `PROMPT_PART` | Host → STM32 | part header (`id` = prompt id 0–255) + record text |
 | `0x25` | `PROMPT_CLOSE` | Host → STM32 | `prompt_id`: hide this prompt |
+| `0x26` | `MEDIA_PART` | Host → STM32 | part header (`id` = 0) + media record text (version 4, below) |
+| `0x27` | `MEDIA_STATE` | Host → STM32 | playback state, 11 bytes (version 4, below) |
+| `0x28` | `ART_PART` | Host → STM32 | `art_id`, `index` (u16) + cover data (version 4, below) |
 | `0x30` | `GET_CARDS` | STM32 → Host | none |
 | `0x31` | `OPEN_DETAIL` | STM32 → Host | `slot` (0–7), `arg` (int8: 0 default, −1 previous, +1 next) |
 | `0x32` | `ACTION` | STM32 → Host | `kind`, `ref`, `action` (below) |
+| `0x33` | `GET_MEDIA` | STM32 → Host | none (version 4) |
 | `0x7F` | `ERROR` | Either | `code`, `ref_command`, `ref_sequence` (1 byte each) |
 
 Volume and mute refer to the current default playback device. After
@@ -208,7 +216,7 @@ Settings record (12 bytes, payload of `SETTINGS` and `SET_SETTINGS`):
 | 8 | `language` | 0 Turkish, 1 English | 0 |
 | 9 | `volume_limit_on` | 0 off, 1 on | 0 |
 | 10 | `volume_limit` | 0–100 percent | 50 |
-| 11 | `startup_screen` | 0 Dashboard, 1 Audio (ADR-005; version 3) | 0 |
+| 11 | `startup_screen` | 0 Dashboard, 1 Audio (ADR-005; version 3), 2 Music (ADR-008; version 4) | 0 |
 
 The STM32 uses the defaults until the host's `SETTINGS` arrive. The host
 stores the record as received and interprets only `volume_limit_on` and
@@ -268,14 +276,14 @@ row with an empty field has no column.
 
 ### Part header
 
-`CARD_PART`, `DETAIL_PART` and `PROMPT_PART` start with:
+`CARD_PART`, `DETAIL_PART`, `PROMPT_PART` and `MEDIA_PART` start with:
 
 | Byte | Field | Value |
 |---|---|---|
-| 0 | `id` | card slot 0–7 (card, detail), or prompt id 0–255 |
+| 0 | `id` | card slot 0–7 (card, detail), prompt id 0–255, or 0 (media) |
 | 1 | `generation` | changed by the host for every new version of the record |
 | 2 | `part` | 0 … `parts` − 1 |
-| 3 | `parts` | 1–5 (card), 1–39 (detail), 1–20 (prompt) |
+| 3 | `parts` | 1–5 (card), 1–39 (detail), 1–20 (prompt), 1–10 (media) |
 | 4 … | data | part `n` holds record bytes `53·n` … ; every part but the last has 53 bytes |
 
 - The last part has 1–53 bytes; only an empty record (`parts` = 1) has
@@ -287,13 +295,68 @@ row with an empty field has no column.
   part is ignored.
 - The host sends one record completely before it starts the next.
 
+## Now playing (version 4)
+
+What plays on the PC (ADR-008): the Music tab and the Dashboard's media
+strip draw it. Three host messages: the media record (texts), the
+playback state, and the cover.
+
+### Media record
+
+`MEDIA_PART` carries one text record (the rules of "Record text" and
+"Part header"; `id` is always 0), at most 512 bytes, one line:
+
+`title` ␟ `artist` ␟ `album` ␟ `app`
+
+`app` is the name of the program that plays (e.g. "Spotify"). Empty
+fields are allowed.
+
+### `MEDIA_STATE`
+
+| Byte | Field | Value |
+|---|---|---|
+| 0 | `status` | 0 no media session, 1 stopped, 2 playing, 3 paused |
+| 1 | `controls` | bit 0 previous, bit 1 play/pause, bit 2 next: the session takes them; other bits 0 |
+| 2 | `art_id` | 0 no cover; 1–255 the cover sent in `ART_PART`s with this id |
+| 3–6 | `position` | u32, seconds from the start of the track |
+| 7–10 | `duration` | u32, seconds; 0 = unknown. When not 0, `position` ≤ `duration` |
+
+With `status` 0 the board shows that nothing plays and ignores the media
+record. While `status` is 2 the board counts `position` on by itself;
+the host sends a new `MEDIA_STATE` when the status, the controls, the
+cover, the duration or the track change, when the position jumps, and
+every 30 s while playing.
+
+### Cover
+
+A cover is 120 × 120 pixels, RGB565 (bits 15–11 red, 10–5 green, 4–0
+blue), each pixel little endian, row by row from the top left: 28 800
+bytes, sent as 534 `ART_PART`s:
+
+| Byte | Field | Value |
+|---|---|---|
+| 0 | `art_id` | 1–255 |
+| 1–2 | `index` | u16, 0–533; part `n` holds cover bytes `54·n` … |
+| 3 … | data | 54 bytes; 18 in part 533 |
+
+- A part whose data length is not exactly 54 (18 for part 533) is
+  invalid (`BAD_PAYLOAD`).
+- The board collects the parts of the `art_id` of the last
+  `MEDIA_STATE` (in any order; a repeated part is ignored) and shows the
+  cover when all 534 have arrived. Parts of another `art_id` are
+  dropped.
+- Other frames may come between two `ART_PART`s; the host sends cover
+  parts after anything else it has to send, so a cover takes about
+  2.7 s at the 5 ms interval. A new `art_id` replaces a cover still
+  being sent.
+
 ### `ACTION`
 
 | `kind` | `ref` | `action` |
 |---|---|---|
 | 0 card detail | card slot 0–7 | the button's `action` (1–255) |
 | 1 prompt | prompt id | the button's `action` (1–255) |
-| 2 media strip | 0 | 1 previous track, 2 play/pause, 3 next track |
+| 2 media strip, Music tab | 0 | 1 previous track, 2 play/pause, 3 next track |
 
 `ACTION` has no direct answer; its effect comes back as cards, a detail
 or `PROMPT_CLOSE`. The host answers an `ACTION` it cannot carry out with
@@ -314,6 +377,8 @@ or `PROMPT_CLOSE`. The host answers an `ACTION` it cannot carry out with
 | Preferences changed on the host (e.g. `dashboard-host alias`) | Host → new list if it changed, then `SETTINGS` |
 | Firmware starts or USB (re)connects (dashboard) | STM32 → `GET_CARDS`; Host → `TIME`, then for every slot 0–7 its `CARD_PART`s or `CARD_CLEAR` |
 | Every 10 minutes, and when Windows' time or time zone changes | Host → `TIME` |
+| Firmware starts or USB (re)connects (now playing) | STM32 → `GET_MEDIA`; Host → `MEDIA_PART`s, `MEDIA_STATE`, then the cover's `ART_PART`s if `art_id` is not 0 |
+| What plays changes on the PC | Host → `MEDIA_PART`s if the texts changed, `MEDIA_STATE`, then the `ART_PART`s of a new cover |
 | A card changes | Host → its `CARD_PART`s with a new `generation`, or `CARD_CLEAR` |
 | User taps a card | STM32 → `OPEN_DETAIL slot, 0`; Host → `DETAIL_PART`s, or `ERROR OPERATION_FAILED` (no detail for that slot) |
 | User taps ‹ / › in a detail | STM32 → `OPEN_DETAIL slot, −1 / +1`; Host → the new detail |
@@ -343,7 +408,7 @@ Retries and timeouts: see "Transport".
 A receiver checks, in this order, and stops at the first failure:
 
 1. magic is `0xA5`;
-2. version is `3`;
+2. version is `4`;
 3. CRC matches;
 4. length ≤ 57;
 5. command is known;
@@ -354,7 +419,7 @@ A rejected frame is dropped. The receiver may answer with `ERROR`:
 | Code | Name | Meaning |
 |---|---|---|
 | `0x01` | `BAD_FRAME` | magic, CRC or length wrong |
-| `0x02` | `UNSUPPORTED_VERSION` | version is not 3 |
+| `0x02` | `UNSUPPORTED_VERSION` | version is not 4 |
 | `0x03` | `UNKNOWN_COMMAND` | command code not in the message set |
 | `0x04` | `BAD_PAYLOAD` | payload length or a field value invalid |
 | `0x05` | `UNKNOWN_DEVICE` | `device_index` not in the current list |
@@ -383,3 +448,4 @@ A receiver rejects frames of any other version (`UNSUPPORTED_VERSION`).
 | 1 | Fixed 64-byte frame with sequence byte, 8-bit length and CRC-16; payloads, device list format, error codes and validation rules defined. |
 | 2 | ADR-004: `DEVICE_ALIAS`, `SET_ALIAS`, `SET_FAVORITE`, `MOVE_DEVICE`, `SETTINGS`, `SET_SETTINGS`; favorite and alias flags in `DEVICE_LIST`; list in the user's order; `generation` in `SELECT_DEVICE`. |
 | 3 | ADR-005, ADR-006: `TIME`, `CARD_PART`, `CARD_CLEAR`, `DETAIL_PART`, `PROMPT_PART`, `PROMPT_CLOSE`, `GET_CARDS`, `OPEN_DETAIL`, `ACTION`; chunked text records; settings record 12 bytes (`startup_screen`). stm32-desk-dashboard only; the audio controller stays on version 2. |
+| 4 | ADR-008: `MEDIA_PART`, `MEDIA_STATE`, `ART_PART`, `GET_MEDIA` (now playing, 120 × 120 RGB565 cover); `startup_screen` 2 = Music. |
