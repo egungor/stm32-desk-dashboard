@@ -46,7 +46,7 @@ jobs:
 
       - name: Cache toolchain archives
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .toolchain
           key: toolchain-${{ env.GCC_ARCHIVE }}-${{ env.CMAKE_ARCHIVE }}-ninja-1.13.2
