@@ -21,6 +21,11 @@
  *     another slot than the one open are ignored. Dash_CloseDetail()
  *     forgets the open slot.
  *   - Dash_Action() sends ACTION; an ERROR about it is a notice.
+ *   - A complete PROMPT_PART record is shown (ADR-007: a Claude Code
+ *     permission request); PROMPT_CLOSE closes it. A prompt still
+ *     incomplete DASH_RETRY_MS after its last part is dropped (the host
+ *     times it out). A disconnect closes the shown prompt.
+ *     Dash_AnswerPrompt() sends ACTION kind 1 for it.
  *   - TIME sets the clock: Dash_LocalTime() counts on from the last TIME.
  *
  * Sequence numbers: the client numbers its frames from a counter it is
@@ -29,7 +34,8 @@
  * protocol.md defines it, and the audio client still recognises the
  * ERROR frames that answer its own requests by their ref_sequence.
  *
- * Static buffers only (one card and one detail record being assembled).
+ * Static buffers only (one card, one detail and one prompt record being
+ * assembled).
  * Not thread-safe: call everything from one task.
  */
 #ifndef DASH_CLIENT_H
@@ -47,6 +53,7 @@ extern "C" {
 #define DASH_RETRY_MS          1000U /**< = LINK_RETRY_MS */
 #define DASH_DETAIL_TIMEOUT_MS 2000U /**< = LINK_RESPONSE_TIMEOUT_MS */
 #define DASH_NO_SLOT           0xFFU
+#define DASH_NO_PROMPT         0xFFFFU
 
 typedef enum
 {
@@ -65,6 +72,10 @@ typedef struct
     void (*notice)(DashNotice notice, void *ctx);
     /** TIME arrived: local time in seconds since 1970 (protocol.md). */
     void (*set_time)(uint32_t local_time, void *ctx);
+    /** A prompt arrived (NUL-terminated record text); replaces any shown. */
+    void (*show_prompt)(uint8_t id, const char *text, void *ctx);
+    /** The prompt @p id is to be closed (PROMPT_CLOSE or disconnect). */
+    void (*close_prompt)(uint8_t id, void *ctx);
     void *ctx;
 } DashCallbacks;
 
@@ -86,6 +97,11 @@ typedef struct
     int8_t detail_arg;         /**< arg of the last OPEN_DETAIL */
     bool detail_waiting;       /**< OPEN_DETAIL sent, no complete detail yet */
     uint32_t detail_asked_ms;
+
+    ProtoAssembler prompt_asm;
+    uint8_t prompt_buf[PROTO_PROMPT_MAX_BYTES + 1U];
+    uint32_t prompt_part_ms;   /**< time of the last prompt part */
+    uint16_t prompt_shown;     /**< id of the shown prompt, DASH_NO_PROMPT if none */
 
     bool time_known;
     uint32_t time_base;        /**< local time of the last TIME */
@@ -123,6 +139,11 @@ void Dash_CloseDetail(DashClient *dash);
 
 /** Send ACTION. False if not connected, invalid or not queued. */
 bool Dash_Action(DashClient *dash, uint8_t kind, uint8_t ref, uint8_t action);
+
+/** Answer the shown prompt @p id with button @p action (1..255): ACTION
+ *  kind 1. False if not connected, not the shown prompt, or not queued. The
+ *  prompt stays until the host closes it. */
+bool Dash_AnswerPrompt(DashClient *dash, uint8_t id, uint8_t action);
 
 /** Local time now (seconds since 1970, protocol.md "TIME"), or 0 if no
  *  TIME has arrived yet. */

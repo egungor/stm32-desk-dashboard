@@ -929,6 +929,7 @@ static void build_all(void)
         ui_keyboard_build();
     }
     build_notice();
+    ui_prompt_rebuild();
     ui_shell_show_tab(g_ui.app_tab);
 
     clamp_page();
@@ -1040,10 +1041,24 @@ static void on_screen_timer(lv_timer_t *timer)
     const uint32_t minutes = g_ui.settings.screen_timeout;
 
     LV_UNUSED(timer);
-    if (!g_ui.screen_off && (minutes > 0U) && (lv_display_get_inactive_time(NULL) >= (minutes * 60000U)))
+    /* A prompt keeps the screen lit: it waits for an answer. */
+    if (!g_ui.screen_off && (minutes > 0U) && (g_ui.prompt_id == UI_NO_PROMPT) &&
+        (lv_display_get_inactive_time(NULL) >= (minutes * 60000U)))
     {
         set_screen_on(false);
     }
+}
+
+void ui_wake_screen(void)
+{
+    set_screen_on(true);
+    lv_display_trigger_activity(NULL);
+}
+
+static void on_prompt_timer(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+    ui_prompt_tick();
 }
 
 /* A press on the dark screen lands on the wake catcher (system layer, over
@@ -1086,6 +1101,8 @@ void Ui_Init(UiSelectCallback on_select, void *user)
     g_ui.screen_timer = lv_timer_create(on_screen_timer, UI_SCREEN_OFF_CHECK_MS, NULL);
     g_ui.clock_timer = lv_timer_create(on_clock_timer, 1000U, NULL);
     g_ui.dash_slot = UI_DASH_NO_SLOT;
+    g_ui.prompt_id = UI_NO_PROMPT;
+    g_ui.prompt_timer = lv_timer_create(on_prompt_timer, 1000U, NULL);
     build_wake_catcher();
 
     build_all();

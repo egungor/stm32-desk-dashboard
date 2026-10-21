@@ -321,7 +321,7 @@ enum
  * Requests from the Dashboard tab. open_detail: a card was tapped (arg 0)
  * or previous / next in its detail (arg -1 / +1); close_detail: the back
  * button; action: a detail button (its action number); media: the media
- * strip (UI_MEDIA_*). All optional.
+ * strip (UI_MEDIA_*); prompt_action: a button of the prompt. All optional.
  */
 typedef struct
 {
@@ -329,6 +329,8 @@ typedef struct
     void (*close_detail)(void *user);
     void (*action)(uint8_t slot, uint8_t action, void *user);
     void (*media)(uint8_t action, void *user);
+    /** A button of the shown prompt @p id (Ui_ShowPrompt). */
+    void (*prompt_action)(uint8_t id, uint8_t action, void *user);
 } UiDashHandlers;
 
 /** Set the dashboard handlers (copied). */
@@ -354,6 +356,28 @@ void Ui_SetTime(uint32_t local_time);
 
 /** UI_DASH_VIEW_* (for tests). */
 uint32_t Ui_DashView(void);
+
+/* ---------------------------------------------------------------- prompt */
+
+#define UI_PROMPT_BYTES 1024U   /**< = PROTO_PROMPT_MAX_BYTES */
+#define UI_NO_PROMPT    0xFFFFU
+
+/**
+ * @brief  Show prompt @p id over every screen (ADR-007: a Claude Code
+ *         permission request) and light the screen. Record text as a
+ *         detail (protocol.md "Record text"), first line
+ *         `title ␟ subtitle ␟ seconds`: the countdown. Replaces a shown
+ *         prompt. A button calls UiDashHandlers.prompt_action once; the
+ *         prompt stays until Ui_ClosePrompt, or closes itself 5 s after its
+ *         countdown ran out.
+ */
+void Ui_ShowPrompt(uint8_t id, const char *text);
+
+/** Close prompt @p id if it is shown. */
+void Ui_ClosePrompt(uint8_t id);
+
+/** The shown prompt's id, or UI_NO_PROMPT (for tests). */
+uint16_t Ui_PromptShown(void);
 
 /** LVGL memory in use and its peak, in bytes (for tests and the log). */
 void Ui_MemoryUse(uint32_t *used, uint32_t *peak);

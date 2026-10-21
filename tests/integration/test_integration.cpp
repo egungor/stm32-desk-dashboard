@@ -157,6 +157,9 @@ struct FirmwareScreen {
     int detailFailed = 0;
     int actionFailed = 0;
     std::uint32_t time = 0;
+    std::string prompt;             // shown prompt text, "" if none
+    int promptId = -1;              // shown prompt id, -1 if none
+    int promptsShown = 0;
 };
 
 struct WireStats {
@@ -202,8 +205,8 @@ public:
         LinkCallbacks cb = callbacks;
         cb.ctx = this;
         Link_Init(&link, &cb);
-        const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard, &Rig::fwDetail, &Rig::fwDashNotice, &Rig::fwTime,
-                                   this};
+        const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard,   &Rig::fwDetail,      &Rig::fwDashNotice,
+                                   &Rig::fwTime, &Rig::fwPrompt, &Rig::fwClosePrompt, this};
         Dash_Init(&dashClient, &dcb);
         Dash_SetSequenceCounter(&dashClient, &link.sequence);  // link_port.c
     }
@@ -463,6 +466,21 @@ private:
         }
     }
     static void fwTime(std::uint32_t t, void* ctx) { self(ctx).screen.time = t; }
+    static void fwPrompt(std::uint8_t id, const char* text, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        screen.prompt = text;
+        screen.promptId = id;
+        ++screen.promptsShown;
+    }
+    static void fwClosePrompt(std::uint8_t id, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        if (screen.promptId == id) {
+            screen.prompt.clear();
+            screen.promptId = -1;
+        }
+    }
     static void fwSettings(const ProtoSettings* s, void* ctx)
     {
         FirmwareScreen& screen = self(ctx).screen;
