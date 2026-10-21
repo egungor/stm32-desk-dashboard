@@ -104,7 +104,23 @@ full is never approvable on the board.
 - The `Notification` hook (`idle_prompt`: "Claude is waiting for input")
   and `Stop` ("task finished") as dashboard cards: same pipe, later.
 
+### Exec form (hooks reference, read again 2026-10-21 for step 10)
+
+A command hook with `args` runs in **exec form**: Claude Code starts
+`command` as a program, without a shell, and on Windows it must be a real
+`.exe` (not a `.cmd` / `.bat`). That is the case of `dashboard-host.exe`,
+so the hook does not depend on Git Bash or PowerShell, and the
+shell-form failure on Windows without Git Bash does not apply. The
+snippet of step 11 becomes `"command": "<install folder>\\dashboard-host.exe",
+"args": ["hook", "permission"]`. A program that is missing, fails or
+times out is a non-blocking error unless `onFailure: "block"` is set
+(which on `PermissionRequest` would deny): to be confirmed by the spike.
+
 ### Open points for the spike (step 10)
+
+The probe and the scenarios are in `docs/hook-spike.md` (#24); results
+go into "Spike results" below.
+
 
 - Is the terminal question shown while the hook waits? If both can
   answer, which one wins and does the late one cause harm?
@@ -114,6 +130,10 @@ full is never approvable on the board.
 - How the hook command runs on Windows without Git Bash, and what a
   missing or crashing exe does to the tool call.
 - Whether 60 s / 90 s fits real use.
+
+## Spike results
+
+Not run yet (#24, `docs/hook-spike.md`): REQUIRES WINDOWS.
 
 ## Alternatives
 

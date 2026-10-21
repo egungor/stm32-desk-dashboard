@@ -34,6 +34,7 @@
 #include "Startup.h"
 #include "VolumeLimit.h"
 #include "BackgroundFetch.h"
+#include "ClaudeHook.h"
 #include "WeatherCard.h"
 #include "WeatherLocation.h"
 #include "WeatherReport.h"
@@ -2392,6 +2393,37 @@ void testMenuService()
     CHECK(logs.back().find("menu-2026-11.json is not a menu file") != std::string::npos);
 }
 
+void testClaudeHook()
+{
+    CHECK(permissionDecisionJson(HookAnswer::None).empty());
+    const nlohmann::json allow = nlohmann::json::parse(permissionDecisionJson(HookAnswer::Allow));
+    CHECK(allow["hookSpecificOutput"]["hookEventName"] == "PermissionRequest" &&
+          allow["hookSpecificOutput"]["decision"]["behavior"] == "allow");
+    const nlohmann::json deny = nlohmann::json::parse(permissionDecisionJson(HookAnswer::Deny));
+    CHECK(deny["hookSpecificOutput"]["decision"]["behavior"] == "deny" &&
+          deny["hookSpecificOutput"]["decision"].size() == 1U);
+
+    HookProbeConfig c = parseHookProbeConfig(std::nullopt);
+    CHECK(c.answer == HookAnswer::None && c.waitSeconds == 0 && c.exitCode == 0);
+    c = parseHookProbeConfig(std::string("\xEF\xBB\xBF# probe\r\nanswer = deny\r\nwait=30\nexit=3\nother=1\n"));
+    CHECK(c.answer == HookAnswer::Deny && c.waitSeconds == 30 && c.exitCode == 3);
+    c = parseHookProbeConfig(std::string("answer=maybe\nwait=601\nexit=-1\nwait=x"));
+    CHECK(c.answer == HookAnswer::None && c.waitSeconds == 0 && c.exitCode == 0);
+    CHECK(std::string(hookAnswerName(HookAnswer::Allow)) == "allow");
+
+    const std::string input = R"({"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"npm test"}})";
+    const nlohmann::json start = nlohmann::json::parse(hookProbeLogLine("start", "2026-10-21 15:00:00.123", 0, 42, input, c));
+    CHECK(start["phase"] == "start" && start["pid"] == 42 && start["input"]["tool_input"]["command"] == "npm test");
+    const nlohmann::json raw = nlohmann::json::parse(hookProbeLogLine("start", "t", 0, 1, "not json\xFF", c));
+    CHECK(raw.contains("input_raw") && !raw.contains("input"));
+    c.answer = HookAnswer::Allow;
+    c.waitSeconds = 5;
+    const std::string endLine = hookProbeLogLine("end", "t", 5003, 42, input, c);
+    CHECK(endLine.find('\n') == std::string::npos);
+    const nlohmann::json end = nlohmann::json::parse(endLine);
+    CHECK(end["answer"] == "allow" && end["wait_s"] == 5 && end["elapsed_ms"] == 5003 && !end.contains("input"));
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -2457,6 +2489,7 @@ int main()
     testMenuAnswer();
     testMenuImport();
     testMenuService();
+    testClaudeHook();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

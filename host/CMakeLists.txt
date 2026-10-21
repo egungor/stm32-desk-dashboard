@@ -33,6 +33,7 @@ add_library(host_core STATIC
     App/PreferenceStore.cpp
     App/Preferences.cpp
     App/Startup.cpp
+    Hook/ClaudeHook.cpp
     Menu/MenuData.cpp
     Menu/MenuImport.cpp
     Menu/MenuService.cpp
@@ -40,7 +41,7 @@ add_library(host_core STATIC
     Weather/WeatherLocation.cpp
     Weather/WeatherReport.cpp
     Weather/WeatherService.cpp)
-target_include_directories(host_core PUBLIC Audio Hid App Menu Weather)
+target_include_directories(host_core PUBLIC Audio Hid App Hook Menu Weather)
 # nlohmann/json (ADR-006), vendored: no warnings from it.
 target_include_directories(host_core SYSTEM PRIVATE third_party)
 find_package(Threads REQUIRED)
