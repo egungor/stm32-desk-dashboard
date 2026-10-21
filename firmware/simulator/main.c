@@ -882,6 +882,191 @@ static void run_layouts_script(void)
     report_memory("layouts-end");
 }
 
+/* Dashboard tab (ADR-006, #14): cards from the host, the generic detail,
+ * the media strip and the clock. Cards are 200 x 92 at x 64 / 272 and
+ * y 36 / 136; the media buttons at x 172, 268, 364, y 250. */
+static struct
+{
+    int     open_calls;
+    uint8_t open_slot;
+    int8_t  open_arg;
+    int     close_calls;
+    int     action_calls;
+    uint8_t action_slot;
+    uint8_t action;
+    int     media_calls;
+    uint8_t media;
+} s_dash;
+
+static void dash_open(uint8_t slot, int8_t arg, void *user)
+{
+    (void)user;
+    s_dash.open_calls++;
+    s_dash.open_slot = slot;
+    s_dash.open_arg = arg;
+}
+
+static void dash_close(void *user)
+{
+    (void)user;
+    s_dash.close_calls++;
+}
+
+static void dash_action(uint8_t slot, uint8_t action, void *user)
+{
+    (void)user;
+    s_dash.action_calls++;
+    s_dash.action_slot = slot;
+    s_dash.action = action;
+}
+
+static void dash_media(uint8_t action, void *user)
+{
+    (void)user;
+    s_dash.media_calls++;
+    s_dash.media = action;
+}
+
+#define F "\x1F"
+
+static void run_dashboard_script(void)
+{
+    static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media };
+    static const char *const weather_detail =
+        "Hava durumu" F "Ankara" F "\n"
+        "#Bug\xC3\xBCn\n"
+        "0" F "S\xC4\xB1" "cakl\xC4\xB1k" F "14\xC2\xB0 (hissedilen 12\xC2\xB0)\n"
+        "0" F "Durum" F "Par\xC3\xA7" "al\xC4\xB1 bulutlu\n"
+        "#10 g\xC3\xBCn\n"
+        "0" F "Per 22" F "17\xC2\xB0 / 8\xC2\xB0  ya\xC4\x9F\xC4\xB1\xC5\x9F %20\n"
+        "0" F "Cum 23" F "15\xC2\xB0 / 7\xC2\xB0  ya\xC4\x9F\xC4\xB1\xC5\x9F %60\n"
+        "0" F "Cmt 24" F "12\xC2\xB0 / 5\xC2\xB0  ya\xC4\x9F\xC4\xB1\xC5\x9F %80";
+    static const char *const menu_detail =
+        "Yemek" F "5 Ekim Pazartesi" F "n\n"
+        "0" F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
+        "0" F "Yan yemek" F "Kalem b\xC3\xB6rek\n"
+        "0" F "\xC3\x87orba" F "Tarhana \xC3\xA7orba\n"
+        "0" F "Tatl\xC4\xB1" F "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava\n"
+        "#Salata bar\n"
+        "0" F "" F "Akdeniz salata \xC2\xB7 Havu\xC3\xA7 tarator \xC2\xB7 Zyt. b\xC3\xB6r\xC3\xBClce \xC2\xB7 "
+        "Cevizli biber \xC2\xB7 Makarna salata \xC2\xB7 Zeytin salata\n"
+        "!1" F "Yenile";
+    UiSettings s = *Ui_Settings();
+
+    Ui_SetDashHandlers(&handlers, NULL);
+    Ui_SetTime(1792593125U); /* 2026-10-21 14:32:05, a Wednesday */
+    Ui_SetCard(0U, "0" F "HAVA" F "\n14\xC2\xB0  Par\xC3\xA7" "al\xC4\xB1 bulutlu\nE 17\xC2\xB0 / 8\xC2\xB0\nYa\xC4\x9F\xC4\xB1\xC5\x9F %20");
+    Ui_SetCard(1U, "0" F "YEMEK" F "\nKa\xC4\x9F\xC4\xB1t kebab\xC4\xB1\nTarhana \xC3\xA7orba\nSalata bar: 6 \xC3\xA7" "e\xC5\x9Fit");
+    Ui_SetCard(2U, "");
+    Ui_SetCard(3U, "0" F "CLAUDE CODE" F "\nOnay bekleyen yok");
+    Ui_SetCard(7U, "ignored");
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
+    check(Ui_CurrentAppTab() == UI_APP_TAB_DASHBOARD, "the rail shows the Dashboard tab");
+    check(Ui_DashView() == UI_DASH_VIEW_CARDS, "the Dashboard tab shows the cards");
+    snapshot("80-dashboard");
+    report_memory("80-dashboard");
+
+    /* An empty card does nothing. */
+    tap(164, 182);
+    check((s_dash.open_calls == 0) && (Ui_DashView() == UI_DASH_VIEW_CARDS), "an empty card cannot be opened");
+
+    /* Weather: tap, loading, detail. */
+    tap(164, 82);
+    check((s_dash.open_calls == 1) && (s_dash.open_slot == 0U) && (s_dash.open_arg == 0),
+          "a tap on a card asks for its detail");
+    check(Ui_DashView() == UI_DASH_VIEW_LOADING, "the detail shows \"loading\" until it arrives");
+    run_ms(50U);
+    snapshot("81-detail-loading");
+    Ui_ShowDetail(1U, menu_detail); /* another slot: ignored */
+    check(Ui_DashView() == UI_DASH_VIEW_LOADING, "a detail for another card is ignored");
+    Ui_ShowDetail(0U, weather_detail);
+    run_ms(50U);
+    check(Ui_DashView() == UI_DASH_VIEW_DETAIL, "the detail is shown when it arrives");
+    snapshot("82-detail-weather");
+    report_memory("82-detail-weather");
+
+    /* Back to the cards. */
+    tap(76, 18);
+    run_ms(50U);
+    check((Ui_DashView() == UI_DASH_VIEW_CARDS) && (s_dash.close_calls == 1), "back closes the detail");
+
+    /* Menu: previous / next and a button. */
+    tap(372, 82);
+    check((s_dash.open_calls == 2) && (s_dash.open_slot == 1U), "the menu card asks for its detail");
+    Ui_ShowDetail(1U, menu_detail);
+    run_ms(50U);
+    snapshot("83-detail-menu");
+    tap(460, 18);
+    check((s_dash.open_calls == 3) && (s_dash.open_arg == 1) && (Ui_DashView() == UI_DASH_VIEW_LOADING),
+          "next asks for the next day");
+    Ui_ShowDetail(1U, menu_detail);
+    run_ms(50U);
+    tap(420, 18);
+    check((s_dash.open_calls == 4) && (s_dash.open_arg == -1), "previous asks for the previous day");
+    Ui_ShowDetail(1U, menu_detail);
+    run_ms(50U);
+    tap(268, 250);
+    check((s_dash.action_calls == 1) && (s_dash.action_slot == 1U) && (s_dash.action == 1U),
+          "a detail button sends its action");
+
+    /* A rebuild (e.g. light theme from the host) keeps the detail open. */
+    s.theme = UI_THEME_LIGHT;
+    Ui_ApplySettings(&s);
+    run_ms(50U);
+    check(Ui_DashView() == UI_DASH_VIEW_DETAIL, "a rebuild keeps the detail open");
+    snapshot("84-detail-menu-light");
+    s.theme = UI_THEME_DARK;
+    Ui_ApplySettings(&s);
+    run_ms(50U);
+
+    /* No detail: back to the cards with a notice. */
+    tap(76, 18);
+    tap(372, 182);
+    check(Ui_DashView() == UI_DASH_VIEW_LOADING, "the Claude card asks for its detail");
+    Ui_DetailFailed();
+    run_ms(50U);
+    check(Ui_DashView() == UI_DASH_VIEW_CARDS, "a failed detail returns to the cards");
+    snapshot("85-detail-failed");
+    run_ms(UI_NOTICE_MS + 100U);
+
+    /* Media strip. */
+    tap(172, 250);
+    check((s_dash.media_calls == 1) && (s_dash.media == UI_MEDIA_PREVIOUS), "<< sends previous track");
+    tap(268, 250);
+    check((s_dash.media_calls == 2) && (s_dash.media == UI_MEDIA_PLAY_PAUSE), "|| sends play/pause");
+    tap(364, 250);
+    check((s_dash.media_calls == 3) && (s_dash.media == UI_MEDIA_NEXT), "> > sends next track");
+
+    /* The clock runs on; a card update replaces the card. */
+    run_ms(60000U);
+    Ui_SetCard(0U, "0" F "HAVA" F "yeni\n9\xC2\xB0  Ya\xC4\x9Fmurlu");
+    run_ms(50U);
+    snapshot("86-dashboard-updated");
+
+    /* Opening and closing details does not leak. */
+    {
+        uint32_t before;
+        uint32_t after;
+
+        Ui_MemoryUse(&before, NULL);
+        for (uint32_t i = 0U; i < 10U; i++)
+        {
+            tap(372, 82);
+            Ui_ShowDetail(1U, menu_detail);
+            run_ms(20U);
+            tap(76, 18);
+            run_ms(20U);
+        }
+        Ui_MemoryUse(&after, NULL);
+        printf("memory after 10 details: before=%lu after=%lu\n", (unsigned long)before, (unsigned long)after);
+        check(after <= before + 512U, "opening and closing details does not leak memory");
+    }
+    report_memory("dashboard-end");
+}
+
+#undef F
+
 static void run_script(void)
 {
     /* Example names, including Turkish letters and a long name. */
@@ -1043,6 +1228,7 @@ static void run_script(void)
     run_screen_timeout_script(devices, sizeof(devices) / sizeof(devices[0]));
     run_edit_script(devices, sizeof(devices) / sizeof(devices[0]));
     run_layouts_script();
+    run_dashboard_script();
 }
 
 int main(int argc, char **argv)

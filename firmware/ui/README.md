@@ -25,7 +25,20 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
 - The first settings after `Ui_Init` choose the tab shown at startup
   (`startup_screen`: 0 Dashboard, 1 Audio); before them the Dashboard tab
   is shown. A rebuild keeps the shown tab.
-- Dashboard tab: a placeholder until the dashboard cards (v1 step 6).
+- Dashboard tab (`ui_dash.c`, ADR-006, #14): a clock strip (`Ui_SetTime`,
+  counted on with the LVGL tick, updated once a minute), four cards on a
+  2×2 grid (`Ui_SetCard`, slots 0–3; the host's record text: icon, title,
+  badge, up to three lines; an empty slot is a dim frame that cannot be
+  tapped) and the media strip `<< || >>` (`UiDashHandlers.media`). A tap
+  on a card shows the detail view in the tab ("Yükleniyor..." with the
+  card's title until `Ui_ShowDetail`): a header with back, title,
+  subtitle and ‹ › when the record's flags hold `n`; rows (label and
+  value), section titles; up to three buttons at the bottom
+  (`UiDashHandlers.action`). `Ui_DetailFailed` returns to the cards with
+  a notice. The view is built when shown and deleted when closed; a
+  rebuild keeps it open. The texts are kept in `g_ui` (4 cards + one
+  detail, about 3 KB). Icons: the record's icon numbers draw nothing yet
+  (protocol.md has only 0).
 - Audio tab: everything below; the settings button moved to the rail and
   the flip button to the settings page (the waiting screen keeps its
   button). Waiting screen, settings, edit mode and keyboard stay full
@@ -134,10 +147,10 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   keyboard (about 6 KB) exist only while shown. The heap is 128 KB
   (`LV_MEM_SIZE`, raised from 64 KB in #60): with the densest main screen,
   the settings page and LVGL's draw buffers, 64 KB ran out in the
-  simulator. Simulator (`Ui_MemoryUse`, #10, both tabs built): 34–39 KB
-  in use on the main screen in any layout, 51–56 KB with the settings
-  page, 44–49 KB with the edit mode and keyboard; peak 58 KB (44 %), far
-  below the 96 KB at which ADR-005 would build only the shown tab. No growth over repeated
+  simulator. Simulator (`Ui_MemoryUse`, #14, both tabs built with four
+  cards): 44 KB in use on the main screen, 52 KB with a detail open; peak
+  63 KB (48 %), below the 96 KB at which ADR-005 would build only the
+  shown tab. No growth over opening and closing details. No growth over repeated
   rebuilds, layout changes, or opening and closing these screens. Avoid
   `opa` below 100 % on an object: LVGL then draws it through a layer
   buffer from this heap (up to 24 KB); use `bg_opa` / `text_opa`.
@@ -150,6 +163,7 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
 |---|---|
 | `ui.h`, `ui.c` | Screens and API; Audio tab layout A |
 | `ui_shell.c` | Main screen: rail, Dashboard and Audio tabs (ADR-005) |
+| `ui_dash.c` | Dashboard tab: clock, cards, detail view, media strip (ADR-006) |
 | `ui_settings.c` | Settings page |
 | `ui_edit.c` | Edit mode (order, favorites) and alias keyboard |
 | `ui_layouts.c` | Audio tab of layouts B (list) and C (large tile) |

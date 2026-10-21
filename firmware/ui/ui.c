@@ -1027,6 +1027,13 @@ static void set_screen_on(bool on)
     }
 }
 
+/* The clock strip of the Dashboard tab changes once a minute. */
+static void on_clock_timer(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+    ui_dash_clock_tick();
+}
+
 /* LVGL counts the time since the last touch (lv_display_get_inactive_time). */
 static void on_screen_timer(lv_timer_t *timer)
 {
@@ -1077,6 +1084,8 @@ void Ui_Init(UiSelectCallback on_select, void *user)
     g_ui.notice_timer = lv_timer_create(on_notice_timer, UI_NOTICE_MS, NULL);
     lv_timer_pause(g_ui.notice_timer);
     g_ui.screen_timer = lv_timer_create(on_screen_timer, UI_SCREEN_OFF_CHECK_MS, NULL);
+    g_ui.clock_timer = lv_timer_create(on_clock_timer, 1000U, NULL);
+    g_ui.dash_slot = UI_DASH_NO_SLOT;
     build_wake_catcher();
 
     build_all();
@@ -1140,9 +1149,10 @@ void Ui_ShowError(const char *text)
 
 void Ui_ShowNotice(UiNotice notice)
 {
-    static const UiTextId texts[] = { TXT_SELECT_FAILED, TXT_HOST_TIMEOUT, TXT_EDIT_FAILED };
+    static const UiTextId texts[] = { TXT_SELECT_FAILED, TXT_HOST_TIMEOUT, TXT_EDIT_FAILED, TXT_DETAIL_FAILED,
+                                      TXT_ACTION_FAILED };
 
-    Ui_ShowError(ui_text(((uint32_t)notice < 3U) ? texts[notice] : TXT_HOST_TIMEOUT));
+    Ui_ShowError(ui_text(((uint32_t)notice < (sizeof(texts) / sizeof(texts[0]))) ? texts[notice] : TXT_HOST_TIMEOUT));
 }
 
 void Ui_SetAudioHandlers(UiVolumeCallback on_volume, UiMuteCallback on_mute, void *user)

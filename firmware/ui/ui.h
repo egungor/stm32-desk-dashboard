@@ -13,7 +13,11 @@
  *   - main (the application screen, ADR-005): a rail on the left (56 px)
  *     with the Dashboard and Audio tabs, the settings button and the
  *     connection mark; the shown tab fills the remaining 424 x 272;
- *   - Dashboard tab: a placeholder until the dashboard cards exist;
+ *   - Dashboard tab (ui_dash.c, ADR-006): a clock strip, four cards on a
+ *     2x2 grid and a media strip (<< || >>). The cards' text comes from the
+ *     host (Ui_SetCard); a tap opens the card's detail in the tab (header
+ *     with back and, if the host asks, previous / next; rows; up to three
+ *     buttons), filled by Ui_ShowDetail;
  *   - Audio tab: two sub-tabs, all devices and favorites, in one of three
  *     layouts (UiSettings.layout): A cards in a 2x2, 3x2 or 3x3 grid or as
  *     a list (UiSettings.grid); B a list with vertical volume; C the active
@@ -131,6 +135,8 @@ typedef enum
     UI_NOTICE_SELECT_FAILED,  /**< the computer could not switch the device */
     UI_NOTICE_HOST_TIMEOUT,   /**< the computer did not answer */
     UI_NOTICE_EDIT_FAILED,    /**< the computer did not store a change */
+    UI_NOTICE_DETAIL_FAILED,  /**< no detail for a card (error or timeout) */
+    UI_NOTICE_ACTION_FAILED,  /**< the computer could not do a detail / media action */
 } UiNotice;
 
 /** Show one of the fixed notices (Ui_ShowError with the UI's own text). */
@@ -287,6 +293,67 @@ enum
 
 /** Tab shown on the main screen, UI_APP_TAB_* (for tests). */
 uint32_t Ui_CurrentAppTab(void);
+
+/* ------------------------------------------------------------- dashboard */
+
+#define UI_DASH_CARDS        4U    /**< shown slots (2x2); the protocol has 8 */
+#define UI_DASH_CARD_BYTES   256U  /**< = PROTO_CARD_MAX_BYTES */
+#define UI_DASH_DETAIL_BYTES 2048U /**< = PROTO_DETAIL_MAX_BYTES */
+#define UI_DASH_NO_SLOT      0xFFU
+
+/** Media strip actions; values match PROTO_MEDIA_*. */
+enum
+{
+    UI_MEDIA_PREVIOUS = 1,
+    UI_MEDIA_PLAY_PAUSE = 2,
+    UI_MEDIA_NEXT = 3,
+};
+
+/** What the Dashboard tab shows, for Ui_DashView (tests). */
+enum
+{
+    UI_DASH_VIEW_CARDS = 0,
+    UI_DASH_VIEW_LOADING = 1, /**< detail asked for, not here yet */
+    UI_DASH_VIEW_DETAIL = 2,
+};
+
+/**
+ * Requests from the Dashboard tab. open_detail: a card was tapped (arg 0)
+ * or previous / next in its detail (arg -1 / +1); close_detail: the back
+ * button; action: a detail button (its action number); media: the media
+ * strip (UI_MEDIA_*). All optional.
+ */
+typedef struct
+{
+    void (*open_detail)(uint8_t slot, int8_t arg, void *user);
+    void (*close_detail)(void *user);
+    void (*action)(uint8_t slot, uint8_t action, void *user);
+    void (*media)(uint8_t action, void *user);
+} UiDashHandlers;
+
+/** Set the dashboard handlers (copied). */
+void Ui_SetDashHandlers(const UiDashHandlers *handlers, void *user);
+
+/**
+ * @brief  Record text of card slot @p slot (protocol.md, "Record text"),
+ *         "" for an empty slot. Slots >= UI_DASH_CARDS are ignored; text
+ *         beyond UI_DASH_CARD_BYTES is cut.
+ */
+void Ui_SetCard(uint8_t slot, const char *text);
+
+/** The detail record of @p slot arrived; shown if that card's detail is
+ *  open (or loading), otherwise ignored. */
+void Ui_ShowDetail(uint8_t slot, const char *text);
+
+/** The detail could not be loaded: back to the cards with a notice. */
+void Ui_DetailFailed(void);
+
+/** Local time from the host (seconds since 1970, as TIME), 0 = unknown.
+ *  The clock strip counts on from it. */
+void Ui_SetTime(uint32_t local_time);
+
+/** UI_DASH_VIEW_* (for tests). */
+uint32_t Ui_DashView(void);
 
 /** LVGL memory in use and its peak, in bytes (for tests and the log). */
 void Ui_MemoryUse(uint32_t *used, uint32_t *peak);
