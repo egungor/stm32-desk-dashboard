@@ -10,9 +10,11 @@
 #include <winrt/Windows.UI.Notifications.Management.h>
 #include <winrt/Windows.UI.Notifications.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -23,7 +25,9 @@ namespace stm32_audio::host::win {
 
 namespace {
 
+using winrt::Windows::UI::Notifications::KnownNotificationBindings;
 using winrt::Windows::UI::Notifications::NotificationKinds;
+using winrt::Windows::UI::Notifications::UserNotification;
 using winrt::Windows::UI::Notifications::Management::UserNotificationListener;
 using winrt::Windows::UI::Notifications::Management::UserNotificationListenerAccessStatus;
 
@@ -46,6 +50,56 @@ const char* accessName(UserNotificationListenerAccessStatus s)
     }
 }
 
+std::string localTimeText(std::int64_t filetime);
+std::int64_t filetimeNow();
+
+// A toast as the listener gives it.
+struct ListenerToast {
+    std::uint32_t id = 0;
+    std::int64_t created = 0;  // FILETIME
+    std::string app;           // display name
+    std::string aumid;         // AppUserModelId
+    std::vector<std::string> texts;
+};
+
+ListenerToast listenerToast(const UserNotification& n)
+{
+    ListenerToast t;
+    t.id = n.Id();
+    t.created = static_cast<std::int64_t>(winrt::clock::to_file_time(n.CreationTime()).value);
+    try {
+        t.app = winrt::to_string(n.AppInfo().DisplayInfo().DisplayName());
+        t.aumid = winrt::to_string(n.AppInfo().AppUserModelId());
+    } catch (const winrt::hresult_error&) {
+        t.app = "?";
+    }
+    try {
+        const auto binding = n.Notification().Visual().GetBinding(KnownNotificationBindings::ToastGeneric());
+        if (binding) {
+            for (const auto& text : binding.GetTextElements()) {
+                t.texts.push_back(winrt::to_string(text.Text()));
+            }
+        }
+    } catch (const winrt::hresult_error&) {
+        t.texts.push_back("(texts: FAIL)");
+    }
+    return t;
+}
+
+void printListenerToast(const ListenerToast& t, const PrintFn& print, const char* tag,
+                        std::optional<std::int64_t> seenAt = std::nullopt)
+{
+    std::string line = std::string(tag) + localTimeText(t.created) + "  id=" + std::to_string(t.id) + "  app=" + t.app +
+                       "  aumid=" + t.aumid;
+    if (seenAt) {
+        line += "  delay_ms=" + std::to_string((*seenAt - t.created) / 10000);
+    }
+    print(line);
+    for (const std::string& text : t.texts) {
+        print("    " + text);
+    }
+}
+
 // Way 1: the documented listener.
 void probeListener(const PrintFn& print)
 {
@@ -64,7 +118,7 @@ void probeListener(const PrintFn& print)
             const auto list = listener.GetNotificationsAsync(NotificationKinds::Toast).get();
             print("GetNotificationsAsync: " + std::to_string(list.Size()) + " toast(s)");
             for (const auto& n : list) {
-                print("  app: " + winrt::to_string(n.AppInfo().DisplayInfo().DisplayName()));
+                printListenerToast(listenerToast(n), print, "  ");
             }
         } catch (const winrt::hresult_error& e) {
             print("GetNotificationsAsync: FAIL " + hresultText(e));
@@ -285,6 +339,40 @@ int runNotificationProbe(unsigned count, const PrintFn& print)
 
 int runNotificationWatch(const PrintFn& print)
 {
+    try {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    } catch (const winrt::hresult_error& e) {
+        print("init_apartment: " + hresultText(e));
+    }
+
+    // The listener: what is there now, then polled every 500 ms; and its
+    // NotificationChanged event, if an unpackaged program may have it.
+    std::optional<UserNotificationListener> listener;
+    std::set<std::uint32_t> listenerSeen;
+    std::atomic<int> events{0};
+    winrt::event_token token{};
+    try {
+        listener = UserNotificationListener::Current();
+        for (const auto& n : listener->GetNotificationsAsync(NotificationKinds::Toast).get()) {
+            listenerSeen.insert(n.Id());
+        }
+        print("listener: " + std::to_string(listenerSeen.size()) + " toast(s) now");
+        try {
+            token = listener->NotificationChanged([&print, &events](const auto&, const auto& args) {
+                ++events;
+                print("[event] NotificationChanged id=" + std::to_string(args.UserNotificationId()) +
+                      " kind=" + std::to_string(static_cast<int>(args.ChangeKind())));
+            });
+            print("NotificationChanged: subscribed");
+            (void)token;  // kept for as long as the probe runs
+        } catch (const winrt::hresult_error& e) {
+            print("NotificationChanged: FAIL " + hresultText(e));
+        }
+    } catch (const winrt::hresult_error& e) {
+        print("listener: FAIL " + hresultText(e));
+        listener.reset();
+    }
+
     std::int64_t lastId = 0;
     {
         Database db;
@@ -299,9 +387,33 @@ int runNotificationWatch(const PrintFn& print)
             lastId = newest->front().id;
         }
     }
-    print("Watching for new toasts (Ctrl+C stops)...");
-    for (;;) {
-        Sleep(1000);
+    print("Watching for new toasts: [listener] every 500 ms, [database] every 1 s (Ctrl+C stops)...");
+    for (unsigned tick = 1;; ++tick) {
+        Sleep(500);
+        if (listener) {
+            try {
+                const auto list = listener->GetNotificationsAsync(NotificationKinds::Toast).get();
+                const std::int64_t seen = filetimeNow();
+                std::set<std::uint32_t> now;
+                for (const auto& n : list) {
+                    now.insert(n.Id());
+                    if (listenerSeen.count(n.Id()) == 0U) {
+                        printListenerToast(listenerToast(n), print, "[listener] ", seen);
+                    }
+                }
+                for (std::uint32_t id : listenerSeen) {
+                    if (now.count(id) == 0U) {
+                        print("[listener] gone id=" + std::to_string(id));
+                    }
+                }
+                listenerSeen.swap(now);
+            } catch (const winrt::hresult_error& e) {
+                print("[listener] FAIL " + hresultText(e));
+            }
+        }
+        if ((tick % 2U) != 0U) {
+            continue;
+        }
         Database db;  // opened again each time: the live file changes under us
         if (!openDatabase(db, print, true)) {
             continue;
@@ -312,6 +424,7 @@ int runNotificationWatch(const PrintFn& print)
         }
         const std::int64_t seen = filetimeNow();
         for (auto it = fresh->rbegin(); it != fresh->rend(); ++it) {  // oldest first
+            print("[database]");
             printToast(*it, print, seen);
             lastId = it->id > lastId ? it->id : lastId;
         }

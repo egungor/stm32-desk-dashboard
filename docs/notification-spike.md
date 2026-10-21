@@ -31,9 +31,12 @@ for it. Way 4 is only a fallback.
    - prints the table definitions (`sqlite_master`);
    - prints the last n toasts: local time, id, app (the handler's `PrimaryId`) and the `<text>` lines of the payload.
 
-`dashboard-host notify watch` reads the database again every second and
-prints each new toast with `delay_ms`, the time between its arrival
-(`ArrivalTime`) and when the probe saw it.
+`dashboard-host notify watch` prints each new toast as each way sees it,
+with `delay_ms` (the time between its arrival and when it was seen):
+`[listener]` polls `GetNotificationsAsync` every 500 ms (and prints
+`gone` when a toast leaves the list), `[event]` is the listener's
+`NotificationChanged` event if Windows lets an unpackaged program
+subscribe, `[database]` reads the database again every second.
 
 The probe only prints; it keeps and sends nothing, and it never writes
 to the live database.
@@ -60,10 +63,20 @@ e-mail subjects). Before pasting it into #33, replace the texts with
 |---|---|---|
 | N1 | `notify probe` | Way 1: each line (exception, `Denied`, `Unspecified` or `Allowed` and a count). Way 2: does `open` say "live file" or "a copy"? The table definitions (`Notification`, `NotificationHandler`, …) |
 | N2 | Send yourself a few notifications: a message in WhatsApp or Teams, an e-mail in Outlook, a Chrome site's notification, a Windows one (e.g. the Snipping Tool after a screenshot); then `notify probe 20` | Does each appear? App names (`PrimaryId`) as printed; how many `<text>` lines each has and what they are (title, body, …) |
-| N3 | `notify watch`, then send a notification | `delay_ms`; does it show at all while the live file is in use? |
+| N3 | `notify watch`, then send a notification | `delay_ms` of `[listener]` and `[database]`; is there an `[event]` line, or did `NotificationChanged` fail? The texts as the listener gives them |
 | N4 | Turn on "Do not disturb" (focus) and send one | Is it in the database? (The board might then still show it.) |
-| N5 | Dismiss a notification in the notification centre, then `notify probe` | Does it disappear from the database? (Whether the board can follow "read".) |
+| N5 | During `notify watch`, dismiss a notification in the notification centre | A `[listener] gone` line? Does it disappear from the database (`notify probe`)? (Whether the board can follow "read".) |
 | N6 | Notifications of an app turned off in Settings → System → Notifications | Are they in the database? |
+
+## Results
+
+N1, 2026-10-22, the owner's PC (Windows 11, host from `main` `471519c`):
+
+- **Way 1 works without package identity:** `Current()` OK, `GetAccessStatus` and `RequestAccessAsync` both `Allowed`, `GetNotificationsAsync` returned the one toast in the notification centre (WhatsApp). The documentation's need for identity did not apply here.
+- **Way 2 works too:** the live database opened read-only next to the notification service. The tables match the query (`Notification`: `Id`, `HandlerId`, `Type`, `Payload`, `ArrivalTime`, …; `NotificationHandler`: `RecordId`, `PrimaryId`, …), and the same WhatsApp toast was there with its text (`PrimaryId` `5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App`, the package's AppUserModelID).
+- Both saw the same single toast.
+
+Leaning: way 1 (documented, gives the app's display name and the texts, maybe an event), way 2 only if N2–N6 show a gap. Open: N2–N6, with the listener's texts and delay (`notify watch`, updated after N1).
 
 ## Report
 
