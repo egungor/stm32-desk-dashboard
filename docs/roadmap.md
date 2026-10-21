@@ -127,8 +127,8 @@ Design draft (Turkish): https://claude.ai/artifact/8Qc5MiqaPuFWK9HB1eSvjM
 Each step is one issue and one pull request. Steps 4 and 5 can run in
 parallel after step 3.
 
-- [ ] 1. Repository setup — product name, program names, settings folder, USB PID `1209:0002`, `CLAUDE.md` (#3)
-- [ ] 2. Decisions — ADR-005 tabbed shell and global settings, ADR-006 card/detail/prompt model and protocol v3 (incl. the JSON library), ADR-007 Claude Code hook bridge
+- [x] 1. Repository setup — product name, program names, settings folder, USB PID `1209:0002`, `CLAUDE.md` (#3)
+- [ ] 2. Decisions — ADR-005 tabbed shell and global settings, ADR-006 card/detail/prompt model and protocol v3 (incl. the JSON library), ADR-007 Claude Code hook bridge (#5)
 - [ ] 3. Protocol v3 — commands from `0x20`, chunked records, 12-byte settings record; codec tests
 - [ ] 4. Tabbed shell (firmware) — left rail, tab containers, audio screens in a 424 px container, global settings
 - [ ] 5. Host router and `DashController` skeleton — `GET_CARDS`, chunked records, `TIME`; integration test
@@ -140,5 +140,9 @@ parallel after step 3.
 - [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board
 - [ ] 12. Release v1.0.0
 
-After v1: notifications (spike first), controls (microphone, lock,
-shortcuts), the title of the playing track.
+After v1:
+
+- [ ] Notifications (spike first), the fourth card
+- [ ] Windows settings window (GUI) for the host program: location, Claude API key and menu import, card order, Claude Code hook status (#6; UI technology needs an ADR)
+- [ ] Controls: microphone, lock, shortcuts
+- [ ] The title of the playing track on the media strip

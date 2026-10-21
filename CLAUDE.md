@@ -26,10 +26,10 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 1 (repository setup, #3): the code is the audio
-controller renamed (product name, program names, settings folder, USB PID
-`1209:0002`). The v1 steps and their status are in `docs/roadmap.md`,
-"Dashboard v1". Do not start a later step unless the current task asks
+Dashboard v1, step 2 (#5): ADR-005 (tabbed shell), ADR-006 (cards and
+protocol v3), ADR-007 (Claude Code approvals). Step 1 is done: the code
+is the audio controller renamed (USB PID `1209:0002`). The v1 steps
+and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the current task asks
 for it.
 
 Inherited open work: the M7 board and Windows checks listed in
