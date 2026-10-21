@@ -19,7 +19,7 @@ audio playback endpoint.
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ App/link_port.c, App/usb_link.c  │◄───────►│ Platform/Windows/WinHidLink      │
-│   vendor HID 1209:0001           │ USB HID │   SetupDi, overlapped I/O        │
+│   vendor HID 1209:0002           │ USB HID │   SetupDi, overlapped I/O        │
 └──────────────────────────────────┘         └──────────────────────────────────┘
                      protocol/ (C codec, shared by both sides)
 ```
@@ -97,7 +97,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Hid/HidMatch.h` | no | Which HID interface is the controller |
 | `Platform/Windows/WinAudioSystem` | yes | `IAudioSystem` on Core Audio; default switching through `IPolicyConfig` (ADR-002) |
 | `Platform/Windows/WinHidLink` | yes | Finds and opens the controller, reader thread, writes frames |
-| `Platform/Windows/main.cpp` | yes | Console program `stm32-audio-host` |
+| `Platform/Windows/main.cpp` | yes | Console program `dashboard-host` |
 
 Core Audio callbacks and the HID reader thread only push events; the
 main thread pops them and calls `HostController`.
@@ -118,7 +118,7 @@ go to `docs/images/` once the UI has been checked on the board.
 
 ## Important design decisions
 
-- STM32 ↔ Windows: vendor USB HID, 64-byte reports, VID:PID `1209:0001`
+- STM32 ↔ Windows: vendor USB HID, 64-byte reports, VID:PID `1209:0002`
   (ADR-003); protocol v2 with 64-byte frames and CRC-16
   (`protocol/protocol.md`)
 - Host language: C++17

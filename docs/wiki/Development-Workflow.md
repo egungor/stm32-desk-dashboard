@@ -23,7 +23,7 @@
 ## Working with Claude Code
 
 The repository is developed with Claude Code
-([CLAUDE.md](https://github.com/egungor/stm32-audio-controller/blob/main/CLAUDE.md), [AGENTS.md](https://github.com/egungor/stm32-audio-controller/blob/main/AGENTS.md)). The human
+([CLAUDE.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/CLAUDE.md), [AGENTS.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/AGENTS.md)). The human
 developer decides the architecture, runs every hardware and Windows test
 and merges.
 
@@ -37,4 +37,4 @@ and merges.
   programs under Wine. None of that replaces a test on the board or on
   Windows.
 
-More: [docs/development-workflow.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/development-workflow.md).
+More: [docs/development-workflow.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/development-workflow.md).

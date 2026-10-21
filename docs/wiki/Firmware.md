@@ -30,8 +30,8 @@ Generated code calls the application from two USER CODE hooks:
 
 ## UI
 
-![Layout B, list](https://raw.githubusercontent.com/egungor/stm32-audio-controller/main/docs/images/ui-layout-list.png)
-![Layout C, large tile](https://raw.githubusercontent.com/egungor/stm32-audio-controller/main/docs/images/ui-layout-tiles.png)
+![Layout B, list](https://raw.githubusercontent.com/egungor/stm32-desk-dashboard/main/docs/images/ui-layout-list.png)
+![Layout C, large tile](https://raw.githubusercontent.com/egungor/stm32-desk-dashboard/main/docs/images/ui-layout-tiles.png)
 
 *LCD screenshots: layouts B and C. All screens: [User Guide](User-Guide).*
 
@@ -80,7 +80,7 @@ Generated code calls the application from two USER CODE hooks:
 
 ## Log lines
 
-Selected lines (all of them: [firmware-log.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/firmware-log.md)),
+Selected lines (all of them: [firmware-log.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/firmware-log.md)),
 USART1 at 115200 8N1 on the ST-LINK virtual COM port:
 
 | Line | Meaning |

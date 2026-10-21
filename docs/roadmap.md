@@ -5,6 +5,10 @@ Windows is involved; **CODE DONE** — implemented and tested in CI, the
 hardware/Windows check is open (`docs/hardware.md`, "Pending hardware and
 Windows tests"); **IN PROGRESS**; **NOT STARTED**.
 
+This repository continues stm32-audio-controller. Milestones M0–M7 below
+are that project's (issue numbers refer to its repository); the dashboard
+plan is "Dashboard v1" at the end.
+
 The M1–M6 board and Windows checks ran on 2026-10-14 (issue #48; results
 in the `docs/hardware.md` bring-up log).
 
@@ -102,17 +106,39 @@ Status: **IN PROGRESS**
 Order: protocol version 2 (ADR-004, #58) → host (#59) → firmware UI
 (#60). Designs: #57.
 
-- [ ] Friendly names — aliases, edited on the touchscreen and with `stm32-audio-host alias` (#58–#60); keyboard coded and tested in the simulator, on the board REQUIRES HARDWARE + WINDOWS
+- [ ] Friendly names — aliases, edited on the touchscreen and with `dashboard-host alias` (#58–#60); keyboard coded and tested in the simulator, on the board REQUIRES HARDWARE + WINDOWS
 - [ ] Favorites — favorite flag and a favorites tab (#58–#60); tab verified on the board, star in the edit mode coded and tested in the simulator
 - [ ] Custom ordering — edit mode on the touchscreen (#58–#60); coded and tested in the simulator, on the board REQUIRES HARDWARE + WINDOWS
 - [ ] Layouts and themes — A cards (2×2, 2×3, 3×3, list), B list, C large tile; dark/light; six accent colours (#57, #60); themes, colours and A verified on the board, B and C coded and tested in the simulator, on the board REQUIRES HARDWARE
 - [ ] Settings page — layout, theme, colour, grid, startup tab, screen timeout, flip, language, volume limit on switch (#58–#60); page coded and tested in the simulator, on the board REQUIRES HARDWARE; screen timeout: backlight off after the chosen minutes without a touch, coded and tested in the simulator, on the board REQUIRES HARDWARE
 - [ ] Icons — form factor icons exist (speakers, headphones, headset, display, digital, generic; #22, #26)
-- [ ] Windows startup option — tray program `stm32-audio-tray` with "start with Windows" (HKCU Run) and `stm32-audio-host startup` (#74); coded, built for Windows, unit tests for the Run value; REQUIRES WINDOWS
+- [ ] Windows startup option — tray program `dashboard-tray` with "start with Windows" (HKCU Run) and `dashboard-host startup` (#74); coded, built for Windows, unit tests for the Run value; REQUIRES WINDOWS
 - [ ] Error UI — waiting screen, error screen and notices for a refused or unanswered selection exist (#22, #30)
 - [ ] Performance/memory review — static review in `docs/memory-review.md` (RAM 56 %, flash 37 %); stack and heap watermarks on the board REQUIRES HARDWARE
 - [x] Display flip (180°) — button and port (#42), frame copy 5 ms (#51), verified on the board
 
-## v1.0
+## Dashboard v1
 
-A reliable physical Windows audio-output controller suitable for daily use.
+Goal: the LCD has tabs; Dashboard is the main tab (clock, weather, menu of
+the day, media strip `<< || >>`, Claude Code approvals on a 2×2 card grid),
+Audio keeps everything above. Notifications are the fourth card, after v1.
+Design draft (Turkish): https://claude.ai/artifact/8Qc5MiqaPuFWK9HB1eSvjM
+
+Each step is one issue and one pull request. Steps 4 and 5 can run in
+parallel after step 3.
+
+- [ ] 1. Repository setup — product name, program names, settings folder, USB PID `1209:0002`, `CLAUDE.md` (#3)
+- [ ] 2. Decisions — ADR-005 tabbed shell and global settings, ADR-006 card/detail/prompt model and protocol v3 (incl. the JSON library), ADR-007 Claude Code hook bridge
+- [ ] 3. Protocol v3 — commands from `0x20`, chunked records, 12-byte settings record; codec tests
+- [ ] 4. Tabbed shell (firmware) — left rail, tab containers, audio screens in a 424 px container, global settings
+- [ ] 5. Host router and `DashController` skeleton — `GET_CARDS`, chunked records, `TIME`; integration test
+- [ ] 6. Board dashboard components — `dash_client.c`, clock strip, 2×2 cards, generic detail screen, media strip
+- [ ] 7. Media keys — `SendInput` previous / play-pause / next
+- [ ] 8. Weather — Open-Meteo, one fixed location, card and 10-day detail
+- [ ] 9. Menu of the day — menu images → Claude API → monthly JSON; card and daily detail with the salad bar
+- [ ] 10. Claude Code approval: spike — hook behaviour on Windows, timeouts
+- [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board
+- [ ] 12. Release v1.0.0
+
+After v1: notifications (spike first), controls (microphone, lock,
+shortcuts), the title of the playing track.

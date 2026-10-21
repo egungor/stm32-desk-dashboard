@@ -1,21 +1,21 @@
 # Host Application
 
 Two Windows programs (C++17), installed together by the setup from the
-[Releases page](https://github.com/egungor/stm32-audio-controller/releases). Both find the board over USB HID, read Windows'
+[Releases page](https://github.com/egungor/stm32-desk-dashboard/releases). Both find the board over USB HID, read Windows'
 playback devices with Core Audio, and keep both in step:
 
-- **`stm32-audio-tray`**: the everyday program, without a console window.
+- **`dashboard-tray`**: the everyday program, without a console window.
   A tray icon shows the connection state ("Kumanda bağlı" / "Kumanda
   bekleniyor"); its menu has "Windows ile başlat" (start at logon, current
   user only), "Ayarlar klasörünü aç", "Günlüğü aç" (`host.log`, the same
   lines as `run`) and "Çıkış". Menu text follows the board's language
   setting.
-- **`stm32-audio-host`**: console tools, below.
+- **`dashboard-host`**: console tools, below.
 
 Only one of `run` and the tray program serves the board at a time; the
 other console commands work while the tray program runs. Preferences
 (aliases, favorites, order, the board's settings) are kept in
-`%APPDATA%\stm32-audio-controller\preferences.txt`.
+`%APPDATA%\stm32-desk-dashboard\preferences.txt`.
 
 ## Commands
 
@@ -41,10 +41,10 @@ and the host's start are not limited.
   factors through the documented MMDevice API. Switching the default uses
   the undocumented `IPolicyConfig` interface for the console and
   multimedia roles; see
-  [ADR-002](https://github.com/egungor/stm32-audio-controller/blob/main/docs/decisions/ADR-002-default-device-switching.md) for
+  [ADR-002](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-002-default-device-switching.md) for
   the risk.
 - **USB HID** (`WinHidLink`): once a second while not connected, look
-  for VID:PID `1209:0001`, usage page `0xFF00`, 65-byte reports. A reader
+  for VID:PID `1209:0002`, usage page `0xFF00`, 65-byte reports. A reader
   thread queues received frames; writes time out after 1 s.
 - **Protocol** (`HostController`, `DeviceRegistry`):
   - gives each device a session-local index (0–254) that it keeps while
@@ -69,4 +69,4 @@ host/
 ```
 
 The portable part builds and is tested on Linux too. Details and manual
-checks: [host/README.md](https://github.com/egungor/stm32-audio-controller/blob/main/host/README.md).
+checks: [host/README.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/host/README.md).
