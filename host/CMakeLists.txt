@@ -23,6 +23,7 @@ add_library(host_core STATIC
     Audio/AudioMapping.cpp
     Audio/DeviceRegistry.cpp
     Audio/VolumeLimit.cpp
+    App/BackgroundFetch.cpp
     App/DashController.cpp
     App/FrameRouter.cpp
     App/FrameText.cpp
@@ -31,12 +32,19 @@ add_library(host_core STATIC
     App/PreferenceFile.cpp
     App/PreferenceStore.cpp
     App/Preferences.cpp
-    App/Startup.cpp)
-target_include_directories(host_core PUBLIC Audio Hid App)
-target_link_libraries(host_core PUBLIC protocol)
+    App/Startup.cpp
+    Weather/WeatherCard.cpp
+    Weather/WeatherLocation.cpp
+    Weather/WeatherReport.cpp
+    Weather/WeatherService.cpp)
+target_include_directories(host_core PUBLIC Audio Hid App Weather)
+# nlohmann/json (ADR-006), vendored: no warnings from it.
+target_include_directories(host_core SYSTEM PRIVATE third_party)
+find_package(Threads REQUIRED)
+target_link_libraries(host_core PUBLIC protocol Threads::Threads)
 
 if(MSVC)
-    target_compile_options(host_core PRIVATE /W4 /WX /permissive-)
+    target_compile_options(host_core PRIVATE /W4 /WX /permissive- /utf-8)
 else()
     target_compile_options(host_core PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Werror)
 endif()
@@ -49,13 +57,14 @@ if(WIN32)
         Platform/Windows/HostService.cpp
         Platform/Windows/WinAudioSystem.cpp
         Platform/Windows/WinHidLink.cpp
+        Platform/Windows/WinHttpClient.cpp
         Platform/Windows/WinMediaKeys.cpp
         Platform/Windows/WinPreferenceFile.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
     target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32)
+    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp)
 
     # Console program: run, list, set-default, volume, mute, watch, alias, startup.
     add_executable(dashboard-host Platform/Windows/main.cpp)
@@ -79,11 +88,10 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    find_package(Threads REQUIRED)
     add_executable(test_host Tests/test_host.cpp)
-    target_link_libraries(test_host PRIVATE host_core Threads::Threads)
+    target_link_libraries(test_host PRIVATE host_core)
     if(MSVC)
-        target_compile_options(test_host PRIVATE /W4 /WX /permissive-)
+        target_compile_options(test_host PRIVATE /W4 /WX /permissive- /utf-8)
     else()
         target_compile_options(test_host PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()

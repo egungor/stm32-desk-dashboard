@@ -15,11 +15,17 @@
 //   dashboard-host startup on|off|status
 //                                      start the tray program (dashboard-tray,
 //                                      next to this program) at Windows logon
+//   dashboard-host weather           fetch and print the weather card
+//   dashboard-host weather <city>    find the place (Open-Meteo geocoding) and
+//                                      make it the weather location
+//   dashboard-host weather <lat> <lon> [name]
+//                                      set the weather location exactly
 //
 // Aliases, the device order, favorites and the board's settings are kept in
 // %APPDATA%\stm32-desk-dashboard\preferences.txt (ADR-004). "run" saves
 // what the board changes and picks up changes made by "alias" within a
-// second.
+// second. The weather location is kept in
+// %APPDATA%\stm32-desk-dashboard\weather.txt; "run" reads it every minute.
 
 #include <windows.h>
 #include <shellapi.h>
@@ -27,17 +33,22 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "AudioMapping.h"
+#include "DashController.h"
 #include "DeviceRegistry.h"
 #include "EventQueue.h"
 #include "FrameText.h"
 #include "HostController.h"
 #include "HostService.h"
 #include "PreferenceStore.h"
+#include "WeatherCard.h"
+#include "WeatherLocation.h"
 #include "WinAudioSystem.h"
+#include "WinHttpClient.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
 #include "WinStrings.h"
@@ -267,6 +278,114 @@ int cmdRun(win::WinAudioSystem& audio, EventQueue& events)
     return result;
 }
 
+// A record with its field separators visible, for the console.
+void printRecord(const std::string& record)
+{
+    std::string text;
+    for (const char c : record) {
+        if (c == '\x1F') {
+            text += " | ";
+        } else {
+            text += c;
+        }
+    }
+    std::printf("%s\n", text.c_str());
+}
+
+std::optional<double> parseCoordinate(const std::string& text)
+{
+    char* end = nullptr;
+    const double value = std::strtod(text.c_str(), &end);
+    if (text.empty() || end == nullptr || *end != '\0') {
+        return std::nullopt;
+    }
+    return value;
+}
+
+int saveWeatherLocation(const WeatherLocation& location)
+{
+    win::WinPreferenceFile file(L"weather");
+    if (!parseLocationFile(formatLocationFile(location)) || !file.write(formatLocationFile(location))) {
+        std::printf("FAIL: could not write %s\n", file.location().c_str());
+        return 1;
+    }
+    std::printf("OK: weather location \"%s\" (%.4f, %.4f) saved in %s\n", location.name.c_str(),
+                location.latitude, location.longitude, file.location().c_str());
+    return 0;
+}
+
+int cmdWeather(const std::vector<std::string>& args)
+{
+    win::WinHttpClient http;
+
+    if (args.size() == 2) {
+        win::WinPreferenceFile file(L"weather");
+        const std::optional<std::string> text = file.read();
+        const std::optional<WeatherLocation> location = text ? parseLocationFile(*text) : std::nullopt;
+        if (!location) {
+            std::printf("No weather location in %s. Set one: dashboard-host weather <city>\n",
+                        file.location().c_str());
+            return 1;
+        }
+        WeatherCard weather;
+        weather.setLocation(location);
+        const std::string url = weather.fetchDue(0).value_or("");
+        std::printf("GET %s\n", url.c_str());
+        SYSTEMTIME t{};
+        GetLocalTime(&t);
+        const std::uint32_t now = localTimeValue(t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+        (void)weather.onFetched(0, now, url, http.get(url));
+        if (!weather.report()) {
+            std::printf("FAIL: no forecast (network, or an unexpected answer).\n");
+            return 1;
+        }
+        std::printf("\nCard:\n");
+        printRecord(weather.card(now));
+        std::printf("\nDetail:\n");
+        printRecord(weather.detail(now).value_or(""));
+        return 0;
+    }
+
+    // weather <lat> <lon> [name]
+    const std::optional<double> lat = parseCoordinate(args[2]);
+    const std::optional<double> lon = args.size() >= 4 ? parseCoordinate(args[3]) : std::nullopt;
+    if (lat && lon) {
+        WeatherLocation location;
+        location.latitude = *lat;
+        location.longitude = *lon;
+        for (std::size_t i = 4; i < args.size(); ++i) {
+            location.name += (i > 4 ? " " : "") + args[i];
+        }
+        return saveWeatherLocation(location);
+    }
+
+    // weather <city>
+    std::string name;
+    for (std::size_t i = 2; i < args.size(); ++i) {
+        name += (i > 2 ? " " : "") + args[i];
+    }
+    const std::optional<std::string> answer = http.get(geocodingUrl(name, 0));
+    if (!answer) {
+        std::printf("FAIL: no answer from the Open-Meteo geocoding API.\n");
+        return 1;
+    }
+    const std::vector<Place> places = parseGeocoding(*answer);
+    if (places.empty()) {
+        std::printf("FAIL: no place called \"%s\" found.\n", name.c_str());
+        return 1;
+    }
+    std::printf("Found: %s\n", places[0].description.c_str());
+    const int result = saveWeatherLocation(places[0].location);
+    if (places.size() > 1U) {
+        std::printf("Other matches (set one with: dashboard-host weather <lat> <lon> <name>):\n");
+        for (std::size_t i = 1; i < places.size(); ++i) {
+            std::printf("  %s  %.4f %.4f\n", places[i].description.c_str(), places[i].location.latitude,
+                        places[i].location.longitude);
+        }
+    }
+    return result;
+}
+
 int cmdStartup(const std::string& arg)
 {
     const std::wstring tray = win::trayProgramPath();
@@ -295,7 +414,8 @@ int usage()
 {
     std::printf(
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
-        "                        alias <n> <name> | alias <n> --clear | startup on|off|status\n");
+        "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
+        "                        weather | weather <city> | weather <lat> <lon> [name]\n");
     return 2;
 }
 
@@ -324,6 +444,9 @@ int run(const std::vector<std::string>& args)
 
     if (cmd == "startup" && args.size() == 3) {
         return cmdStartup(args[2]);  // no audio needed
+    }
+    if (cmd == "weather") {
+        return cmdWeather(args);
     }
 
     EventQueue events;

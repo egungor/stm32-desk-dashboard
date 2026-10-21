@@ -14,7 +14,7 @@ constexpr DWORD kMaxFileBytes = 1024U * 1024U;  // far above any real file
 
 }  // namespace
 
-WinPreferenceFile::WinPreferenceFile()
+WinPreferenceFile::WinPreferenceFile(const wchar_t* name) : name_(name)
 {
     wchar_t buffer[MAX_PATH];
     const DWORD n = GetEnvironmentVariableW(L"APPDATA", buffer, MAX_PATH);
@@ -22,7 +22,7 @@ WinPreferenceFile::WinPreferenceFile()
         return;
     }
     dir_ = std::wstring(buffer) + L"\\stm32-desk-dashboard";
-    path_ = dir_ + L"\\preferences.txt";
+    path_ = dir_ + L"\\" + name_ + L".txt";
 }
 
 std::optional<std::string> WinPreferenceFile::read()
@@ -71,7 +71,7 @@ bool WinPreferenceFile::write(const std::string& content)
     if (!CreateDirectoryW(dir_.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
         return false;
     }
-    const std::wstring tmp = dir_ + L"\\preferences.tmp";
+    const std::wstring tmp = dir_ + L"\\" + name_ + L".tmp";
     if (!writeFile(tmp, content)) {
         DeleteFileW(tmp.c_str());
         return false;
@@ -86,7 +86,7 @@ bool WinPreferenceFile::write(const std::string& content)
 void WinPreferenceFile::keepUnreadable(const std::string& content)
 {
     if (ok()) {
-        (void)writeFile(dir_ + L"\\preferences.bad", content);
+        (void)writeFile(dir_ + L"\\" + name_ + L".bad", content);
     }
 }
 

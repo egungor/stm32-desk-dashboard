@@ -35,6 +35,7 @@ host/
 │   ├── DashController.*    # dashboard records: cards, details, actions, TIME (ADR-006)
 │   ├── FrameRouter.*       # one decode per frame; audio vs dashboard commands
 │   ├── MediaKeys.*         # media strip ACTION -> previous / play-pause / next key
+│   ├── BackgroundFetch.*   # IHttpClient; one HTTP GET at a time on a worker thread
 │   ├── SequencedSink.h     # one sequence counter for every frame the host sends
 │   ├── Preferences.*       # aliases, order, favorites, settings record (ADR-004)
 │   ├── PreferenceFile.*    # text format of the preference file
@@ -42,19 +43,27 @@ host/
 │   ├── EventQueue.h        # serialises Core Audio and HID events into the controller
 │   ├── FrameText.*         # readable one-line form of a protocol message
 │   └── Startup.*           # Run value of "start with Windows", tray text (#74)
+├── Weather/                # the weather card (#18)
+│   ├── WeatherReport.*     # Open-Meteo URL and answer, WMO code -> icon and text
+│   ├── WeatherLocation.*   # weather.txt, Open-Meteo geocoding
+│   ├── WeatherCard.*       # when to fetch; card and 10-day detail records
+│   └── WeatherService.*    # location file, fetch, card slot 0 and its detail
+├── third_party/nlohmann/   # nlohmann/json 3.11.3, single header (MIT, ADR-006)
 ├── Platform/Windows/       # Windows only
 │   ├── WinAudioSystem.*    # IAudioSystem on Core Audio / MMDevice
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
+│   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy, 10 s timeouts)
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
-│   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt
+│   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8
 │   ├── HostService.*       # the "run" loop, shared by console and tray (#74)
 │   ├── WinStartup.*        # HKCU Run value, single instance mutex (#74)
 │   ├── main.cpp            # dashboard-host console program
 │   └── tray.cpp, tray.rc   # dashboard-tray tray program and its icon (#74)
 ├── Tests/
-│   └── test_host.cpp       # fake audio system + fake sink, no framework
+│   ├── test_host.cpp       # fake audio system + fake sink, no framework
+│   └── WeatherSamples.h    # Open-Meteo answers in the documented format
 └── CMakeLists.txt
 ```
 
@@ -111,11 +120,38 @@ dashboard-host alias <n> --clear remove the alias
 dashboard-host startup on|off|status
                                    start dashboard-tray.exe (next to this
                                    program) at Windows logon, or not
+dashboard-host weather           fetch the forecast for the saved location
+                                   and print the card and the detail
+dashboard-host weather <city>    find <city> with the Open-Meteo geocoding API
+                                   and save it as the weather location
+dashboard-host weather <lat> <lon> [name]
+                                   save a location exactly
 ```
 
 Arguments are read as UTF-8 (`CommandLineToArgvW`), so aliases may
 contain Turkish letters. `list` prints each device's alias and favorite
 mark under its name.
+
+## Weather (#18)
+
+The Dashboard's first card (slot 0) and its detail: now (condition,
+feels like, humidity, wind) and 10 days (icon, min / max, chance of
+rain). Data from the Open-Meteo forecast API (no key), for one fixed
+location kept in `%APPDATA%\stm32-desk-dashboard\weather.txt`:
+
+```text
+# stm32-desk-dashboard weather location
+name=İstanbul
+latitude=41.0138
+longitude=28.9497
+```
+
+`dashboard-host weather <city>` writes it; the tray program reads it again
+every minute. The forecast is fetched every 30 minutes on a worker thread
+(`BackgroundFetch`), 5 minutes after a failure; until then the card keeps
+the last data and says "Güncellendi 14:00". Texts follow the board's
+language (settings record). WMO weather codes map to the icon numbers of
+`protocol/protocol.md` ("Icon") in `Weather/WeatherReport.cpp`.
 
 ## Install
 

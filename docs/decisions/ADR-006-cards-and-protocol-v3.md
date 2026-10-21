@@ -25,6 +25,15 @@ frames in the port: the audio client matches ERROR answers by their
 detail in the UI (about 3 KB) and one card and one detail being
 assembled in `dash_client.c` (about 2.3 KB).
 
+Notes from step 8 (#18, weather): nlohmann/json 3.11.3 is vendored as
+`host/third_party/nlohmann/json.hpp` (with its MIT licence) and included
+as a system header of `host_core` only. `host_core` and `test_host` are
+compiled with `/utf-8` on MSVC, as the Windows programs already were, so
+the Turkish texts of the host can be written as UTF-8. The board got the
+icon numbers 1–10 (weather, `protocol.md` "Icon"); a detail row with an
+icon field keeps an icon column. HTTP runs on a worker thread
+(`BackgroundFetch`); the service loop only polls its result.
+
 ## Context
 
 The Dashboard tab (ADR-005) shows a clock, four cards on a fixed 2×2

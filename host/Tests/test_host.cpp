@@ -1,6 +1,7 @@
 // Unit tests for the host device model and protocol controller.
 // No test framework; returns non-zero if a check fails.
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -28,6 +29,12 @@
 #include "SequencedSink.h"
 #include "Startup.h"
 #include "VolumeLimit.h"
+#include "BackgroundFetch.h"
+#include "WeatherCard.h"
+#include "WeatherLocation.h"
+#include "WeatherReport.h"
+#include "WeatherService.h"
+#include "WeatherSamples.h"
 
 using namespace stm32_audio::host;
 
@@ -1775,6 +1782,286 @@ void testMediaKeys()
           m.u.error.ref_sequence == 20U && m.u.error.code == PROTO_ERROR_OPERATION_FAILED);
 }
 
+void testWeatherParse()
+{
+    const std::optional<WeatherReport> r = parseForecast(weather_samples::kForecast);
+    CHECK(r.has_value());
+    if (!r) {
+        return;
+    }
+    CHECK(std::fabs(r->now.temperatureC - 18.4) < 1e-9 && r->now.code == 2 && r->now.isDay);
+    CHECK(r->now.humidityPercent == 65 && std::fabs(r->now.windKmh - 12.3) < 1e-9);
+    CHECK(std::fabs(r->now.feelsLikeC - 16.2) < 1e-9);
+    CHECK(r->days.size() == 10U);
+    CHECK(r->days[0].year == 2026 && r->days[0].month == 10 && r->days[0].day == 21);
+    CHECK(r->days[1].code == 61 && r->days[1].precipitationPercent == 85);
+    CHECK(r->days[7].minC < -3.5 && r->days[7].code == 71);
+    CHECK(!r->days[9].precipitationPercent.has_value());
+
+    const std::optional<WeatherReport> g = parseForecast(weather_samples::kForecastGaps);
+    CHECK(g.has_value() && g->days.size() == 1U && !g->now.isDay && g->now.humidityPercent == 0);
+    CHECK(!parseForecast(weather_samples::kForecastError).has_value());
+    CHECK(!parseForecast("").has_value());
+    CHECK(!parseForecast("{\"current\": {\"temperature_2m\": 3}").has_value());  // cut off
+    CHECK(!parseForecast("[1,2]").has_value());
+
+    const std::string url = forecastUrl(41.01384, 28.94966);
+    CHECK(url.find("latitude=41.0138&longitude=28.9497") != std::string::npos);
+    CHECK(url.find("forecast_days=10") != std::string::npos && url.find("timezone=auto") != std::string::npos);
+}
+
+void testWeatherCodes()
+{
+    CHECK(weatherIcon(0, true) == 1 && weatherIcon(0, false) == 2);
+    CHECK(weatherIcon(2, true) == 3 && weatherIcon(1, false) == 4);
+    CHECK(weatherIcon(3, false) == 5 && weatherIcon(48, true) == 6);
+    CHECK(weatherIcon(53, true) == 7 && weatherIcon(81, true) == 7);
+    CHECK(weatherIcon(65, true) == 8 && weatherIcon(82, true) == 8);
+    CHECK(weatherIcon(75, true) == 9 && weatherIcon(86, true) == 9);
+    CHECK(weatherIcon(95, true) == 10 && weatherIcon(99, true) == 10);
+    CHECK(weatherIcon(4, true) == 0 && weatherIcon(-1, true) == 0);
+    // Every code with an icon has a text in both languages.
+    for (int code = 0; code < 100; ++code) {
+        const bool icon = weatherIcon(code, true) != 0;
+        CHECK(icon == !weatherText(code, 0).empty());
+        CHECK(icon == !weatherText(code, 1).empty());
+    }
+    CHECK(weatherText(2, 0) == "Parçalı bulutlu" && weatherText(2, 1) == "Partly cloudy");
+    CHECK(formatDegrees(18.4) == "18°" && formatDegrees(18.5) == "19°");
+    CHECK(formatDegrees(-0.4) == "0°" && formatDegrees(-3.6) == "-4°");
+}
+
+void testWeatherLocation()
+{
+    const std::optional<WeatherLocation> a =
+        parseLocationFile("\xEF\xBB\xBF# comment\r\nname = İstanbul \r\nlatitude=41.0138\nlongitude=28.9497\nother=1");
+    CHECK(a.has_value() && a->name == "İstanbul" && std::fabs(a->latitude - 41.0138) < 1e-9);
+    if (a) {
+        const std::optional<WeatherLocation> b = parseLocationFile(formatLocationFile(*a));
+        CHECK(b.has_value() && b->name == a->name && std::fabs(b->longitude - 28.9497) < 1e-9);
+    }
+    CHECK(!parseLocationFile("name=x\nlatitude=41\n").has_value());
+    CHECK(!parseLocationFile("latitude=91\nlongitude=0\n").has_value());
+    CHECK(!parseLocationFile("latitude=4x\nlongitude=0\n").has_value());
+    CHECK(!parseLocationFile("").has_value());
+    const std::optional<WeatherLocation> unnamed = parseLocationFile("latitude=-33.9\nlongitude=151.2");
+    CHECK(unnamed.has_value() && unnamed->name.empty());
+
+    CHECK(urlEncode("İstanbul a&b") == "%C4%B0stanbul%20a%26b");
+    CHECK(geocodingUrl("Ankara", 1) ==
+          "https://geocoding-api.open-meteo.com/v1/search?name=Ankara&count=5&format=json&language=en");
+    const std::vector<Place> places = parseGeocoding(weather_samples::kGeocoding);
+    CHECK(places.size() == 2U);
+    if (places.size() == 2U) {
+        CHECK(places[0].description == "İstanbul, İstanbul, Türkiye");
+        CHECK(std::fabs(places[0].location.latitude - 41.01384) < 1e-9);
+        CHECK(places[1].description == "Istanbul, United States");
+    }
+    CHECK(parseGeocoding("{\"generationtime_ms\": 0.3}").empty());
+    CHECK(parseGeocoding("not json").empty());
+}
+
+void testWeatherCard()
+{
+    const std::uint32_t at14 = localTimeValue(2026, 10, 21, 14, 0, 0);
+    const char sep = '\x1F';
+    WeatherCard w;
+
+    // No location: a hint, nothing to fetch.
+    CHECK(w.card(at14).find("Konum ayarlanmadı") != std::string::npos);
+    CHECK(!w.fetchDue(0).has_value() && !w.detail(at14).has_value());
+
+    w.setLocation(WeatherLocation{"İstanbul", 41.0138, 28.9497});
+    CHECK(w.card(at14) == std::string("0") + sep + "İstanbul" + sep + "\nBekleniyor…");
+    const std::optional<std::string> url = w.fetchDue(1000);
+    CHECK(url.has_value() && url->find("latitude=41.0138") != std::string::npos);
+    CHECK(!w.fetchDue(1000).has_value());  // still running
+
+    CHECK(w.onFetched(2000, at14, *url, std::string(weather_samples::kForecast)));
+    const std::string card = w.card(at14);
+    CHECK(card == std::string("3") + sep + "İstanbul" + sep + "\n18°  Parçalı bulutlu\n11° / 21° · Yağış %20\nRüzgâr 12 km/s");
+    CHECK(!w.fetchDue(2000 + WeatherCard::kRefreshMs - 1).has_value());
+
+    const std::optional<std::string> detail = w.detail(at14);
+    CHECK(detail.has_value());
+    if (detail) {
+        CHECK(detail->rfind(std::string("Hava durumu") + sep + "İstanbul · 14:00" + sep + "\n#Şimdi\n", 0) == 0);
+        CHECK(detail->find(std::string("\n0") + sep + "Hissedilen" + sep + "16°") != std::string::npos);
+        CHECK(detail->find(std::string("\n0") + sep + "Nem" + sep + "%65") != std::string::npos);
+        CHECK(detail->find("\n#10 gün\n") != std::string::npos);
+        CHECK(detail->find(std::string("\n3") + sep + "Bugün" + sep + "11° / 21° · Yağış %20") != std::string::npos);
+        CHECK(detail->find(std::string("\n7") + sep + "Yarın" + sep + "13° / 17° · Yağış %85") != std::string::npos);
+        // 2026-10-23 is a Friday; the last day has no precipitation value.
+        CHECK(detail->find(std::string("\n5") + sep + "Cum 23" + sep + "11° / 16° · Yağış %30") != std::string::npos);
+        CHECK(detail->find(std::string("\n5") + sep + "Cum 30" + sep + "6° / 13°") != std::string::npos);
+        const std::string last = "6° / 13°";
+        CHECK(detail->size() >= last.size() && detail->compare(detail->size() - last.size(), last.size(), last) == 0);
+        CHECK(detail->size() <= PROTO_DETAIL_MAX_BYTES);
+    }
+
+    // A failed refresh keeps the data and says since when.
+    const std::uint32_t at15 = localTimeValue(2026, 10, 21, 15, 0, 0);
+    CHECK(w.fetchDue(2000 + WeatherCard::kRefreshMs).has_value());
+    CHECK(w.onFetched(3000 + WeatherCard::kRefreshMs, at15, *url, std::nullopt));
+    CHECK(w.stale() && w.card(at15).find("\nGüncellendi 14:00") != std::string::npos);
+    CHECK(!w.fetchDue(3000 + WeatherCard::kRefreshMs + WeatherCard::kRetryMs - 1).has_value());
+    CHECK(w.fetchDue(3000 + WeatherCard::kRefreshMs + WeatherCard::kRetryMs).has_value());
+    CHECK(!w.onFetched(4000 + WeatherCard::kRefreshMs, at15, *url, std::string("{}")));  // still stale: no change
+
+    // After midnight the old report's first day is left out; English.
+    w.setLanguage(1);
+    const std::uint32_t nextDay = localTimeValue(2026, 10, 22, 0, 30, 0);
+    const std::optional<std::string> later = w.detail(nextDay);
+    CHECK(later.has_value() && later->find("Today") != std::string::npos &&
+          later->find(std::string("\n7") + sep + "Today" + sep + "13° / 17° · Rain 85%") != std::string::npos);
+    CHECK(later.has_value() && later->find("\n#9 days\n") != std::string::npos);
+    CHECK(w.card(nextDay).find("13° / 17° · Rain 85%\nUpdated 14:00") != std::string::npos);
+
+    // Same place renamed: no new fetch; another place: report dropped.
+    w.setLocation(WeatherLocation{"Istanbul", 41.0138, 28.9497});
+    CHECK(w.report().has_value() && w.location()->name == "Istanbul");
+    w.setLocation(WeatherLocation{"Ankara", 39.92, 32.85});
+    CHECK(!w.report().has_value() && !w.stale());
+    const std::optional<std::string> ankara = w.fetchDue(0);  // at once
+    CHECK(ankara.has_value() && ankara->find("latitude=39.9200") != std::string::npos);
+    // The answer for the old place, still on its way, is dropped.
+    CHECK(!w.onFetched(10, at14, *url, std::string(weather_samples::kForecast)) && !w.report().has_value());
+    CHECK(w.onFetched(20, at14, *ankara, std::string(weather_samples::kForecast)) && w.report().has_value());
+    w.setLocation(std::nullopt);
+    CHECK(w.card(at14).find("No location set") != std::string::npos);
+}
+
+class FakeHttp : public IHttpClient {
+public:
+    std::optional<std::string> get(const std::string& url) override
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        if (url == "fail") {
+            return std::nullopt;
+        }
+        return "body of " + url;
+    }
+};
+
+void testBackgroundFetch()
+{
+    FakeHttp http;
+    BackgroundFetch fetch(http);
+    CHECK(!fetch.poll().has_value() && !fetch.busy());
+    CHECK(fetch.start("a"));
+    CHECK(!fetch.start("b"));  // one at a time
+    std::optional<BackgroundFetch::Result> r;
+    for (int i = 0; i < 200 && !r; ++i) {
+        r = fetch.poll();
+        if (!r) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+    CHECK(r.has_value() && r->url == "a" && r->body == std::string("body of a"));
+    CHECK(!fetch.busy() && !fetch.poll().has_value());
+    CHECK(fetch.start("fail"));
+    r.reset();
+    for (int i = 0; i < 200 && !r; ++i) {
+        r = fetch.poll();
+        if (!r) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+    CHECK(r.has_value() && r->url == "fail" && !r->body.has_value());
+    CHECK(fetch.start("c"));  // destroyed while running: joins
+}
+
+class MemoryFile : public IPreferenceFile {
+public:
+    std::optional<std::string> text;
+    std::optional<std::string> read() override { return text; }
+    bool write(const std::string& content) override
+    {
+        text = content;
+        return true;
+    }
+    void keepUnreadable(const std::string&) override {}
+    std::string location() const override { return "weather.txt"; }
+};
+
+class SampleHttp : public IHttpClient {
+public:
+    std::atomic<int> calls{0};
+    std::atomic<bool> fail{false};
+    std::optional<std::string> get(const std::string&) override
+    {
+        ++calls;
+        if (fail) {
+            return std::nullopt;
+        }
+        return std::string(weather_samples::kForecast);
+    }
+};
+
+void testWeatherService()
+{
+    DashRig r;
+    r.now = localTimeValue(2026, 10, 21, 14, 0, 0);
+    MemoryFile file;
+    SampleHttp http;
+    std::vector<std::string> logs;
+    WeatherService weather(r.dash, file, http, [&r] { return r.now; },
+                           [&logs](const std::string& line) { logs.push_back(line); });
+    std::uint64_t ms = 1000;
+
+    // No file: the hint card, no fetch.
+    weather.onTick(ms);
+    CHECK(r.dash.card(0).find("Konum ayarlanmadı") != std::string::npos && http.calls == 0);
+    CHECK(!weather.detail(0).has_value());
+
+    // The file appears; it is read again after a minute.
+    file.text = "name=İstanbul\nlatitude=41.0138\nlongitude=28.9497\n";
+    ms += 1000;
+    weather.onTick(ms);
+    CHECK(r.dash.card(0).find("Konum") != std::string::npos);
+    ms += WeatherService::kFileIntervalMs;
+    auto waitForCard = [&](const char* text) {
+        for (int i = 0; i < 400 && r.dash.card(0).find(text) == std::string::npos; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            ms += 5;
+            weather.onTick(ms);
+        }
+        return r.dash.card(0).find(text) != std::string::npos;
+    };
+    CHECK(waitForCard("18°"));
+    CHECK(http.calls == 1 && !logs.empty() && logs[0] == "Weather location: İstanbul");
+    const std::optional<std::string> detail = weather.detail(0);
+    CHECK(detail.has_value() && detail->find("#10 gün") != std::string::npos);
+    CHECK(!weather.detail(1).has_value());
+
+    // The board is synced: the open detail follows a language change.
+    r.dash.onConnected();
+    ProtoMessage open = dashMessage(PROTO_CMD_OPEN_DETAIL, 3);
+    r.dash.setDetailHandler([&weather](std::uint8_t, std::int8_t arg) { return weather.detail(arg); });
+    r.dash.onMessage(open);
+    r.sink.sent.clear();
+    weather.setLanguage(1);
+    CHECK(r.dash.card(0).find("Wind 12 km/h") != std::string::npos);
+    std::string sent = popRecord(r.sink, PROTO_CMD_CARD_PART);
+    CHECK(sent.find("Wind 12 km/h") != std::string::npos);
+    sent = popRecord(r.sink, PROTO_CMD_DETAIL_PART);
+    CHECK(sent.find("#10 days") != std::string::npos);
+
+    // A failure after 30 minutes: stale note, logged.
+    http.fail = true;
+    ms += WeatherCard::kRefreshMs;
+    r.now += 1800U;
+    CHECK(waitForCard("Updated 14:00"));
+    CHECK(http.calls == 2 && logs.back().find("WARN: weather: no answer") == 0);
+
+    // A broken file: warning, back to the hint.
+    file.text = "latitude=x";
+    ms += WeatherService::kFileIntervalMs;
+    weather.onTick(ms);
+    CHECK(r.dash.card(0).find("No location set") != std::string::npos);
+    CHECK(logs.back() == "WARN: weather.txt has no valid latitude and longitude.");
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -1827,6 +2114,12 @@ int main()
     testFrameRouter();
     testFrameTextDashboard();
     testMediaKeys();
+    testWeatherParse();
+    testWeatherCodes();
+    testWeatherLocation();
+    testWeatherCard();
+    testBackgroundFetch();
+    testWeatherService();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

@@ -32,6 +32,8 @@
 #include "FrameRouter.h"
 #include "HostController.h"
 #include "SequencedSink.h"
+#include "WeatherCard.h"
+#include "../../host/Tests/WeatherSamples.h"
 #include "dash_client.h"
 #include "link_client.h"
 
@@ -1302,6 +1304,35 @@ void testDashboardNextToAudio()
     CHECK(boardConsecutive);
 }
 
+// The weather card and its 10-day detail (#18), as the host makes them,
+// reach the board unchanged.
+void testWeatherOnBoard()
+{
+    g_scenario = "weather on the board";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    WeatherCard weather;
+    weather.setLocation(WeatherLocation{"\xC4\xB0stanbul", 41.0138, 28.9497});
+    const std::uint32_t at14 = localTimeValue(2026, 10, 21, 14, 0, 0);
+    const std::optional<std::string> url = weather.fetchDue(0);
+    CHECK(url.has_value() && weather.onFetched(0, at14, *url, std::string(weather_samples::kForecast)));
+    r.dash->setCard(0, weather.card(at14));
+    r.dash->setDetailHandler([&](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        return (slot == 0 && arg == 0) ? weather.detail(at14) : std::nullopt;
+    });
+    r.plugIn();
+    r.run(3000);
+
+    CHECK(r.inSync() && r.screen.cards[0] == weather.card(at14));
+    CHECK(r.screen.cards[0].find("18\xC2\xB0") != std::string::npos);
+    CHECK(Dash_OpenDetail(&r.dashClient, 0, 0, r.now));
+    r.run(500);
+    CHECK(r.screen.detailSlot == 0U && r.screen.detail == weather.detail(at14).value_or(""));
+    CHECK(r.screen.detail.size() > PROTO_PART_DATA_BYTES * 5U);  // several parts
+    CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
+}
+
 int main()
 {
     testConnect();
@@ -1324,6 +1355,7 @@ int main()
     testEditCrossesWindowsChange();
     testSettingsRoundTrip();
     testDashboardNextToAudio();
+    testWeatherOnBoard();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();
