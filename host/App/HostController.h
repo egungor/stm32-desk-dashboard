@@ -1,5 +1,6 @@
-// Protocol v2 controller of the host application (protocol/protocol.md,
-// "Exchanges"; ADR-004 for preferences and settings).
+// Audio side of protocol v3 on the host (protocol/protocol.md,
+// "Exchanges"; ADR-004 for preferences and settings). The dashboard
+// commands go to DashController; FrameRouter splits the frames.
 //
 // Glues the STM32 (frames in through onFrame, out through IFrameSink) to
 // the audio system (IAudioSystem). Platform independent; the Windows layer
@@ -37,8 +38,12 @@ public:
 
     HostController(IAudioSystem& audio, IFrameSink& sink);
 
-    // A frame arrived from the STM32.
+    // A frame arrived from the STM32 (decoded here; invalid frames are
+    // answered with ERROR). Used where this controller is alone.
     void onFrame(const Frame& frame);
+
+    // A decoded audio message (0x01..0x0E) or an ERROR (FrameRouter).
+    void onMessage(const ProtoMessage& msg);
 
     // Windows reported a change. Each sends only what differs from what
     // the STM32 was last told, and nothing before the full list has been

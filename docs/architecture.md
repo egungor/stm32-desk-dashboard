@@ -93,6 +93,9 @@ default task); the USB interrupt only copies frames into a static queue.
 |---|---|---|
 | `Audio/DeviceRegistry` | no | Endpoints → session-local `device_index`, at most 32, names truncated to 48 bytes |
 | `App/HostController` | no | Protocol v3 audio commands, host side |
+| `App/DashController` | no | Protocol v3 dashboard records: card slots, details, actions, `TIME` (ADR-006) |
+| `App/FrameRouter` | no | Decodes each frame once; `0x20`–`0x3F` to `DashController`, the rest to `HostController` |
+| `App/SequencedSink` | no | Sets one sequence counter (and the CRC) on every frame the host sends |
 | `App/EventQueue` | no | Serialises Core Audio and HID events into one consumer thread |
 | `Hid/HidMatch.h` | no | Which HID interface is the controller |
 | `Platform/Windows/WinAudioSystem` | yes | `IAudioSystem` on Core Audio; default switching through `IPolicyConfig` (ADR-002) |
@@ -100,7 +103,9 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Platform/Windows/main.cpp` | yes | Console program `dashboard-host` |
 
 Core Audio callbacks and the HID reader thread only push events; the
-main thread pops them and calls `HostController`.
+main thread pops them and passes frames to `FrameRouter`, Core Audio
+changes to `HostController`, and ticks the `DashController` (every
+500 ms) for the time.
 
 ## UI
 

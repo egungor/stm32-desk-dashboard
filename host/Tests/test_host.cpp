@@ -14,14 +14,17 @@
 #include <vector>
 
 #include "AudioMapping.h"
+#include "DashController.h"
 #include "DeviceRegistry.h"
 #include "EventQueue.h"
+#include "FrameRouter.h"
 #include "FrameText.h"
 #include "HidMatch.h"
 #include "HostController.h"
 #include "PreferenceFile.h"
 #include "PreferenceStore.h"
 #include "Preferences.h"
+#include "SequencedSink.h"
 #include "Startup.h"
 #include "VolumeLimit.h"
 
@@ -1364,7 +1367,7 @@ void testFrameText()
     m.command = PROTO_CMD_SETTINGS;
     Proto_DefaultSettings(&m.u.settings);
     CHECK(describeMessage(m) ==
-          "SETTINGS seq=0 layout=0 theme=0 accent=0 grid=0 startup_tab=0 last_tab=0 timeout=0 flipped=0 language=0 limit=off");
+          "SETTINGS seq=0 layout=0 theme=0 accent=0 grid=0 startup_tab=0 last_tab=0 timeout=0 flipped=0 language=0 limit=off startup_screen=0");
 }
 
 }  // namespace
@@ -1400,6 +1403,318 @@ void testTrayText()
     }
     // Tooltips are limited to 127 UTF-16 units: title + state must fit.
     CHECK(std::strlen(trayText(TrayText::Title, 0)) + std::strlen(trayText(TrayText::Waiting, 0)) < 100);
+}
+
+// ------------------------------------------------------------ dashboard (ADR-006)
+
+namespace {
+
+struct DashRig {
+    FakeSink sink;
+    std::uint32_t now = 1000000U;
+    DashController dash{sink, [this] { return now; }};
+};
+
+ProtoMessage dashMessage(std::uint8_t command, std::uint8_t sequence = 0)
+{
+    ProtoMessage m{};
+    m.command = command;
+    m.sequence = sequence;
+    return m;
+}
+
+// Collect the parts of one record from the sink (they are sent in order).
+std::string popRecord(FakeSink& sink, std::uint8_t command, std::uint8_t* id = nullptr)
+{
+    std::string text;
+    std::uint8_t parts = 0;
+    std::uint8_t part = 0;
+    do {
+        const ProtoMessage m = sink.pop();
+        CHECK(m.command == command);
+        if (m.command != command) {
+            return text;
+        }
+        CHECK(m.u.part.part == part);
+        parts = m.u.part.parts;
+        if (id != nullptr) {
+            *id = m.u.part.id;
+        }
+        text.append(reinterpret_cast<const char*>(m.u.part.data), m.u.part.len);
+        ++part;
+    } while (part < parts);
+    return text;
+}
+
+}  // namespace
+
+void testRecordText()
+{
+    const std::string line = recordLine({"3", "Hava", ""});
+    CHECK(line == std::string("3\x1F" "Hava\x1F"));
+    CHECK(recordLine({"a\nb", "c\x1F" "d", std::string_view("e\0f", 3), "g\rh"}) ==
+          std::string("a b\x1F" "c d\x1F" "e f\x1F" "g h"));
+    CHECK(recordLine({}).empty());
+    CHECK(cutUtf8("abc", 5) == "abc");
+    CHECK(cutUtf8("abcdef", 4) == "abcd");
+    CHECK(cutUtf8("ab\xC3\xB6x", 3) == "ab");      // never half of "ö"
+    CHECK(cutUtf8("ab\xC3\xB6x", 4) == "ab\xC3\xB6");
+    CHECK(cutUtf8("\xE2\x82\xAC", 2).empty());       // "€" is 3 bytes
+}
+
+void testLocalTimeValue()
+{
+    CHECK(localTimeValue(1970, 1, 1, 0, 0, 0) == 0U);
+    CHECK(localTimeValue(2000, 1, 1, 0, 0, 0) == 946684800U);
+    CHECK(localTimeValue(2026, 10, 21, 14, 32, 5) == 1792593125U);
+    CHECK(localTimeValue(2028, 2, 29, 23, 59, 59) == 1835481599U);  // leap day
+}
+
+void testSequencedSink()
+{
+    FakeSink inner;
+    SequencedSink sink(inner);
+    Frame f{};
+    ProtoMessage m = dashMessage(PROTO_CMD_GET_CARDS, 77);
+    CHECK(Proto_Encode(&m, f.data()) == PROTO_OK);
+    CHECK(sink.sendFrame(f));
+    CHECK(sink.sendFrame(f));
+    CHECK(inner.sent.size() == 2U);  // FakeSink checks the CRC by decoding
+    CHECK(inner.pop().sequence == 0U);
+    CHECK(inner.pop().sequence == 1U);
+    sink.reset();
+    CHECK(sink.sendFrame(f) && inner.pop().sequence == 0U);
+}
+
+void testDashNothingBeforeSync()
+{
+    DashRig r;
+    r.dash.setCard(0, "x");
+    r.dash.onTick(5000);
+    CHECK(r.sink.sent.empty());
+}
+
+void testDashGetCards()
+{
+    DashRig r;
+    r.dash.setCard(0, recordLine({"0", "Hava", ""}) + "\n14\xC2\xB0");
+    r.dash.onMessage(dashMessage(PROTO_CMD_GET_CARDS));
+
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_TIME && m.u.local_time == 1000000U);
+    std::uint8_t id = 0xFF;
+    CHECK(popRecord(r.sink, PROTO_CMD_CARD_PART, &id) == r.dash.card(0));
+    CHECK(id == 0U);
+    for (std::uint8_t slot = 1; slot < PROTO_MAX_CARDS; ++slot) {
+        m = r.sink.pop();
+        CHECK(m.command == PROTO_CMD_CARD_CLEAR && m.u.slot == slot);
+    }
+    CHECK(r.sink.sent.empty());
+}
+
+void testDashCardUpdates()
+{
+    DashRig r;
+    r.dash.onConnected();  // TIME + 8 clears
+    CHECK(r.sink.sent.size() == 1U + PROTO_MAX_CARDS);
+    r.sink.sent.clear();
+
+    // A long card goes out in parts, cut to 256 bytes; the same text again
+    // sends nothing; a new text gets a new generation.
+    const std::string longText(300, 'x');
+    r.dash.setCard(2, longText);
+    CHECK(r.dash.card(2).size() == PROTO_CARD_MAX_BYTES);
+    CHECK(r.sink.sent.size() == PROTO_CARD_MAX_PARTS);
+    const std::uint8_t gen = r.sink.sent.front().u.part.generation;
+    CHECK(popRecord(r.sink, PROTO_CMD_CARD_PART) == std::string(PROTO_CARD_MAX_BYTES, 'x'));
+    r.dash.setCard(2, longText);
+    CHECK(r.sink.sent.empty());
+    r.dash.setCard(2, "y");
+    CHECK(r.sink.sent.size() == 1U && r.sink.sent.front().u.part.generation != gen);
+    r.sink.sent.clear();
+
+    // Emptying a slot sends CARD_CLEAR; a slot out of range is ignored.
+    r.dash.setCard(2, "");
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_CARD_CLEAR && m.u.slot == 2U);
+    r.dash.setCard(PROTO_MAX_CARDS, "z");
+    CHECK(r.sink.sent.empty());
+
+    // After a disconnect nothing goes out until the next connect.
+    r.dash.onDisconnected();
+    r.dash.setCard(1, "w");
+    CHECK(r.sink.sent.empty());
+    r.dash.onConnected();
+    CHECK(r.sink.sent.size() == 1U + PROTO_MAX_CARDS);
+}
+
+void testDashDetailAndAction()
+{
+    DashRig r;
+    std::vector<std::pair<std::uint8_t, std::int8_t>> asked;
+    std::vector<ProtoAction> actions;
+    r.dash.onConnected();
+    r.sink.sent.clear();
+
+    // Without handlers: OPEN_DETAIL and ACTION fail.
+    ProtoMessage open = dashMessage(PROTO_CMD_OPEN_DETAIL, 9);
+    open.u.open_detail.slot = 1;
+    r.dash.onMessage(open);
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.code == PROTO_ERROR_OPERATION_FAILED &&
+          m.u.error.ref_command == PROTO_CMD_OPEN_DETAIL && m.u.error.ref_sequence == 9U);
+    ProtoMessage action = dashMessage(PROTO_CMD_ACTION, 10);
+    action.u.action.kind = PROTO_ACTION_MEDIA;
+    action.u.action.action = PROTO_MEDIA_NEXT;
+    r.dash.onMessage(action);
+    m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.ref_command == PROTO_CMD_ACTION);
+
+    // With handlers.
+    const std::string detail = recordLine({"Yemek", "5 Ekim"}) + "\n" + std::string(200, 'd');
+    r.dash.setDetailHandler([&](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        asked.emplace_back(slot, arg);
+        if (slot == 1) {
+            return detail;
+        }
+        return std::nullopt;
+    });
+    r.dash.setActionHandler([&](const ProtoAction& a) {
+        actions.push_back(a);
+        return a.kind == PROTO_ACTION_MEDIA;
+    });
+    open.u.open_detail.arg = -1;
+    r.dash.onMessage(open);
+    CHECK(asked.size() == 1U && asked[0].first == 1U && asked[0].second == -1);
+    std::uint8_t id = 0;
+    CHECK(popRecord(r.sink, PROTO_CMD_DETAIL_PART, &id) == detail);
+    CHECK(id == 1U);
+
+    open.u.open_detail.slot = 3;  // no detail for this slot
+    r.dash.onMessage(open);
+    m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.code == PROTO_ERROR_OPERATION_FAILED);
+
+    r.dash.onMessage(action);
+    CHECK(actions.size() == 1U && actions[0].action == PROTO_MEDIA_NEXT && r.sink.sent.empty());
+    action.u.action.kind = PROTO_ACTION_CARD;  // refused by the handler
+    action.u.action.ref = 0;
+    action.u.action.action = 1;
+    r.dash.onMessage(action);
+    m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.ref_command == PROTO_CMD_ACTION);
+
+    // refreshDetail sends only the detail the board opened last (slot 1).
+    asked.clear();
+    r.dash.refreshDetail(2);
+    CHECK(asked.empty() && r.sink.sent.empty());
+    r.dash.refreshDetail(1);
+    CHECK(asked.size() == 1U && asked[0].second == 0);
+    CHECK(popRecord(r.sink, PROTO_CMD_DETAIL_PART) == detail);
+}
+
+void testDashTime()
+{
+    DashRig r;
+    r.dash.onTick(1000);
+    r.dash.onConnected();
+    CHECK(r.dash.stats().timesSent == 1U);
+    r.sink.sent.clear();
+
+    // The clock runs on with the tick: nothing is sent.
+    for (std::uint64_t t = 1000; t <= 1000 + 5 * 60 * 1000; t += 500) {
+        r.now = 1000000U + static_cast<std::uint32_t>((t - 1000) / 1000);
+        r.dash.onTick(t);
+    }
+    CHECK(r.sink.sent.empty());
+
+    // A jump of the local clock (e.g. daylight saving) is sent at once.
+    r.now += 3600U;
+    r.dash.onTick(1000 + 5 * 60 * 1000 + 500);
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_TIME && m.u.local_time == r.now);
+
+    // And every 10 minutes anyway.
+    const std::uint64_t sentAt = 1000 + 5 * 60 * 1000 + 500;
+    r.now += 599U;
+    r.dash.onTick(sentAt + DashController::kTimeIntervalMs - 1000);
+    CHECK(r.sink.sent.empty());
+    r.now += 1U;
+    r.dash.onTick(sentAt + DashController::kTimeIntervalMs);
+    m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_TIME);
+}
+
+void testFrameRouter()
+{
+    Rig audioRig;
+    FakeSink dashSink;
+    std::uint32_t now = 5U;
+    DashController dash(dashSink, [&now] { return now; });
+    FrameRouter router(audioRig.controller, dash, audioRig.sink);
+
+    // Audio commands go to HostController (a list), dashboard commands to
+    // DashController.
+    audioRig.audio.endpoints = {ep("{a}", "A")};
+    audioRig.controller.onDevicesChanged();
+    router.onFrame(frameFor(PROTO_CMD_GET_DEVICE_LIST, 1));
+    CHECK(!audioRig.sink.sent.empty() && audioRig.sink.sent.front().command == PROTO_CMD_DEVICE_LIST);
+    CHECK(dashSink.sent.empty());
+    audioRig.sink.sent.clear();
+
+    router.onFrame(frameFor(PROTO_CMD_GET_CARDS, 2));
+    CHECK(dashSink.sent.size() == 1U + PROTO_MAX_CARDS && audioRig.sink.sent.empty());
+    dashSink.sent.clear();
+
+    // An ERROR goes by ref_command.
+    ProtoMessage e{};
+    Frame f{};
+    e.command = PROTO_CMD_ERROR;
+    e.u.error.code = PROTO_ERROR_BAD_PAYLOAD;
+    e.u.error.ref_command = PROTO_CMD_CARD_PART;
+    CHECK(Proto_Encode(&e, f.data()) == PROTO_OK);
+    router.onFrame(f);
+    CHECK(dash.stats().errorsReceived == 1U);
+    e.u.error.ref_command = PROTO_CMD_DEVICE_LIST;
+    CHECK(Proto_Encode(&e, f.data()) == PROTO_OK);
+    router.onFrame(f);
+    CHECK(audioRig.controller.stats().errorsReceived == 1U);
+
+    // An invalid frame is answered by the router, once.
+    Frame bad = frameFor(PROTO_CMD_GET_CARDS, 3);
+    bad[10] ^= 0x01U;  // CRC no longer matches
+    router.onFrame(bad);
+    CHECK(router.stats().framesRejected == 1U);
+    ProtoMessage m = audioRig.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.code == PROTO_ERROR_BAD_FRAME);
+    CHECK(audioRig.sink.sent.empty() && dashSink.sent.empty());
+    CHECK(router.stats().toAudio == 2U && router.stats().toDashboard == 2U);
+}
+
+void testFrameTextDashboard()
+{
+    ProtoMessage m{};
+    m.command = PROTO_CMD_CARD_PART;
+    m.u.part.id = 2;
+    m.u.part.generation = 5;
+    m.u.part.part = 0;
+    m.u.part.parts = 3;
+    m.u.part.len = 53;
+    CHECK(describeMessage(m) == "CARD_PART seq=0 id=2 gen=5 part=1/3 bytes=53");
+    m = ProtoMessage{};
+    m.command = PROTO_CMD_ACTION;
+    m.u.action.kind = PROTO_ACTION_MEDIA;
+    m.u.action.action = PROTO_MEDIA_PLAY_PAUSE;
+    CHECK(describeMessage(m) == "ACTION seq=0 kind=2 ref=0 action=2");
+    m = ProtoMessage{};
+    m.command = PROTO_CMD_OPEN_DETAIL;
+    m.u.open_detail.slot = 1;
+    m.u.open_detail.arg = -1;
+    CHECK(describeMessage(m) == "OPEN_DETAIL seq=0 slot=1 arg=-1");
+    m = ProtoMessage{};
+    m.command = PROTO_CMD_TIME;
+    m.u.local_time = 42;
+    CHECK(describeMessage(m) == "TIME seq=0 local=42");
 }
 
 int main()
@@ -1443,6 +1758,16 @@ int main()
     testFrameText();
     testStartupCommand();
     testTrayText();
+    testRecordText();
+    testLocalTimeValue();
+    testSequencedSink();
+    testDashNothingBeforeSync();
+    testDashGetCards();
+    testDashCardUpdates();
+    testDashDetailAndAction();
+    testDashTime();
+    testFrameRouter();
+    testFrameTextDashboard();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

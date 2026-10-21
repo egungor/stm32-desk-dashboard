@@ -32,6 +32,9 @@ host/
 │   └── HidMatch.h          # which HID interface is the controller (ADR-003)
 ├── App/
 │   ├── HostController.*    # protocol v3 audio exchanges (protocol/protocol.md)
+│   ├── DashController.*    # dashboard records: cards, details, actions, TIME (ADR-006)
+│   ├── FrameRouter.*       # one decode per frame; audio vs dashboard commands
+│   ├── SequencedSink.h     # one sequence counter for every frame the host sends
 │   ├── Preferences.*       # aliases, order, favorites, settings record (ADR-004)
 │   ├── PreferenceFile.*    # text format of the preference file
 │   ├── PreferenceStore.*   # load, save at most once per second, reload on change

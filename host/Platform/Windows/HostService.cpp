@@ -6,8 +6,11 @@
 #include <cstdio>
 #include <vector>
 
+#include "DashController.h"
+#include "FrameRouter.h"
 #include "FrameText.h"
 #include "HidMatch.h"
+#include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
 
@@ -44,6 +47,14 @@ void logReceived(const Frame& frame, const LogFn& log)
     } else {
         log("<- (invalid frame, Proto_Decode=" + std::to_string(static_cast<int>(result)) + ")");
     }
+}
+
+// Windows' local time as the value of TIME (protocol.md).
+std::uint32_t localTimeNow()
+{
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    return localTimeValue(t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
 }
 
 void logVolumeLimited(const VolumeLimited& v, const LogFn& log)
@@ -99,8 +110,11 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
 {
     const LogFn& log = hooks.log;
     WinHidLink link(events);
-    LoggingSink sink(link, log);
+    LoggingSink logged(link, log);
+    SequencedSink sink(logged);  // one sequence counter for both controllers (ADR-006)
     HostController controller(audio, sink);
+    DashController dash(sink, localTimeNow);
+    FrameRouter router(controller, dash, sink);
     WinPreferenceFile file;
     PreferenceStore store(file, controller.preferences());
     const bool saving = loadPreferences(file, store, false, log);
@@ -141,17 +155,19 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             controller.onPreferencesChanged();
         }
         reportLanguage();
+        dash.onTick(GetTickCount64());
         if (!item) {
             continue;
         }
         switch (item->event) {
         case HostEvent::FrameReceived:
             logReceived(item->frame, log);
-            controller.onFrame(item->frame);
+            router.onFrame(item->frame);
             break;
         case HostEvent::HidConnected:
             log("Controller connected: " + link.description());
             controller.onConnected();
+            dash.onConnected();
             if (hooks.connection) {
                 hooks.connection(true);
             }
@@ -159,6 +175,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::HidDisconnected:
             log("Controller disconnected.");
             controller.onDisconnected();
+            dash.onDisconnected();
             if (hooks.connection) {
                 hooks.connection(false);
             }

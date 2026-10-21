@@ -53,7 +53,11 @@ void HostController::onFrame(const Frame& frame)
         }
         return;
     }
+    onMessage(msg);
+}
 
+void HostController::onMessage(const ProtoMessage& msg)
+{
     switch (msg.command) {
     case PROTO_CMD_GET_DEVICE_LIST:
         handleGetDeviceList();
