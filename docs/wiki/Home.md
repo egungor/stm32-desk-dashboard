@@ -3,9 +3,10 @@
 A Windows desk dashboard on the 4.3" touchscreen of an **STM32F746G-DISCO**
 board. It grows out of
 [stm32-audio-controller](https://github.com/egungor/stm32-audio-controller):
-today the board still is that audio controller (tap a device on the LCD and
-Windows switches to it); the dashboard tab (clock, weather, menu of the day,
-media keys, Claude Code approvals) is being built, see the
+a left rail switches between the **Dashboard** tab (clock, weather, menu
+of the day, media keys, Claude Code approvals) and the **Audio** tab
+(the audio controller: tap a device on the LCD and Windows switches to
+it). Dashboard v1 is coded and in testing, see the
 [roadmap](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/roadmap.md).
 
 ![Main screen on the LCD](https://raw.githubusercontent.com/egungor/stm32-desk-dashboard/main/docs/images/ui-main-screen.png)
@@ -16,8 +17,9 @@ media keys, Claude Code approvals) is being built, see the
 ```
 
 **Download:** the Windows installer and the firmware (`.elf`, `.hex`,
-`.bin`) will be on the [Releases page](https://github.com/egungor/stm32-desk-dashboard/releases);
-there is no release of the dashboard yet. How to install and
+`.bin`) are on the [Releases page](https://github.com/egungor/stm32-desk-dashboard/releases);
+the latest is the test pre-release `v0.9.0-beta.2` (Dashboard v1 steps
+1–11), there is no v1.0.0 yet. How to install and
 flash: [Getting Started](Getting-Started#quick-start-from-a-release).
 
 ## Where the project stands
@@ -32,6 +34,9 @@ flash: [Getting Started](Getting-Started#quick-start-from-a-release).
 | Polish (M7): layouts, themes, settings, edit mode, aliases | Coded; layout A, themes, accent colours, favorites tab, mute/volume VERIFIED on the board; the rest REQUIRES HARDWARE |
 | Volume limit on switch | VERIFIED on the board and Windows (2026-10-16) |
 | Tray program, start with Windows, installer | Built in CI; installed and used on Windows; full check REQUIRES WINDOWS |
+| Dashboard tab: clock, cards, detail view, media keys | Simulator and integration test in CI; on the board REQUIRES HARDWARE |
+| Weather, menu of the day | Unit tests in CI; REQUIRES WINDOWS |
+| Claude Code approvals (ADR-007) | Unit and integration tests in CI; hook behaviour REQUIRES WINDOWS (spike #24); on the board REQUIRES HARDWARE |
 
 The M1–M6 board and Windows checks ran on 2026-10-14, the M7 checks are
 in progress; see

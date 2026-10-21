@@ -1,14 +1,70 @@
 # User Guide
 
-How to use the controller day to day. The screens below are LCD
-screenshots read from the board (firmware v0.7.0-beta.2), except where a
-caption says *simulator*. The UI text is Turkish by default; English is
+How to use the dashboard day to day. The Audio tab screens below are LCD
+screenshots read from the board (firmware v0.7.0-beta.2, before the
+tabs), except where a caption says *simulator*; the Dashboard tab has no
+screenshots yet. The UI text is Turkish by default; English is
 one tap away on the settings page ("Dil" → English).
 
 To install the firmware and the PC program first, see
 [Getting Started](Getting-Started#quick-start-from-a-release).
 
-## Main screen
+## Tabs
+
+A rail on the left of the screen holds the tab buttons — **Dashboard**
+(the grid icon) and **Audio** (the speaker) — and, at its foot, the cog
+for the settings and the connection mark. Each tab keeps its state when
+you switch away. The tab shown when the board starts is "Açılış ekranı"
+on the settings page (Dashboard or Ses).
+
+## Dashboard
+
+- **Clock strip** at the top: the time and the date of the PC (Turkish
+  or English day and month names), updated every minute.
+- **Four cards** on a 2×2 grid, written by the PC program:
+
+  | Card | Shows | Tap opens |
+  |---|---|---|
+  | Weather | Icon, temperature, condition, min / max; "Güncellendi hh:mm" when the last fetch failed | Now (feels like, humidity, wind) and 10 days |
+  | Menu of the day | Main dish, soup, salad bar; "Resmi tatil" on a holiday, the next Monday at the weekend | The day's five lines and the salad bar; ‹ › move by working day |
+  | (empty) | Kept for notifications, after v1 | Nothing |
+  | Claude Code | Waiting requests and the last decision | The last five decisions |
+
+  While a detail loads it says "Yükleniyor..."; the back arrow returns to
+  the cards.
+- **Media strip** at the bottom: `<<` previous, `| |` play / pause, `>>`
+  next. The PC sends them as media keys, so they reach Spotify, a
+  YouTube tab or another player even with another window in front.
+
+The weather place and the menu are set on the PC, see
+[Host Application](Host-Application#commands): `dashboard-host weather
+<city>` once, and the tray menu "Menü görüntülerini yükle…" with the
+month's menu images (needs a Claude API key in `claude.txt`).
+
+## Claude Code approvals
+
+When a Claude Code session on this PC wants to run a command or edit a
+file and the hook is set up, the board shows the request over every
+screen (it also lights a dark screen): what the tool wants to do, a 60 s
+countdown and three buttons.
+
+| Button | Claude Code |
+|---|---|
+| Onayla | Allows this one request |
+| Reddet | Denies it |
+| Terminalde sor | Asks in the terminal as without the board |
+
+A request too long for the screen is marked "kısaltıldı" and shows only
+Reddet and Terminalde sor: what is not shown cannot be approved. No
+answer in time, no tray program or no board leave the decision to the
+terminal: nothing is ever allowed by default.
+
+Set-up, once: tray menu → "Claude Code hook ayarını kopyala", then merge
+the copied text into `%USERPROFILE%\.claude\settings.json` (the user
+settings of this PC). How the hook behaves on Windows in every corner
+case is still being checked (spike, issue #24).
+
+## Audio tab
 
 ![Main screen, layout A](https://raw.githubusercontent.com/egungor/stm32-desk-dashboard/main/docs/images/ui-main-screen.png)
 
@@ -58,7 +114,9 @@ page; only Kart has the round-arrow button on the main screen.
 
 ## Settings
 
-The cog opens the settings; "‹ Ayarlar" at the top left goes back. Every
+The cog opens the settings, in sections: GENEL (for the whole board:
+start screen, theme, colour, screen off, flip, language) and SES (the
+Audio tab); "‹ Ayarlar" at the top left goes back. Every
 change applies at once and is stored on the PC (in the program's
 preference file), so it survives a restart of the board or the PC. Scroll
 the list with a finger; scrolling over a control does not change it.
@@ -67,7 +125,8 @@ the list with a finger; scrolling over a control does not change it.
 
 | Row | Choices | What it does |
 |---|---|---|
-| Görünüm | Kart / Liste / Karo | Layout of the main screen |
+| Açılış ekranı | Dashboard / Ses | Tab shown when the board starts |
+| Görünüm | Kart / Liste / Karo | Layout of the Audio tab |
 | Tema | Koyu / Açık | Dark or light theme |
 | Renk | six colours | Accent colour (orange, blue, green, purple, pink, yellow) |
 | Izgara | 2×2 / 3×2 / 3×3 / Liste | Card grid; Kart layout only (greyed out otherwise) |
@@ -130,6 +189,8 @@ tooltip; right-click for the menu:
 |---|---|
 | Kumanda bağlı / Kumanda bekleniyor | State: board connected or not (greyed out) |
 | Windows ile başlat | Start at logon (check mark when on), current user only |
+| Menü görüntülerini yükle… | Reads menu images with the Claude API; a balloon shows the summary |
+| Claude Code hook ayarını kopyala | Copies the `settings.json` text for the approvals |
 | Ayarlar klasörünü aç | Opens `%APPDATA%\stm32-desk-dashboard` (preferences, log) |
 | Günlüğü aç | Opens `host.log`, every message between the PC and the board |
 | Çıkış | Closes the program; the board then shows the waiting screen |

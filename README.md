@@ -7,16 +7,17 @@ Windows playback device.
 
 This repository continues
 [stm32-audio-controller](https://github.com/egungor/stm32-audio-controller)
-(its history is kept here). **Today the code is still the audio controller,
-renamed**; the dashboard is being built step by step, see
-[`docs/roadmap.md`](docs/roadmap.md).
+(its history is kept here); its audio features work as there, on the
+Audio tab. Dashboard v1 is coded (steps 1–11) and in testing; v1.0.0
+follows after further requests, see [`docs/roadmap.md`](docs/roadmap.md).
 
 The project consists of:
 
 - **STM32F7 firmware** — touchscreen UI and USB HID communication
 - **Windows host application** — tray program and console tools: Windows
   audio endpoints and the default playback device, the weather, the menu
-  of the day (read from images with the Claude API), media keys
+  of the day (read from images with the Claude API), media keys, Claude
+  Code permission requests answered on the board
 - **Shared protocol** — the contract between STM32 and Windows
 - **Tests and CI** — automated validation for host/protocol code
 
@@ -24,9 +25,10 @@ The project consists of:
 
 Releases are on the
 **[Releases page](https://github.com/egungor/stm32-desk-dashboard/releases)**.
-The first one, `v0.9.0-beta.1`, is a test pre-release of Dashboard v1
-steps 1–9 (clock, weather, menu of the day, media keys; no Claude Code
-approval yet); its checklist is issue #22.
+The latest, `v0.9.0-beta.2`, is a test pre-release of Dashboard v1
+steps 1–11: clock, weather, menu of the day, media keys and Claude Code
+approvals (`v0.9.0-beta.1`, steps 1–9, has its checklist in issue #22).
+There is no v1.0.0 yet.
 
 | File | What |
 |---|---|
@@ -81,7 +83,10 @@ host v0.7.0-beta.2: layout A, layouts B and C, the settings page. More:
 | LVGL UI (device buttons, pages, waiting screen, notices) | Simulator in CI; VERIFIED on the board |
 | USB HID interface and STM32 protocol client | Unit tests in CI; VERIFIED on the board and Windows as `1209:0001`; as `1209:0002` REQUIRES HARDWARE |
 | Protocol v2 (64-byte frames, CRC-16; preferences and settings, ADR-004) | Codec tests in CI (Linux, Windows); VERIFIED on the board and Windows (#58) |
-| Protocol v3 (dashboard records, ADR-006; #8) | Codec tests in CI; the firmware and host speak v3 but do not use the dashboard commands yet; on the board REQUIRES HARDWARE |
+| Protocol v3 (dashboard records, ADR-006; #8) | Codec tests in CI; used by the dashboard; on the board REQUIRES HARDWARE |
+| Tabbed shell, Dashboard tab: clock, 2×2 cards, detail view, media strip (#10, #14, #16) | Simulator in CI; integration test in CI; on the board REQUIRES HARDWARE (#22) |
+| Weather (Open-Meteo) and menu of the day (Claude API) (#18, #20) | Unit tests in CI; on Windows REQUIRES WINDOWS (#22) |
+| Claude Code approvals: hook command, named pipe, prompt on the board (#26, ADR-007) | Unit and integration tests in CI; hook behaviour on Windows REQUIRES WINDOWS (spike #24); on the board REQUIRES HARDWARE |
 | Windows host: Core Audio, default device switching, HID transport | Unit tests in CI; VERIFIED on Windows |
 | Firmware ↔ host together | Loopback integration test in CI; end to end VERIFIED; adding or removing a Windows device while connected NOT TESTED |
 | Volume and mute on the touchscreen (M6) | VERIFIED on the board and Windows |
@@ -119,6 +124,20 @@ Details: [`docs/architecture.md`](docs/architecture.md).
 ## Features
 
 Done in code (verification status above):
+
+- tabs on a left rail: Dashboard and Audio, global settings in sections,
+  the tab shown at start chosen in the settings;
+- Dashboard: clock and date from the PC, four cards (weather, menu of the
+  day, Claude Code; one is kept for notifications), a detail view
+  per card, media keys `<< || >>` for the player on the PC;
+- weather for one location (Open-Meteo, no key): card and 10-day detail;
+- menu of the day read from menu images with the Claude API, card and
+  day detail with the salad bar;
+- Claude Code permission requests on this PC shown over every screen:
+  Onayla / Reddet / Terminalde sor, with a countdown; nothing is allowed
+  by default;
+
+Audio tab (from the audio controller):
 
 - device list from Windows on the touchscreen, in pages, with icons;
 - select a device on the touchscreen → Windows default playback device;

@@ -7,9 +7,12 @@ playback devices with Core Audio, and keep both in step:
 - **`dashboard-tray`**: the everyday program, without a console window.
   A tray icon shows the connection state ("Kumanda bağlı" / "Kumanda
   bekleniyor"); its menu has "Windows ile başlat" (start at logon, current
-  user only), "Ayarlar klasörünü aç", "Günlüğü aç" (`host.log`, the same
-  lines as `run`) and "Çıkış". Menu text follows the board's language
-  setting.
+  user only), "Menü görüntülerini yükle…" (menu of the day), "Claude
+  Code hook ayarını kopyala", "Ayarlar klasörünü aç", "Günlüğü aç"
+  (`host.log`, the same lines as `run`) and "Çıkış". Menu text follows
+  the board's language setting. Besides the audio devices it serves the
+  Dashboard tab: the time, the weather, the menu of the day, media keys
+  and Claude Code approvals.
 - **`dashboard-host`**: console tools, below.
 
 Only one of `run` and the tray program serves the board at a time; the
@@ -29,6 +32,12 @@ other console commands work while the tray program runs. Preferences
 | `watch` | Run the protocol controller without a board and print what it would send |
 | `alias <n> <name>` / `alias <n> --clear` | Show device `<n>` under another name on the board (at most 32 bytes of UTF-8) |
 | `startup on\|off\|status` | Start the tray program at Windows logon, or not |
+| `weather` | Print the weather card and 10-day detail for the saved location |
+| `weather <city>` / `weather <lat> <lon> [name]` | Find a city (Open-Meteo geocoding) or give the place exactly; saved in `weather.txt` |
+| `menu` | Print the menu card and the day's detail |
+| `menu import <image> ...` | Read menu images with the Claude API into `menu-YYYY-MM.json` (key in `claude.txt` or `ANTHROPIC_API_KEY`) |
+| `hook permission` | Claude Code `PermissionRequest` hook: hands the request to the tray program and the board (ADR-007) |
+| `hook probe` | Observing hook for the approval spike (`docs/hook-spike.md`) |
 
 **Volume limit on switch** (settings page on the board, off by default):
 when the board selects an output louder than the limit, the host turns it

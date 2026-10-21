@@ -23,7 +23,8 @@ No build needed. From the [Releases page](https://github.com/egungor/stm32-desk-
    code-signed: if SmartScreen warns, "More info" → "Run anyway".
 3. **Connect.** Plug the board's **USB OTG FS** micro-USB connector into
    the PC. The tray icon says "Kumanda bağlı" and the LCD shows the
-   playback devices.
+   Dashboard tab; the speaker on the left rail opens the playback
+   devices.
 
 How to use it: [User Guide](User-Guide). To build everything yourself,
 read on.
