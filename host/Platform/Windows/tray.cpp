@@ -7,6 +7,8 @@
 //
 //   <state>                     "Kumanda bağlı" / "Kumanda bekleniyor" (greyed)
 //   Windows ile başlat          check mark; HKCU\...\Run (WinStartup)
+//   Menü görüntülerini yükle…   images -> Claude API -> menu-YYYY-MM.json (#20);
+//                               a balloon shows the summary
 //   Ayarlar klasörünü aç        %APPDATA%\stm32-desk-dashboard
 //   Günlüğü aç                  host.log
 //   Çıkış
@@ -15,6 +17,7 @@
 // program serves the controller at a time (SingleInstance).
 
 #include <windows.h>
+#include <commdlg.h>
 #include <shellapi.h>
 #include <share.h>
 
@@ -22,8 +25,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "EventQueue.h"
 #include "HostService.h"
@@ -31,6 +36,7 @@
 #include "WinAudioSystem.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
+#include "WinMenuImport.h"
 #include "WinStrings.h"
 #include "tray_resource.h"
 
@@ -41,12 +47,14 @@ namespace {
 constexpr UINT kTrayMessage = WM_APP + 1;   // icon events
 constexpr UINT kStateMessage = WM_APP + 2;  // worker: connection or language changed
 constexpr UINT kWorkerDone = WM_APP + 3;    // worker: service loop returned
+constexpr UINT kMenuImportDone = WM_APP + 4;  // importer: menu import finished
 constexpr UINT kIconId = 1;
 constexpr ULONGLONG kMaxLogBytes = 1024ULL * 1024ULL;
 
 enum MenuId : UINT {
     kMenuState = 1,
     kMenuStartup,
+    kMenuLoadMenu,
     kMenuFolder,
     kMenuLog,
     kMenuExit,
@@ -62,7 +70,11 @@ struct App {
     std::atomic<std::uint8_t> language{0};
     std::wstring dir;       // %APPDATA%\stm32-desk-dashboard
     std::wstring logPath;   // ...\host.log
-    FILE* log = nullptr;    // written by the worker only (and before/after it)
+    FILE* log = nullptr;    // written by the worker and the importer (the CRT locks each line)
+    std::thread importer;   // menu import (#20), one at a time
+    std::atomic<bool> importing{false};
+    std::mutex importMutex;
+    MenuImportResult importResult;  // under importMutex
 };
 
 App g_app;
@@ -171,6 +183,102 @@ void addIcon()
     (void)Shell_NotifyIconW(NIM_SETVERSION, &g_app.icon);
 }
 
+// ---------------------------------------------------------- menu import
+
+void showBalloon(const std::wstring& title, const std::wstring& body, bool warning)
+{
+    g_app.icon.uFlags = NIF_INFO;
+    (void)wcsncpy_s(g_app.icon.szInfoTitle, title.c_str(), _TRUNCATE);
+    (void)wcsncpy_s(g_app.icon.szInfo, body.c_str(), _TRUNCATE);
+    g_app.icon.dwInfoFlags = warning ? NIIF_WARNING : NIIF_INFO;
+    (void)Shell_NotifyIconW(NIM_MODIFY, &g_app.icon);
+}
+
+// The images chosen in the file dialog; empty if cancelled.
+std::vector<std::wstring> chooseImages()
+{
+    std::vector<wchar_t> buffer(32768, L'\0');
+    std::wstring filter = text(TrayText::MenuImages) + L" (*.png, *.jpg, *.webp, *.gif)";
+    filter.push_back(L'\0');
+    filter += L"*.png;*.jpg;*.jpeg;*.webp;*.gif";
+    filter.push_back(L'\0');
+    filter.push_back(L'\0');
+    const std::wstring title = text(TrayText::LoadMenu);
+
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_app.window;
+    ofn.lpstrFilter = filter.c_str();
+    ofn.lpstrFile = buffer.data();
+    ofn.nMaxFile = static_cast<DWORD>(buffer.size());
+    ofn.lpstrTitle = title.c_str();
+    ofn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    SetForegroundWindow(g_app.window);
+    if (!GetOpenFileNameW(&ofn)) {
+        return {};
+    }
+    // One file: its full path. Several: the folder, then the names, each
+    // ended by a NUL, the list by a second NUL.
+    std::vector<std::wstring> parts;
+    for (const wchar_t* p = buffer.data(); *p != L'\0'; p += wcslen(p) + 1U) {
+        parts.emplace_back(p);
+    }
+    if (parts.size() <= 1U) {
+        return parts;
+    }
+    std::vector<std::wstring> paths;
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        paths.push_back(parts[0] + L"\\" + parts[i]);
+    }
+    return paths;
+}
+
+void loadMenuImages()
+{
+    if (g_app.importing) {
+        return;
+    }
+    const std::vector<std::wstring> paths = chooseImages();
+    if (paths.empty()) {
+        return;
+    }
+    if (g_app.importer.joinable()) {
+        g_app.importer.join();  // the previous import has finished
+    }
+    g_app.importing = true;
+    const std::uint8_t language = g_app.language.load();
+    logLine("Menu import: " + std::to_string(paths.size()) + " image(s).");
+    showBalloon(text(TrayText::Title), text(TrayText::MenuImporting), false);
+    g_app.importer = std::thread([paths, language] {
+        HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        MenuImportResult result = win::importMenuFiles(paths, language);
+        if (SUCCEEDED(com)) {
+            CoUninitialize();
+        }
+        logLine(std::string(result.ok ? "Menu import: " : "FAIL: menu import: ") + result.message);
+        {
+            std::lock_guard<std::mutex> lock(g_app.importMutex);
+            g_app.importResult = std::move(result);
+        }
+        PostMessageW(g_app.window, kMenuImportDone, 0, 0);
+    });
+}
+
+void onMenuImportDone()
+{
+    MenuImportResult result;
+    {
+        std::lock_guard<std::mutex> lock(g_app.importMutex);
+        result = g_app.importResult;
+    }
+    g_app.importing = false;
+    if (result.ok) {
+        g_app.events.push(HostEvent::MenuChanged);  // the card follows at once
+    }
+    showBalloon(text(result.ok ? TrayText::MenuImported : TrayText::MenuImportFailed), win::toWide(result.message),
+                !result.ok);
+}
+
 void showMenu(POINT at)
 {
     const std::wstring exe = win::trayProgramPath();
@@ -183,6 +291,7 @@ void showMenu(POINT at)
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING | (win::startupEnabled(exe) ? MF_CHECKED : MF_UNCHECKED), kMenuStartup,
                 text(TrayText::StartWithWindows).c_str());
+    AppendMenuW(menu, MF_STRING | (g_app.importing ? MF_GRAYED : 0U), kMenuLoadMenu, text(TrayText::LoadMenu).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.dir.empty() ? MF_GRAYED : 0U), kMenuFolder, text(TrayText::OpenFolder).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.log == nullptr ? MF_GRAYED : 0U), kMenuLog, text(TrayText::OpenLog).c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -207,6 +316,9 @@ void showMenu(POINT at)
         }
         break;
     }
+    case kMenuLoadMenu:
+        loadMenuImages();
+        break;
     case kMenuFolder:
         (void)ShellExecuteW(nullptr, L"open", g_app.dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         break;
@@ -236,6 +348,10 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         setTooltip();
         g_app.icon.uFlags = NIF_TIP | NIF_SHOWTIP;
         (void)Shell_NotifyIconW(NIM_MODIFY, &g_app.icon);
+        return 0;
+    }
+    if (msg == kMenuImportDone) {
+        onMenuImportDone();
         return 0;
     }
     if (msg == kWorkerDone) {
@@ -273,6 +389,9 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
+    // The file dialog wants a single-threaded apartment on this thread.
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
     win::SingleInstance single;
     if (!single.first()) {
         MessageBoxW(nullptr, text(TrayText::AlreadyRunning).c_str(), text(TrayText::Title).c_str(),
@@ -311,9 +430,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
 
     stopWorker();
+    if (g_app.importer.joinable()) {
+        g_app.importer.join();  // an import still waiting for the API ends by its timeout
+    }
     logLine("dashboard-tray stopped.");
     if (g_app.log != nullptr) {
         std::fclose(g_app.log);
+    }
+    if (SUCCEEDED(com)) {
+        CoUninitialize();
     }
     return 0;
 }

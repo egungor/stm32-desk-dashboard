@@ -20,6 +20,11 @@
 //                                      make it the weather location
 //   dashboard-host weather <lat> <lon> [name]
 //                                      set the weather location exactly
+//   dashboard-host menu              print the menu card and today's detail
+//   dashboard-host menu import <image> [<image> ...]
+//                                      read menu images with the Claude API into
+//                                      menu-YYYY-MM.json (key: claude.txt or
+//                                      ANTHROPIC_API_KEY)
 //
 // Aliases, the device order, favorites and the board's settings are kept in
 // %APPDATA%\stm32-desk-dashboard\preferences.txt (ADR-004). "run" saves
@@ -45,10 +50,12 @@
 #include "HostController.h"
 #include "HostService.h"
 #include "PreferenceStore.h"
+#include "MenuService.h"
 #include "WeatherCard.h"
 #include "WeatherLocation.h"
 #include "WinAudioSystem.h"
 #include "WinHttpClient.h"
+#include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
 #include "WinStrings.h"
@@ -386,6 +393,43 @@ int cmdWeather(const std::vector<std::string>& args)
     return result;
 }
 
+int cmdMenu(const std::vector<std::string>& args)
+{
+    if (args.size() >= 4 && args[2] == "import") {
+        std::vector<std::wstring> paths;
+        for (std::size_t i = 3; i < args.size(); ++i) {
+            paths.push_back(win::toWide(args[i]));
+        }
+        std::printf("Sending %lu image(s) to the Claude API; this can take a minute...\n",
+                    static_cast<unsigned long>(paths.size()));
+        std::fflush(stdout);
+        const MenuImportResult result = win::importMenuFiles(paths, 0);
+        std::printf("%s%s\n", result.ok ? "OK: " : "FAIL: ", result.message.c_str());
+        return result.ok ? 0 : 1;
+    }
+    if (args.size() != 2) {
+        return usage();
+    }
+
+    // No board: the records go nowhere but are printed.
+    class NullSink : public IFrameSink {
+    public:
+        bool sendFrame(const Frame&) override { return true; }
+    } sink;
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    const std::uint32_t now = localTimeValue(t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    DashController dash(sink, [now] { return now; });
+    win::WinMenuFiles files;
+    MenuService menu(dash, files, [now] { return now; }, printLine);
+    const long today = static_cast<long>(now / 86400U);
+    std::printf("Card:\n");
+    printRecord(menu.card(today));
+    std::printf("\nDetail:\n");
+    printRecord(menu.detailFor(MenuService::cardDay(today)));
+    return 0;
+}
+
 int cmdStartup(const std::string& arg)
 {
     const std::wstring tray = win::trayProgramPath();
@@ -415,7 +459,8 @@ int usage()
     std::printf(
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
-        "                        weather | weather <city> | weather <lat> <lon> [name]\n");
+        "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
+        "                        menu | menu import <image> [<image> ...]\n");
     return 2;
 }
 
@@ -447,6 +492,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "weather") {
         return cmdWeather(args);
+    }
+    if (cmd == "menu") {
+        return cmdMenu(args);
     }
 
     EventQueue events;

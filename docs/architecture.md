@@ -96,7 +96,9 @@ default task); the USB interrupt only copies frames into a static queue.
 | `App/DashController` | no | Protocol v3 dashboard records: card slots, details, actions, `TIME` (ADR-006) |
 | `App/FrameRouter` | no | Decodes each frame once; `0x20`–`0x3F` to `DashController`, the rest to `HostController` |
 | `App/MediaKeys` | no | Media strip `ACTION` (kind 2) → previous / play-pause / next behind `IMediaKeys` |
-| `App/BackgroundFetch` | no | `IHttpClient`; one HTTP GET at a time on a worker thread, result polled by the loop |
+| `App/HttpClient.h`, `App/BackgroundFetch` | no | `IHttpClient` (GET, POST); one GET at a time on a worker thread, result polled by the loop |
+| `Menu/MenuData`, `MenuImport` | no | Month files `menu-YYYY-MM.json`, merge by date; menu images → Claude API request and answer (nlohmann/json) |
+| `Menu/MenuService` | no | Menu card (slot 1) and day detail, from the month files |
 | `Weather/WeatherReport`, `WeatherLocation` | no | Open-Meteo forecast and geocoding (nlohmann/json), WMO code → icon number and text, `weather.txt` |
 | `Weather/WeatherCard`, `WeatherService` | no | Weather card (slot 0) and detail: when to fetch, the records, the location file |
 | `App/SequencedSink` | no | Sets one sequence counter (and the CRC) on every frame the host sends |
@@ -105,6 +107,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Platform/Windows/WinAudioSystem` | yes | `IAudioSystem` on Core Audio; default switching through `IPolicyConfig` (ADR-002) |
 | `Platform/Windows/WinMediaKeys` | yes | `IMediaKeys`: one key down and up through `SendInput` (`VK_MEDIA_PREV_TRACK`, `VK_MEDIA_PLAY_PAUSE`, `VK_MEDIA_NEXT_TRACK`) |
 | `Platform/Windows/WinHttpClient` | yes | `IHttpClient` on WinHTTP (HTTPS, system proxy) |
+| `Platform/Windows/WinMenuImport` | yes | Menu import from image files (console and tray); month files in `%APPDATA%` |
 | `Platform/Windows/WinHidLink` | yes | Finds and opens the controller, reader thread, writes frames |
 | `Platform/Windows/main.cpp` | yes | Console program `dashboard-host` |
 

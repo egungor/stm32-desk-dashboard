@@ -34,6 +34,17 @@ icon numbers 1–10 (weather, `protocol.md` "Icon"); a detail row with an
 icon field keeps an icon column. HTTP runs on a worker thread
 (`BackgroundFetch`); the service loop only polls its result.
 
+Notes from step 9 (#20, menu): the menu images are read by the Claude
+API (Messages API, default model `claude-sonnet-5-5`, configurable in
+`claude.txt`) with a structured output (`output_config.format`,
+`json_schema`) rather than free text, so the answer always has the
+fields the host expects; the host still checks every value. The images
+carry no year: the host gives each day the year closest to the import
+date. Month files keep the field names of the design draft (Turkish
+keys). The detail's ‹ › (`OPEN_DETAIL` ±1) move by working day from the
+day shown; `arg` 0 shows the card's day. Icon 11 is the menu's
+(utensils).
+
 ## Context
 
 The Dashboard tab (ADR-005) shows a clock, four cards on a fixed 2×2

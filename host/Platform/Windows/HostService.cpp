@@ -11,12 +11,14 @@
 #include "FrameText.h"
 #include "HidMatch.h"
 #include "MediaKeys.h"
+#include "MenuService.h"
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
 #include "WeatherService.h"
 #include "WinHttpClient.h"
 #include "WinMediaKeys.h"
+#include "WinMenuImport.h"
 
 namespace stm32_audio::host::win {
 
@@ -128,9 +130,15 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     WinHttpClient http;
     WinPreferenceFile weatherFile(L"weather");
     WeatherService weather(dash, weatherFile, http, localTimeNow, log);
-    dash.setDetailHandler([&weather](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+    // Menu card and day detail (slot 1), from the month files (#20).
+    WinMenuFiles menuFiles;
+    MenuService menu(dash, menuFiles, localTimeNow, log);
+    dash.setDetailHandler([&weather, &menu](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
         if (slot == WeatherService::kSlot) {
             return weather.detail(arg);
+        }
+        if (slot == MenuService::kSlot) {
+            return menu.detail(arg);
         }
         return std::nullopt;
     });
@@ -176,6 +184,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         reportLanguage();
         weather.setLanguage(controller.preferences().settings().language);
         weather.onTick(GetTickCount64());
+        menu.setLanguage(controller.preferences().settings().language);
+        menu.onTick(GetTickCount64());
         dash.onTick(GetTickCount64());
         if (!item) {
             continue;
@@ -200,6 +210,10 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             if (hooks.connection) {
                 hooks.connection(false);
             }
+            break;
+        case HostEvent::MenuChanged:
+            log("Menu imported; reading the month files again.");
+            menu.reload();
             break;
         case HostEvent::Quit: {
             link.stop();

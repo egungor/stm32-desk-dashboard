@@ -32,6 +32,7 @@
 #include "FrameRouter.h"
 #include "HostController.h"
 #include "SequencedSink.h"
+#include "MenuService.h"
 #include "WeatherCard.h"
 #include "../../host/Tests/WeatherSamples.h"
 #include "dash_client.h"
@@ -1333,6 +1334,57 @@ void testWeatherOnBoard()
     CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 }
 
+// The menu card and its day detail (#20): ‹ › on the board move by working
+// day on the host.
+class MemoryMenuFiles : public IMenuFiles {
+public:
+    std::string october;
+    std::optional<std::string> read(const std::string& name) override
+    {
+        return name == "menu-2026-10" ? std::optional<std::string>(october) : std::nullopt;
+    }
+    bool write(const std::string&, const std::string&) override { return false; }
+};
+
+void testMenuOnBoard()
+{
+    g_scenario = "menu on the board";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    MemoryMenuFiles files;
+    MenuMonth october;
+    october.year = 2026;
+    october.month = 10;
+    MenuDay friday;
+    friday.main = "Etli nohut";
+    friday.saladBar = {"Roka", "Tur\xC5\x9Fu"};
+    MenuDay monday;
+    monday.main = "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1";
+    october.days[2] = friday;
+    october.days[5] = monday;
+    files.october = formatMonthFile(october);
+    const std::uint32_t saturday = localTimeValue(2026, 10, 3, 10, 0, 0);
+    MenuService menu(*r.dash, files, [saturday] { return saturday; }, nullptr);
+    r.dash->setDetailHandler([&menu](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        return slot == MenuService::kSlot ? menu.detail(arg) : std::nullopt;
+    });
+    menu.onTick(0);
+    r.plugIn();
+    r.run(3000);
+
+    CHECK(r.inSync() && r.screen.cards[1] == r.dash->card(1));
+    CHECK(r.screen.cards[1].find("Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1") != std::string::npos);  // Monday at the weekend
+    CHECK(Dash_OpenDetail(&r.dashClient, 1, 0, r.now));
+    r.run(500);
+    CHECK(r.screen.detail.find("5 Ekim Pazartesi") != std::string::npos);
+    CHECK(Dash_OpenDetail(&r.dashClient, 1, -1, r.now));  // back over the weekend
+    r.run(500);
+    CHECK(r.screen.detail.find("2 Ekim Cuma") != std::string::npos &&
+          r.screen.detail.find("Roka \xC2\xB7 Tur\xC5\x9Fu") != std::string::npos);
+    CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
+}
+
 int main()
 {
     testConnect();
@@ -1356,6 +1408,7 @@ int main()
     testSettingsRoundTrip();
     testDashboardNextToAudio();
     testWeatherOnBoard();
+    testMenuOnBoard();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();

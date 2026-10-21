@@ -1,8 +1,9 @@
 // IPreferenceFile on the Windows file system:
-// %APPDATA%\stm32-desk-dashboard\<name>.txt, replaced atomically (write
-// <name>.tmp, then MoveFileEx with MOVEFILE_REPLACE_EXISTING). An
+// %APPDATA%\stm32-desk-dashboard\<name>.<extension>, replaced atomically
+// (write <name>.tmp, then MoveFileEx with MOVEFILE_REPLACE_EXISTING). An
 // unreadable file is copied to <name>.bad before it is replaced.
-// <name>: "preferences" (ADR-004), "weather" (the weather location).
+// <name>: "preferences" (ADR-004), "weather" (the weather location),
+// "claude" (API key), "menu-2026-10" (.json, the menu of a month).
 #pragma once
 
 #include <optional>
@@ -15,7 +16,7 @@ namespace stm32_audio::host::win {
 class WinPreferenceFile : public IPreferenceFile {
 public:
     // Directory from %APPDATA%; ok() is false if it cannot be determined.
-    explicit WinPreferenceFile(const wchar_t* name = L"preferences");
+    explicit WinPreferenceFile(const wchar_t* name = L"preferences", const wchar_t* extension = L"txt");
 
     bool ok() const { return !dir_.empty(); }
 

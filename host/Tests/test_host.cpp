@@ -23,6 +23,10 @@
 #include "HidMatch.h"
 #include "HostController.h"
 #include "MediaKeys.h"
+#include "MenuData.h"
+#include "MenuImport.h"
+#include "MenuService.h"
+#include "nlohmann/json.hpp"
 #include "PreferenceFile.h"
 #include "PreferenceStore.h"
 #include "Preferences.h"
@@ -1405,7 +1409,7 @@ void testTrayText()
     CHECK(std::strcmp(trayText(TrayText::Exit, 1), "Exit") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 0), "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 7), trayText(TrayText::Exit, 0)) == 0);  // unknown: Turkish
-    for (int id = 0; id <= static_cast<int>(TrayText::StartupFailed); ++id) {
+    for (int id = 0; id <= static_cast<int>(TrayText::MenuImportFailed); ++id) {
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 0)) > 0);
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 1)) > 0);
     }
@@ -1941,6 +1945,10 @@ public:
         }
         return "body of " + url;
     }
+    std::optional<HttpResponse> post(const std::string&, const HttpHeaders&, const std::string&) override
+    {
+        return std::nullopt;
+    }
 };
 
 void testBackgroundFetch()
@@ -1995,6 +2003,10 @@ public:
             return std::nullopt;
         }
         return std::string(weather_samples::kForecast);
+    }
+    std::optional<HttpResponse> post(const std::string&, const HttpHeaders&, const std::string&) override
+    {
+        return std::nullopt;
     }
 };
 
@@ -2062,6 +2074,324 @@ void testWeatherService()
     CHECK(logs.back() == "WARN: weather.txt has no valid latitude and longitude.");
 }
 
+// ------------------------------------------------------------------ menu
+// Made-up menu data only (the real menu images stay out of the repo).
+
+const char* const kMonthFile = R"({
+  "ay": "2026-10",
+  "gunler": {
+    "2026-10-05": {
+      "durum": "var",
+      "ana_yemek": "Kağıt kebabı",
+      "yan_yemek": "Kalem börek",
+      "corba": "Tarhana çorba",
+      "tatli": "Meyve / fıstıklı baklava",
+      "yaninda": "Yoğurt / üzüm komposto",
+      "salata_bar": ["Akdeniz salata", "Havuç tarator", "Zyt. börülce", "Cevizli biber", "Makarna salata", "Zeytin salata"]
+    },
+    "2026-10-28": { "durum": "tatil" },
+    "2026-10-29": { "durum": "bilinmiyor" },
+    "2026-11-02": { "durum": "var", "ana_yemek": "başka ay" },
+    "2026-10-32": { "durum": "tatil" }
+  }
+})";
+
+class MemoryMenuFiles : public IMenuFiles {
+public:
+    std::map<std::string, std::string> files;
+    int reads = 0;
+    bool failWrite = false;
+    std::optional<std::string> read(const std::string& name) override
+    {
+        ++reads;
+        const auto it = files.find(name);
+        return it == files.end() ? std::nullopt : std::optional<std::string>(it->second);
+    }
+    bool write(const std::string& name, const std::string& text) override
+    {
+        if (failWrite) {
+            return false;
+        }
+        files[name] = text;
+        return true;
+    }
+};
+
+class FakeClaude : public IHttpClient {
+public:
+    std::optional<HttpResponse> answer;
+    std::string url;
+    HttpHeaders headers;
+    std::string body;
+    std::optional<std::string> get(const std::string&) override { return std::nullopt; }
+    std::optional<HttpResponse> post(const std::string& to, const HttpHeaders& h, const std::string& b) override
+    {
+        url = to;
+        headers = h;
+        body = b;
+        return answer;
+    }
+};
+
+// A Messages API answer whose text is @p daysJson.
+HttpResponse claudeAnswer(const std::string& daysJson, const std::string& stop = "end_turn")
+{
+    nlohmann::json root = {
+        {"id", "msg_test"},
+        {"type", "message"},
+        {"role", "assistant"},
+        {"model", "claude-sonnet-5-5"},
+        {"content", nlohmann::json::array({{{"type", "text"}, {"text", daysJson}}})},
+        {"stop_reason", stop},
+    };
+    return HttpResponse{200, root.dump()};
+}
+
+std::string apiDay(int month, int day, const char* status, const char* main, const char* soup,
+                   std::vector<std::string> salad = {})
+{
+    nlohmann::json d = {{"month", month}, {"day", day},       {"status", status}, {"main", main},
+                        {"side", ""},     {"soup", soup},     {"dessert", ""},    {"extra", ""},
+                        {"salad_bar", salad}};
+    return d.dump();
+}
+
+void testMenuDates()
+{
+    CHECK(daysFromCivil(1970, 1, 1) == 0 && daysFromCivil(2026, 10, 21) == 20747);
+    int y = 0;
+    int m = 0;
+    int d = 0;
+    civilFromDays(20747, y, m, d);
+    CHECK(y == 2026 && m == 10 && d == 21);
+    CHECK(weekdayOf(daysFromCivil(2026, 10, 21)) == 3);  // Wednesday
+    CHECK(validDate(2028, 2, 29) && !validDate(2026, 2, 29) && !validDate(2026, 11, 31) && !validDate(2026, 0, 1));
+    CHECK(std::string(monthName(10, 0)) == "Ekim" && std::string(weekdayName(1, 1)) == "Monday");
+    CHECK(std::string(weekdayShort(4, 0)) == "Per" && std::string(monthName(13, 0)).empty());
+}
+
+void testMenuMonthFile()
+{
+    const std::optional<MenuMonth> m = parseMonthFile(kMonthFile);
+    CHECK(m.has_value());
+    if (!m) {
+        return;
+    }
+    CHECK(m->year == 2026 && m->month == 10 && m->days.size() == 2U);  // other month, bad state, bad date left out
+    const MenuDay& d5 = m->days.at(5);
+    CHECK(!d5.holiday && d5.main == "Kağıt kebabı" && d5.extra == "Yoğurt / üzüm komposto" && d5.saladBar.size() == 6U);
+    CHECK(m->days.at(28).holiday);
+
+    // Round trip; the file keeps the design's field order.
+    const std::string text = formatMonthFile(*m);
+    CHECK(text.find("\"ay\": \"2026-10\"") != std::string::npos);
+    CHECK(text.find("\"durum\": \"var\",\n      \"ana_yemek\"") != std::string::npos);
+    const std::optional<MenuMonth> again = parseMonthFile(text);
+    CHECK(again.has_value() && again->days.size() == 2U && again->days.at(5).saladBar == d5.saladBar);
+    CHECK(menuFileName(2026, 1) == "menu-2026-01");
+    CHECK(!parseMonthFile("{}").has_value() && !parseMonthFile("{\"ay\": \"2026-13\"}").has_value());
+    CHECK(!parseMonthFile("[").has_value());
+}
+
+void testMenuMergeAndSummary()
+{
+    MenuMonth month;
+    month.year = 2026;
+    month.month = 10;
+    MenuDay meal;
+    meal.main = "Kuru fasulye";
+    meal.soup = "Mercimek çorba";
+    MenuDay salad;
+    salad.saladBar = {"Çoban salata", "Turşu"};
+    MenuDay holiday;
+    holiday.holiday = true;
+
+    mergeDay(month, 5, meal);
+    mergeDay(month, 5, salad);  // the salad bar from a second import keeps the meal
+    CHECK(month.days.at(5).main == "Kuru fasulye" && month.days.at(5).saladBar.size() == 2U);
+    mergeDay(month, 6, meal);
+    mergeDay(month, 7, salad);
+    mergeDay(month, 28, meal);
+    mergeDay(month, 28, holiday);  // a holiday replaces the day
+    CHECK(month.days.at(28).holiday && month.days.at(28).main.empty());
+    mergeDay(month, 29, holiday);
+    mergeDay(month, 29, meal);  // a menu clears a holiday
+    CHECK(!month.days.at(29).holiday);
+    month.days.at(29).holiday = true;
+
+    CHECK(monthSummary(month, 0) ==
+          "Ekim 2026: 2 gün yemek, 2 gün salata bar, 2 tatil; salata bar eksik: 6 Ekim; yemek eksik: 7 Ekim");
+    CHECK(monthSummary(month, 1) == "October 2026: 2 days with a meal, 2 with the salad bar, 2 holidays; "
+                                    "no salad bar: 6 October; no meal: 7 October");
+}
+
+void testMenuRequest()
+{
+    CHECK(base64Encode("") == "" && base64Encode("f") == "Zg==" && base64Encode("fo") == "Zm8=");
+    CHECK(base64Encode("foo") == "Zm9v" && base64Encode("foobar") == "Zm9vYmFy");
+    CHECK(base64Encode(std::string("\xFF\x00\x80", 3)) == "/wCA");
+    CHECK(imageMediaType("Ekim.PNG") == std::string("image/png") && imageMediaType("a.jpeg") == std::string("image/jpeg"));
+    CHECK(imageMediaType("a.webp").has_value() && !imageMediaType("menu.pdf").has_value() && !imageMediaType("png"));
+
+    const ClaudeConfig file = parseClaudeConfig(std::string("\xEF\xBB\xBF# key\napi_key = sk-test \nmodel=claude-x\n"), "sk-env");
+    CHECK(file.apiKey == "sk-test" && file.model == "claude-x");
+    const ClaudeConfig env = parseClaudeConfig(std::nullopt, " sk-env\n");
+    CHECK(env.apiKey == "sk-env" && env.model == kDefaultMenuModel);
+    CHECK(parseClaudeConfig(std::string("model=\n"), "").apiKey.empty());
+
+    const std::string body = menuRequestBody({MenuImage{"a.png", "image/png", "foo"}}, "claude-sonnet-5-5");
+    const nlohmann::json j = nlohmann::json::parse(body, nullptr, false);
+    CHECK(j.is_object() && j["model"] == "claude-sonnet-5-5" && j["max_tokens"].is_number_integer());
+    const nlohmann::json& content = j["messages"][0]["content"];
+    CHECK(content.size() == 2U && content[0]["source"]["media_type"] == "image/png" &&
+          content[0]["source"]["data"] == "Zm9v" && content[1]["type"] == "text");
+    const nlohmann::json& schema = j["output_config"]["format"]["schema"];
+    CHECK(j["output_config"]["format"]["type"] == "json_schema" && schema["additionalProperties"] == false);
+    CHECK(schema["properties"]["days"]["items"]["additionalProperties"] == false &&
+          schema["properties"]["days"]["items"]["required"].size() == 9U);
+}
+
+void testMenuAnswer()
+{
+    const std::string days = "{\"days\": [" + apiDay(10, 5, "menu", "  Kağıt\n kebabı ", "Tarhana çorba", {"Turşu", " "}) +
+                             "," + apiDay(10, 28, "holiday", "", "") + "," + apiDay(10, 30, "none", "", "") + "," +
+                             apiDay(10, 5, "menu", "tekrar", "") + "," + apiDay(11, 31, "menu", "Yok", "") + "," +
+                             apiDay(1, 4, "menu", "Ocak yemeği", "") + "," + apiDay(10, 6, "menu", "", "") + "]}";
+    const MenuAnswer a = parseMenuAnswer(claudeAnswer(days), 2026, 12, 0);
+    CHECK(a.error.empty() && a.days.size() == 3U);
+    if (a.days.size() == 3U) {
+        CHECK(a.days[0].year == 2026 && a.days[0].day == 5 && a.days[0].content.main == "Kağıt kebabı");
+        CHECK(a.days[0].content.saladBar.size() == 1U);
+        CHECK(a.days[1].content.holiday && a.days[1].day == 28);
+        CHECK(a.days[2].year == 2027 && a.days[2].month == 1);  // January after a December import
+    }
+
+    CHECK(parseMenuAnswer(HttpResponse{401, "{}"}, 2026, 10, 0).error == "Claude API anahtarı geçersiz (401).");
+    const MenuAnswer bad = parseMenuAnswer(
+        HttpResponse{400, R"({"type":"error","error":{"type":"invalid_request_error","message":"image too big"}})"}, 2026,
+        10, 1);
+    CHECK(bad.error == "Claude API error 400: image too big");
+    CHECK(parseMenuAnswer(claudeAnswer("{\"days\": []}", "max_tokens"), 2026, 10, 1).error ==
+          "Claude API answer incomplete (max_tokens).");
+    CHECK(!parseMenuAnswer(claudeAnswer("{\"days\": []}"), 2026, 10, 0).error.empty());
+    CHECK(!parseMenuAnswer(claudeAnswer("not json"), 2026, 10, 0).error.empty());
+    CHECK(!parseMenuAnswer(HttpResponse{200, "<html>"}, 2026, 10, 0).error.empty());
+}
+
+void testMenuImport()
+{
+    MemoryMenuFiles files;
+    files.files["menu-2026-10"] = kMonthFile;
+    FakeClaude http;
+    const std::vector<MenuImage> images = {MenuImage{"salata.png", "image/png", "png bytes"}};
+    ClaudeConfig config;
+
+    // No key: nothing sent.
+    MenuImportResult r = importMenu(images, config, http, files, 2026, 10, 0);
+    CHECK(!r.ok && r.message.find("api_key") != std::string::npos && http.url.empty());
+
+    config.apiKey = "sk-test";
+    CHECK(!importMenu({}, config, http, files, 2026, 10, 0).ok);
+    CHECK(!importMenu({MenuImage{"big.png", "image/png", std::string(kMaxMenuImageBytes + 1U, 'x')}}, config, http,
+                      files, 2026, 10, 0)
+               .ok);
+    r = importMenu(images, config, http, files, 2026, 10, 1);  // no answer
+    CHECK(!r.ok && r.message == "Could not reach the Claude API.");
+    CHECK(http.url == kClaudeApiUrl && http.headers.size() == 3U && http.headers[0].second == "sk-test");
+
+    // Salad bar for the 5th (kept meal), a new day, and a day in November.
+    http.answer = claudeAnswer("{\"days\": [" + apiDay(10, 5, "menu", "", "", {"Roka", "Turşu"}) + "," +
+                               apiDay(10, 6, "menu", "Etli nohut", "Ezogelin çorba") + "," +
+                               apiDay(11, 2, "menu", "Mantı", "Yayla çorba", {"Cacık"}) + "]}");
+    r = importMenu(images, config, http, files, 2026, 10, 0);
+    CHECK(r.ok);
+    CHECK(r.message == "Ekim 2026: 2 gün yemek, 1 gün salata bar, 1 tatil; salata bar eksik: 6 Ekim\n"
+                       "Kasım 2026: 1 gün yemek, 1 gün salata bar, 0 tatil");
+    const std::optional<MenuMonth> oct = parseMonthFile(files.files["menu-2026-10"]);
+    CHECK(oct.has_value() && oct->days.at(5).main == "Kağıt kebabı" && oct->days.at(5).saladBar.size() == 2U);
+    CHECK(files.files.count("menu-2026-11") == 1U);
+
+    files.failWrite = true;
+    r = importMenu(images, config, http, files, 2026, 10, 0);
+    CHECK(!r.ok && r.message.find("menu-2026-10.json") != std::string::npos);
+
+    // A damaged month file is replaced by the imported days.
+    files.failWrite = false;
+    files.files["menu-2026-10"] = "{ broken";
+    r = importMenu(images, config, http, files, 2026, 10, 0);
+    CHECK(r.ok && parseMonthFile(files.files["menu-2026-10"]).has_value());
+}
+
+void testMenuService()
+{
+    DashRig r;
+    MemoryMenuFiles files;
+    std::vector<std::string> logs;
+    r.now = localTimeValue(2026, 10, 5, 9, 0, 0);  // Monday
+    MenuService menu(r.dash, files, [&r] { return r.now; }, [&logs](const std::string& l) { logs.push_back(l); });
+    const char sep = '\x1F';
+    std::uint64_t ms = 1000;
+
+    // No file for the month.
+    menu.onTick(ms);
+    CHECK(r.dash.card(1) == std::string("11") + sep + "Yemek" + sep + "\nMenü yüklenmedi\nTepside: Menü görüntülerini yükle…");
+
+    files.files["menu-2026-10"] = kMonthFile;
+    menu.reload();
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1) == std::string("11") + sep + "Yemek" + sep +
+                                "\nKağıt kebabı\nTarhana çorba\nSalata bar: 6 çeşit");
+    CHECK(logs.size() == 1U && logs[0] == "Menu files changed.");  // the file appeared
+
+    // Detail, then the next working days (6th: no entry in the file).
+    std::optional<std::string> d = menu.detail(0);
+    CHECK(d.has_value() && d->rfind(std::string("Yemek") + sep + "5 Ekim Pazartesi" + sep + "n\n", 0) == 0);
+    CHECK(d->find(std::string("\n") + sep + "Ana yemek" + sep + "Kağıt kebabı") != std::string::npos);
+    CHECK(d->find(std::string("\n#Salata bar\n") + sep + sep + "Akdeniz salata · Havuç tarator") != std::string::npos);
+    d = menu.detail(1);
+    CHECK(d->find("6 Ekim Salı") != std::string::npos && d->find("Bu gün için menü yok") != std::string::npos);
+    d = menu.detail(-1);
+    d = menu.detail(-1);  // back over the weekend: Friday 2 October
+    CHECK(d->find("2 Ekim Cuma") != std::string::npos);
+
+    // Holiday; weekend shows Monday with a badge; English.
+    r.now = localTimeValue(2026, 10, 28, 12, 0, 0);
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).find("\nResmi tatil") != std::string::npos);
+    r.now = localTimeValue(2026, 10, 3, 12, 0, 0);  // Saturday
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind(std::string("11") + sep + "Yemek" + sep + "Pzt 5\nKağıt kebabı", 0) == 0);
+    CHECK(MenuService::cardDay(daysFromCivil(2026, 10, 4)) == daysFromCivil(2026, 10, 5));
+    menu.setLanguage(1);
+    CHECK(r.dash.card(1).rfind(std::string("11") + sep + "Menu" + sep + "Mon 5\n", 0) == 0);
+    CHECK(r.dash.card(1).find("Salad bar: 6 items") != std::string::npos);
+    CHECK(menu.detail(0)->find("Monday 5 October") != std::string::npos);
+
+    // A changed file is read again after a minute; the open detail follows.
+    r.dash.onConnected();
+    r.dash.setDetailHandler([&menu](std::uint8_t, std::int8_t arg) { return menu.detail(arg); });
+    ProtoMessage open = dashMessage(PROTO_CMD_OPEN_DETAIL, 4);
+    open.u.open_detail.slot = 1;
+    r.dash.onMessage(open);
+    r.sink.sent.clear();
+    files.files["menu-2026-10"] = std::string(kMonthFile).replace(std::string(kMonthFile).find("Kağıt kebabı"),
+                                                                    std::string("Kağıt kebabı").size(), "Hünkar beğendi");
+    menu.onTick(ms += 500);
+    CHECK(r.sink.sent.empty());  // not yet
+    menu.onTick(ms += MenuService::kFileIntervalMs);
+    CHECK(!logs.empty() && logs.back() == "Menu files changed.");
+    const std::string detailSent = popRecord(r.sink, PROTO_CMD_DETAIL_PART);
+    CHECK(detailSent.find("Hünkar beğendi") != std::string::npos);
+    CHECK(popRecord(r.sink, PROTO_CMD_CARD_PART).find("Hünkar beğendi") != std::string::npos);
+
+    // A file of another month under this name is ignored with a warning.
+    files.files["menu-2026-11"] = kMonthFile;
+    r.now = localTimeValue(2026, 11, 2, 12, 0, 0);
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).find("No menu loaded") != std::string::npos);
+    CHECK(logs.back().find("menu-2026-11.json is not a menu file") != std::string::npos);
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -2120,6 +2450,13 @@ int main()
     testWeatherCard();
     testBackgroundFetch();
     testWeatherService();
+    testMenuDates();
+    testMenuMonthFile();
+    testMenuMergeAndSummary();
+    testMenuRequest();
+    testMenuAnswer();
+    testMenuImport();
+    testMenuService();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
