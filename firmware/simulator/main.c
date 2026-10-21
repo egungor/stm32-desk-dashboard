@@ -932,15 +932,30 @@ static void dash_media(uint8_t action, void *user)
 static void run_dashboard_script(void)
 {
     static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media };
+    /* Card and detail as host/Weather/WeatherCard makes them (#18). */
+    static const char *const weather_card =
+        "3" F "\xC4\xB0stanbul" F "\n"
+        "18\xC2\xB0  Par\xC3\xA7" "al\xC4\xB1 bulutlu\n"
+        "11\xC2\xB0 / 21\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %20\n"
+        "R\xC3\xBCzg\xC3\xA2r 12 km/s";
     static const char *const weather_detail =
-        "Hava durumu" F "Ankara" F "\n"
-        "#Bug\xC3\xBCn\n"
-        "0" F "S\xC4\xB1" "cakl\xC4\xB1k" F "14\xC2\xB0 (hissedilen 12\xC2\xB0)\n"
-        "0" F "Durum" F "Par\xC3\xA7" "al\xC4\xB1 bulutlu\n"
+        "Hava durumu" F "\xC4\xB0stanbul \xC2\xB7 14:00" F "\n"
+        "#\xC5\x9Eimdi\n"
+        "3" F "18\xC2\xB0" F "Par\xC3\xA7" "al\xC4\xB1 bulutlu\n"
+        "0" F "Hissedilen" F "16\xC2\xB0\n"
+        "0" F "Nem" F "%65\n"
+        "0" F "R\xC3\xBCzg\xC3\xA2r" F "12 km/s\n"
         "#10 g\xC3\xBCn\n"
-        "0" F "Per 22" F "17\xC2\xB0 / 8\xC2\xB0  ya\xC4\x9F\xC4\xB1\xC5\x9F %20\n"
-        "0" F "Cum 23" F "15\xC2\xB0 / 7\xC2\xB0  ya\xC4\x9F\xC4\xB1\xC5\x9F %60\n"
-        "0" F "Cmt 24" F "12\xC2\xB0 / 5\xC2\xB0  ya\xC4\x9F\xC4\xB1\xC5\x9F %80";
+        "3" F "Bug\xC3\xBCn" F "11\xC2\xB0 / 21\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %20\n"
+        "7" F "Yar\xC4\xB1n" F "13\xC2\xB0 / 17\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %85\n"
+        "5" F "Cum 23" F "11\xC2\xB0 / 16\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %30\n"
+        "1" F "Cmt 24" F "10\xC2\xB0 / 20\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %0\n"
+        "7" F "Paz 25" F "10\xC2\xB0 / 18\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %60\n"
+        "10" F "Pzt 26" F "10\xC2\xB0 / 16\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %90\n"
+        "6" F "Sal 27" F "0\xC2\xB0 / 15\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %10\n"
+        "9" F "\xC3\x87" "ar 28" F "-4\xC2\xB0 / 4\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %70\n"
+        "3" F "Per 29" F "5\xC2\xB0 / 13\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %5\n"
+        "5" F "Cum 30" F "6\xC2\xB0 / 13\xC2\xB0";
     static const char *const menu_detail =
         "Yemek" F "5 Ekim Pazartesi" F "n\n"
         "0" F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
@@ -955,7 +970,7 @@ static void run_dashboard_script(void)
 
     Ui_SetDashHandlers(&handlers, NULL);
     Ui_SetTime(1792593125U); /* 2026-10-21 14:32:05, a Wednesday */
-    Ui_SetCard(0U, "0" F "HAVA" F "\n14\xC2\xB0  Par\xC3\xA7" "al\xC4\xB1 bulutlu\nE 17\xC2\xB0 / 8\xC2\xB0\nYa\xC4\x9F\xC4\xB1\xC5\x9F %20");
+    Ui_SetCard(0U, weather_card);
     Ui_SetCard(1U, "0" F "YEMEK" F "\nKa\xC4\x9F\xC4\xB1t kebab\xC4\xB1\nTarhana \xC3\xA7orba\nSalata bar: 6 \xC3\xA7" "e\xC5\x9Fit");
     Ui_SetCard(2U, "");
     Ui_SetCard(3U, "0" F "CLAUDE CODE" F "\nOnay bekleyen yok");

@@ -52,6 +52,17 @@
 #define SYM_DOWN       "\xEF\x81\xA3" /* arrow-down */
 #define SYM_BACKSPACE  "\xEF\x95\x9A"
 #define SYM_CLOSE      "\xEF\x80\x8D" /* times */
+/* Weather icons of protocol.md ("Icon" 1-10, #18) */
+#define SYM_SUN        "\xEF\x86\x85" /* sun */
+#define SYM_MOON       "\xEF\x86\x86" /* moon */
+#define SYM_CLOUD_SUN  "\xEF\x9B\x84" /* cloud-sun */
+#define SYM_CLOUD_MOON "\xEF\x9B\x83" /* cloud-moon */
+#define SYM_CLOUD      "\xEF\x83\x82" /* cloud */
+#define SYM_FOG        "\xEF\x9D\x9F" /* smog */
+#define SYM_RAIN       "\xEF\x9C\xBD" /* cloud-rain */
+#define SYM_HEAVY_RAIN "\xEF\x9D\x80" /* cloud-showers-heavy */
+#define SYM_SNOW       "\xEF\x8B\x9C" /* snowflake */
+#define SYM_STORM      "\xEF\x83\xA7" /* bolt */
 
 LV_FONT_DECLARE(ui_font_14)
 LV_FONT_DECLARE(ui_font_16)
