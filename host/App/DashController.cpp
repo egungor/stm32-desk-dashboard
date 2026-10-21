@@ -1,0 +1,251 @@
+#include "DashController.h"
+
+#include <utility>
+
+namespace stm32_audio::host {
+
+namespace {
+
+bool isContinuation(char c)
+{
+    return (static_cast<unsigned char>(c) & 0xC0U) == 0x80U;
+}
+
+std::int64_t daysFromCivil(std::int64_t y, unsigned m, unsigned d)
+{
+    // Howard Hinnant's days_from_civil: days since 1970-01-01.
+    y -= m <= 2U ? 1 : 0;
+    const std::int64_t era = (y >= 0 ? y : y - 399) / 400;
+    const auto yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153U * (m + (m > 2U ? 0U : 12U) - 3U) + 2U) / 5U + d - 1U;
+    const unsigned doe = yoe * 365U + yoe / 4U - yoe / 100U + doy;
+    return era * 146097 + static_cast<std::int64_t>(doe) - 719468;
+}
+
+}  // namespace
+
+std::string recordLine(std::initializer_list<std::string_view> fields)
+{
+    std::string out;
+    bool first = true;
+
+    for (std::string_view field : fields) {
+        if (!first) {
+            out += static_cast<char>(PROTO_FIELD_SEPARATOR);
+        }
+        first = false;
+        for (char c : field) {
+            const bool special = (c == '\n') || (c == '\r') || (c == '\0') ||
+                                 (static_cast<unsigned char>(c) == PROTO_FIELD_SEPARATOR);
+            out += special ? ' ' : c;
+        }
+    }
+    return out;
+}
+
+std::string cutUtf8(std::string text, std::size_t maxBytes)
+{
+    if (text.size() <= maxBytes) {
+        return text;
+    }
+    std::size_t end = maxBytes;
+    while ((end > 0U) && isContinuation(text[end])) {
+        --end;
+    }
+    text.resize(end);
+    return text;
+}
+
+std::uint32_t localTimeValue(int year, int month, int day, int hour, int minute, int second)
+{
+    const std::int64_t days = daysFromCivil(year, static_cast<unsigned>(month), static_cast<unsigned>(day));
+    const std::int64_t secs = days * 86400 + static_cast<std::int64_t>(hour) * 3600 +
+                              static_cast<std::int64_t>(minute) * 60 + second;
+    return secs < 0 ? 0U : static_cast<std::uint32_t>(secs);
+}
+
+DashController::DashController(IFrameSink& sink, ClockFn clock) : sink_(sink), clock_(std::move(clock)) {}
+
+void DashController::onConnected()
+{
+    sendAll();
+}
+
+void DashController::onDisconnected()
+{
+    synced_ = false;
+    openSlot_.reset();
+}
+
+void DashController::onMessage(const ProtoMessage& msg)
+{
+    switch (msg.command) {
+    case PROTO_CMD_GET_CARDS:
+        sendAll();
+        break;
+    case PROTO_CMD_OPEN_DETAIL:
+        if (!sendDetail(msg.u.open_detail.slot, msg.u.open_detail.arg)) {
+            sendError(PROTO_ERROR_OPERATION_FAILED, msg.command, msg.sequence);
+        }
+        break;
+    case PROTO_CMD_ACTION:
+        if (!action_ || !action_(msg.u.action)) {
+            sendError(PROTO_ERROR_OPERATION_FAILED, msg.command, msg.sequence);
+        }
+        break;
+    case PROTO_CMD_ERROR:
+        ++stats_.errorsReceived;
+        break;
+    default:
+        break;  // host -> STM32 commands coming the wrong way: drop
+    }
+}
+
+void DashController::onTick(std::uint64_t nowMs)
+{
+    lastTick_ = nowMs;
+    if (!synced_) {
+        return;
+    }
+    if (!timeSentAtMs_) {
+        timeSentAtMs_ = nowMs;  // the time went out before the first tick
+    }
+    const std::uint64_t elapsedMs = nowMs - *timeSentAtMs_;
+    if (elapsedMs >= kTimeIntervalMs) {
+        sendTime(nowMs);
+        return;
+    }
+    // The board counts on from the last TIME; a jump of the local clock
+    // (time zone, daylight saving, the user setting it) is sent at once.
+    const std::uint32_t expected = timeSent_ + static_cast<std::uint32_t>(elapsedMs / 1000U);
+    const std::uint32_t actual = clock_();
+    const std::uint32_t diff = actual > expected ? actual - expected : expected - actual;
+    if (diff > kClockJumpSeconds) {
+        sendTime(nowMs);
+    }
+}
+
+void DashController::setCard(std::uint8_t slot, std::string text)
+{
+    if (slot >= PROTO_MAX_CARDS) {
+        return;
+    }
+    text = cutUtf8(std::move(text), PROTO_CARD_MAX_BYTES);
+    Slot& s = cards_[slot];
+    if (text == s.text) {
+        return;
+    }
+    s.text = std::move(text);
+    ++s.generation;
+    if (synced_) {
+        sendCard(slot);
+    }
+}
+
+void DashController::refreshDetail(std::uint8_t slot)
+{
+    if (synced_ && openSlot_ && (*openSlot_ == slot)) {
+        (void)sendDetail(slot, 0);
+    }
+}
+
+void DashController::sendAll()
+{
+    synced_ = true;
+    sendTime(lastTick_);
+    for (std::uint8_t slot = 0; slot < PROTO_MAX_CARDS; ++slot) {
+        sendCard(slot);
+    }
+}
+
+void DashController::sendCard(std::uint8_t slot)
+{
+    const Slot& s = cards_[slot];
+
+    if (s.text.empty()) {
+        ProtoMessage msg{};
+        msg.command = PROTO_CMD_CARD_CLEAR;
+        msg.u.slot = slot;
+        send(msg);
+        return;
+    }
+    sendRecord(PROTO_CMD_CARD_PART, slot, s.generation, s.text);
+}
+
+void DashController::sendTime(std::optional<std::uint64_t> nowMs)
+{
+    ProtoMessage msg{};
+    msg.command = PROTO_CMD_TIME;
+    msg.u.local_time = clock_();
+    timeSent_ = msg.u.local_time;
+    timeSentAtMs_ = nowMs;
+    ++stats_.timesSent;
+    send(msg);
+}
+
+bool DashController::sendDetail(std::uint8_t slot, std::int8_t arg)
+{
+    if (!detail_) {
+        return false;
+    }
+    const std::optional<std::string> text = detail_(slot, arg);
+    if (!text) {
+        return false;
+    }
+    openSlot_ = slot;
+    ++detailGeneration_;
+    sendRecord(PROTO_CMD_DETAIL_PART, slot, detailGeneration_, cutUtf8(*text, PROTO_DETAIL_MAX_BYTES));
+    return true;
+}
+
+void DashController::sendRecord(std::uint8_t command, std::uint8_t id, std::uint8_t generation,
+                                const std::string& text)
+{
+    // NUL bytes would make the record invalid; they cannot come from
+    // recordLine, but a feature may build text by hand.
+    std::string clean = text;
+    for (char& c : clean) {
+        if (c == '\0') {
+            c = ' ';
+        }
+    }
+    const auto length = static_cast<std::uint16_t>(clean.size());
+    const std::uint8_t parts = Proto_RecordPartCount(length);
+    for (std::uint8_t part = 0; part < parts; ++part) {
+        ProtoMessage msg{};
+        msg.command = command;
+        if (Proto_RecordPart(reinterpret_cast<const std::uint8_t*>(clean.data()), length, id, generation, part,
+                             &msg.u.part) == 0) {
+            ++stats_.sendFailures;
+            return;
+        }
+        send(msg);
+    }
+}
+
+void DashController::sendError(ProtoErrorCode code, std::uint8_t refCommand, std::uint8_t refSequence)
+{
+    ProtoMessage msg{};
+    msg.command = PROTO_CMD_ERROR;
+    msg.u.error.code = static_cast<std::uint8_t>(code);
+    msg.u.error.ref_command = refCommand;
+    msg.u.error.ref_sequence = refSequence;
+    send(msg);
+}
+
+void DashController::send(const ProtoMessage& msg)
+{
+    Frame frame{};
+    if (Proto_Encode(&msg, frame.data()) != PROTO_OK) {
+        // Only reachable through a bug in this class; never send garbage.
+        ++stats_.sendFailures;
+        return;
+    }
+    if (sink_.sendFrame(frame)) {
+        ++stats_.framesSent;
+    } else {
+        ++stats_.sendFailures;
+    }
+}
+
+}  // namespace stm32_audio::host

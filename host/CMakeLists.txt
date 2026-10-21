@@ -23,6 +23,8 @@ add_library(host_core STATIC
     Audio/AudioMapping.cpp
     Audio/DeviceRegistry.cpp
     Audio/VolumeLimit.cpp
+    App/DashController.cpp
+    App/FrameRouter.cpp
     App/FrameText.cpp
     App/HostController.cpp
     App/PreferenceFile.cpp

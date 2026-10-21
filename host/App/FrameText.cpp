@@ -38,6 +38,24 @@ const char* commandName(std::uint8_t command)
         return "SETTINGS";
     case PROTO_CMD_SET_SETTINGS:
         return "SET_SETTINGS";
+    case PROTO_CMD_TIME:
+        return "TIME";
+    case PROTO_CMD_CARD_PART:
+        return "CARD_PART";
+    case PROTO_CMD_CARD_CLEAR:
+        return "CARD_CLEAR";
+    case PROTO_CMD_DETAIL_PART:
+        return "DETAIL_PART";
+    case PROTO_CMD_PROMPT_PART:
+        return "PROMPT_PART";
+    case PROTO_CMD_PROMPT_CLOSE:
+        return "PROMPT_CLOSE";
+    case PROTO_CMD_GET_CARDS:
+        return "GET_CARDS";
+    case PROTO_CMD_OPEN_DETAIL:
+        return "OPEN_DETAIL";
+    case PROTO_CMD_ACTION:
+        return "ACTION";
     case PROTO_CMD_ERROR:
         return "ERROR";
     default:
@@ -143,9 +161,34 @@ std::string describeMessage(const ProtoMessage& msg)
                " startup_tab=" + std::to_string(s.startup_tab) + " last_tab=" + std::to_string(s.last_tab) +
                " timeout=" + std::to_string(s.screen_timeout) + " flipped=" + std::to_string(s.flipped) +
                " language=" + std::to_string(s.language) + " limit=" +
-               (s.volume_limit_on != 0U ? std::to_string(s.volume_limit) : std::string("off"));
+               (s.volume_limit_on != 0U ? std::to_string(s.volume_limit) : std::string("off")) +
+               " startup_screen=" + std::to_string(s.startup_screen);
         break;
     }
+    case PROTO_CMD_TIME:
+        out += " local=" + std::to_string(msg.u.local_time);
+        break;
+    case PROTO_CMD_CARD_PART:
+    case PROTO_CMD_DETAIL_PART:
+    case PROTO_CMD_PROMPT_PART: {
+        const ProtoRecordPart& p = msg.u.part;
+        out += " id=" + std::to_string(p.id) + " gen=" + std::to_string(p.generation) + " part=" +
+               std::to_string(p.part + 1U) + "/" + std::to_string(p.parts) + " bytes=" + std::to_string(p.len);
+        break;
+    }
+    case PROTO_CMD_CARD_CLEAR:
+        out += " slot=" + std::to_string(msg.u.slot);
+        break;
+    case PROTO_CMD_PROMPT_CLOSE:
+        out += " id=" + std::to_string(msg.u.prompt_id);
+        break;
+    case PROTO_CMD_OPEN_DETAIL:
+        out += " slot=" + std::to_string(msg.u.open_detail.slot) + " arg=" + std::to_string(msg.u.open_detail.arg);
+        break;
+    case PROTO_CMD_ACTION:
+        out += " kind=" + std::to_string(msg.u.action.kind) + " ref=" + std::to_string(msg.u.action.ref) +
+               " action=" + std::to_string(msg.u.action.action);
+        break;
     case PROTO_CMD_DEVICE_CHANGED:
         out += " index=" + indexText(msg.u.device_index);
         break;
