@@ -1,6 +1,6 @@
 /**
  * @file    protocol.h
- * @brief   STM32 <-> Windows host protocol, version 2 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 3 (see protocol/protocol.md).
  *
  * Portable C99 codec shared by the firmware and the host. Every message is
  * one fixed-size frame of PROTO_FRAME_SIZE bytes:
@@ -30,7 +30,7 @@ extern "C" {
 
 #define PROTO_FRAME_SIZE   64U
 #define PROTO_MAGIC        0xA5U
-#define PROTO_VERSION      2U
+#define PROTO_VERSION      3U
 #define PROTO_HEADER_SIZE  5U
 #define PROTO_CRC_OFFSET   62U
 #define PROTO_MAX_PAYLOAD  (PROTO_CRC_OFFSET - PROTO_HEADER_SIZE) /* 57 */
@@ -45,6 +45,24 @@ extern "C" {
 #define PROTO_MAX_VOLUME       100U
 /** Largest device alias, in bytes of UTF-8, without terminator. */
 #define PROTO_MAX_ALIAS_BYTES  32U
+
+/* Dashboard records (ADR-006): text sent in parts. */
+/** Bytes of the part header: id, generation, part, parts. */
+#define PROTO_PART_HEADER_BYTES 4U
+/** Record bytes in one part frame (57 - 4). */
+#define PROTO_PART_DATA_BYTES   (PROTO_MAX_PAYLOAD - PROTO_PART_HEADER_BYTES) /* 53 */
+/** Card slots; v1 shows 0..3. */
+#define PROTO_MAX_CARDS         8U
+/** Largest record of each kind, in bytes of UTF-8, without terminator. */
+#define PROTO_CARD_MAX_BYTES    256U
+#define PROTO_DETAIL_MAX_BYTES  2048U
+#define PROTO_PROMPT_MAX_BYTES  1024U
+/** Most parts of a record of each kind (ceil(max / 53)). */
+#define PROTO_CARD_MAX_PARTS    5U
+#define PROTO_DETAIL_MAX_PARTS  39U
+#define PROTO_PROMPT_MAX_PARTS  20U
+/** Record text: lines end with '\n', fields are separated by this byte. */
+#define PROTO_FIELD_SEPARATOR   0x1FU
 
 typedef enum
 {
@@ -62,6 +80,15 @@ typedef enum
     PROTO_CMD_MOVE_DEVICE     = 0x0C, /**< STM32 -> host */
     PROTO_CMD_SETTINGS        = 0x0D, /**< host -> STM32 */
     PROTO_CMD_SET_SETTINGS    = 0x0E, /**< STM32 -> host */
+    PROTO_CMD_TIME            = 0x20, /**< host -> STM32 */
+    PROTO_CMD_CARD_PART       = 0x21, /**< host -> STM32, part of a card record */
+    PROTO_CMD_CARD_CLEAR      = 0x22, /**< host -> STM32 */
+    PROTO_CMD_DETAIL_PART     = 0x23, /**< host -> STM32, part of a detail record */
+    PROTO_CMD_PROMPT_PART     = 0x24, /**< host -> STM32, part of a prompt record */
+    PROTO_CMD_PROMPT_CLOSE    = 0x25, /**< host -> STM32 */
+    PROTO_CMD_GET_CARDS       = 0x30, /**< STM32 -> host */
+    PROTO_CMD_OPEN_DETAIL     = 0x31, /**< STM32 -> host */
+    PROTO_CMD_ACTION          = 0x32, /**< STM32 -> host */
     PROTO_CMD_ERROR           = 0x7F  /**< either direction */
 } ProtoCommand;
 
@@ -92,7 +119,8 @@ typedef enum
 #define PROTO_TAB_COUNT          2U  /**< 0 all, 1 favorites */
 #define PROTO_MAX_SCREEN_TIMEOUT 60U /**< minutes; 0 = never */
 #define PROTO_LANGUAGE_COUNT     2U  /**< 0 Turkish, 1 English */
-#define PROTO_SETTINGS_BYTES     11U
+#define PROTO_STARTUP_SCREEN_COUNT 2U /**< 0 Dashboard, 1 Audio (ADR-005) */
+#define PROTO_SETTINGS_BYTES     12U
 #define PROTO_DEFAULT_VOLUME_LIMIT 50U
 
 /** ERROR codes. */
@@ -168,7 +196,48 @@ typedef struct
     uint8_t language;        /**< < PROTO_LANGUAGE_COUNT */
     uint8_t volume_limit_on; /**< 0 or 1 */
     uint8_t volume_limit;    /**< 0 .. PROTO_MAX_VOLUME */
+    uint8_t startup_screen;  /**< < PROTO_STARTUP_SCREEN_COUNT (version 3) */
 } ProtoSettings;
+
+/** ACTION kinds. */
+typedef enum
+{
+    PROTO_ACTION_CARD   = 0, /**< a button of the detail of card slot `ref` */
+    PROTO_ACTION_PROMPT = 1, /**< a button of the prompt with id `ref` */
+    PROTO_ACTION_MEDIA  = 2  /**< the media strip; `ref` is 0 */
+} ProtoActionKind;
+#define PROTO_ACTION_KIND_COUNT 3U
+
+/** ACTION values of the media strip. */
+#define PROTO_MEDIA_PREVIOUS   1U
+#define PROTO_MEDIA_PLAY_PAUSE 2U
+#define PROTO_MEDIA_NEXT       3U
+
+/** CARD_PART, DETAIL_PART, PROMPT_PART: one part of a text record. */
+typedef struct
+{
+    uint8_t id;         /**< card slot (< PROTO_MAX_CARDS) or prompt id */
+    uint8_t generation; /**< changes for every new version of the record */
+    uint8_t part;       /**< 0 .. parts-1 */
+    uint8_t parts;      /**< 1 .. the command's PROTO_*_MAX_PARTS */
+    uint8_t len;        /**< bytes in data: PROTO_PART_DATA_BYTES except in the last part */
+    uint8_t data[PROTO_PART_DATA_BYTES]; /**< UTF-8, no NUL, not terminated */
+} ProtoRecordPart;
+
+/** OPEN_DETAIL payload. */
+typedef struct
+{
+    uint8_t slot; /**< < PROTO_MAX_CARDS */
+    int8_t  arg;  /**< -1, 0 or 1 (0: default; -1/+1: previous/next, e.g. menu day) */
+} ProtoOpenDetail;
+
+/** ACTION payload. */
+typedef struct
+{
+    uint8_t kind;   /**< ProtoActionKind */
+    uint8_t ref;    /**< card slot, prompt id, or 0 for media */
+    uint8_t action; /**< 1..255; media: PROTO_MEDIA_* */
+} ProtoAction;
 
 typedef struct
 {
@@ -192,6 +261,12 @@ typedef struct
         uint8_t            volume;       /**< SET_VOLUME, VOLUME_CHANGED: 0 .. 100 */
         uint8_t            muted;        /**< SET_MUTE, MUTE_CHANGED: 0 or 1 */
         ProtoError         error;        /**< ERROR */
+        uint32_t           local_time;   /**< TIME: seconds since 1970-01-01 00:00 local time */
+        ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART */
+        uint8_t            slot;         /**< CARD_CLEAR */
+        uint8_t            prompt_id;    /**< PROMPT_CLOSE */
+        ProtoOpenDetail    open_detail;  /**< OPEN_DETAIL */
+        ProtoAction        action;       /**< ACTION */
     } u;
 } ProtoMessage;
 
@@ -222,6 +297,68 @@ void Proto_DefaultSettings(ProtoSettings *settings);
 
 /** 1 if every field of @p settings is in range, else 0. */
 int Proto_SettingsValid(const ProtoSettings *settings);
+
+/* ------------------------------------------------------------ records */
+
+/**
+ * Largest record of a part command (CARD_PART, DETAIL_PART, PROMPT_PART),
+ * in bytes; 0 for any other command.
+ */
+uint16_t Proto_RecordMaxBytes(uint8_t command);
+
+/** Number of parts for a record of @p length bytes (1 for an empty record). */
+uint8_t Proto_RecordPartCount(uint16_t length);
+
+/**
+ * @brief  Fill @p out with part @p part of @p record (sender side).
+ * @return 1, or 0 if @p part is not a part of a record of @p length bytes
+ *         or @p record holds a NUL byte in that part.
+ */
+int Proto_RecordPart(const uint8_t *record, uint16_t length, uint8_t id, uint8_t generation,
+                     uint8_t part, ProtoRecordPart *out);
+
+/** Result of Proto_AssemblerAdd. */
+typedef enum
+{
+    PROTO_ASM_PARTIAL = 0, /**< part kept, more parts to come */
+    PROTO_ASM_COMPLETE,    /**< the record is complete in the buffer */
+    PROTO_ASM_DUPLICATE,   /**< this part had arrived already; ignored */
+    PROTO_ASM_OVERFLOW     /**< the record does not fit the buffer; dropped */
+} ProtoAsmResult;
+
+/**
+ * Collects the parts of one record (receiver side). The parts of one id
+ * and generation are written into a caller-owned buffer; a part of
+ * another id or generation starts a new record and discards a partial
+ * one. Parts may arrive in any order.
+ */
+typedef struct
+{
+    uint8_t *buffer;   /**< capacity + 1 bytes (room for a terminator) */
+    uint16_t capacity; /**< largest record in bytes */
+    uint8_t  active;   /**< 1 while a record is being collected */
+    uint8_t  id;
+    uint8_t  generation;
+    uint8_t  parts;
+    uint64_t received; /**< bit n set: part n arrived (parts <= 64) */
+    uint16_t length;   /**< record length once complete (data of the last part known) */
+} ProtoAssembler;
+
+/** Prepare @p asm for records of at most @p capacity bytes; @p buffer holds
+ *  capacity + 1 bytes. */
+void Proto_AssemblerInit(ProtoAssembler *asm_, uint8_t *buffer, uint16_t capacity);
+
+/** Forget a partial record. */
+void Proto_AssemblerReset(ProtoAssembler *asm_);
+
+/**
+ * @brief  Add one decoded part.
+ *
+ * On PROTO_ASM_COMPLETE the record is in the buffer, NUL-terminated, with
+ * `length` bytes; the assembler is idle again (the next part starts a new
+ * record). After PROTO_ASM_OVERFLOW it is idle too.
+ */
+ProtoAsmResult Proto_AssemblerAdd(ProtoAssembler *asm_, const ProtoRecordPart *part);
 
 #ifdef __cplusplus
 }

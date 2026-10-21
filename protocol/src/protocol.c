@@ -1,6 +1,6 @@
 /**
  * @file    protocol.c
- * @brief   STM32 <-> Windows host protocol, version 2 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 3 (see protocol/protocol.md).
  */
 #include "protocol.h"
 
@@ -56,6 +56,15 @@ static int is_known_command(uint8_t command)
     case PROTO_CMD_MOVE_DEVICE:
     case PROTO_CMD_SETTINGS:
     case PROTO_CMD_SET_SETTINGS:
+    case PROTO_CMD_TIME:
+    case PROTO_CMD_CARD_PART:
+    case PROTO_CMD_CARD_CLEAR:
+    case PROTO_CMD_DETAIL_PART:
+    case PROTO_CMD_PROMPT_PART:
+    case PROTO_CMD_PROMPT_CLOSE:
+    case PROTO_CMD_GET_CARDS:
+    case PROTO_CMD_OPEN_DETAIL:
+    case PROTO_CMD_ACTION:
     case PROTO_CMD_ERROR:
         return 1;
     default:
@@ -181,6 +190,7 @@ static void settings_to_bytes(const ProtoSettings *s, uint8_t *out)
     out[8] = s->language;
     out[9] = s->volume_limit_on;
     out[10] = s->volume_limit;
+    out[11] = s->startup_screen;
 }
 
 static void settings_from_bytes(const uint8_t *in, ProtoSettings *s)
@@ -196,6 +206,7 @@ static void settings_from_bytes(const uint8_t *in, ProtoSettings *s)
     s->language = in[8];
     s->volume_limit_on = in[9];
     s->volume_limit = in[10];
+    s->startup_screen = in[11];
 }
 
 void Proto_DefaultSettings(ProtoSettings *settings)
@@ -214,7 +225,212 @@ int Proto_SettingsValid(const ProtoSettings *s)
            (s->startup_tab < PROTO_STARTUP_TAB_COUNT) && (s->last_tab < PROTO_TAB_COUNT) &&
            (s->screen_timeout <= PROTO_MAX_SCREEN_TIMEOUT) && (s->flipped <= 1U) &&
            (s->language < PROTO_LANGUAGE_COUNT) && (s->volume_limit_on <= 1U) &&
-           (s->volume_limit <= PROTO_MAX_VOLUME);
+           (s->volume_limit <= PROTO_MAX_VOLUME) &&
+           (s->startup_screen < PROTO_STARTUP_SCREEN_COUNT);
+}
+
+/* ---------------------------------------------------- dashboard records */
+
+static uint8_t max_parts_of(uint8_t command)
+{
+    switch (command)
+    {
+    case PROTO_CMD_CARD_PART:
+        return (uint8_t)PROTO_CARD_MAX_PARTS;
+    case PROTO_CMD_DETAIL_PART:
+        return (uint8_t)PROTO_DETAIL_MAX_PARTS;
+    case PROTO_CMD_PROMPT_PART:
+        return (uint8_t)PROTO_PROMPT_MAX_PARTS;
+    default:
+        return 0U;
+    }
+}
+
+uint16_t Proto_RecordMaxBytes(uint8_t command)
+{
+    switch (command)
+    {
+    case PROTO_CMD_CARD_PART:
+        return (uint16_t)PROTO_CARD_MAX_BYTES;
+    case PROTO_CMD_DETAIL_PART:
+        return (uint16_t)PROTO_DETAIL_MAX_BYTES;
+    case PROTO_CMD_PROMPT_PART:
+        return (uint16_t)PROTO_PROMPT_MAX_BYTES;
+    default:
+        return 0U;
+    }
+}
+
+/* A part of a record of @p command: header fields in range, every part but
+ * the last full, the record not longer than the command allows. */
+static int is_valid_part(uint8_t command, const ProtoRecordPart *p)
+{
+    const uint8_t max_parts = max_parts_of(command);
+    uint32_t end;
+
+    if ((p->parts == 0U) || (p->parts > max_parts) || (p->part >= p->parts) ||
+        (p->len > PROTO_PART_DATA_BYTES))
+    {
+        return 0;
+    }
+    if ((command != PROTO_CMD_PROMPT_PART) && (p->id >= PROTO_MAX_CARDS))
+    {
+        return 0;
+    }
+    if ((p->part + 1U) < p->parts)
+    {
+        if (p->len != PROTO_PART_DATA_BYTES)
+        {
+            return 0;
+        }
+    }
+    else if ((p->len == 0U) && (p->parts != 1U))
+    {
+        return 0; /* only an empty record has an empty (single) part */
+    }
+    end = ((uint32_t)p->part * PROTO_PART_DATA_BYTES) + p->len;
+    return end <= Proto_RecordMaxBytes(command);
+}
+
+static int is_valid_open_detail(const ProtoOpenDetail *o)
+{
+    return (o->slot < PROTO_MAX_CARDS) && (o->arg >= -1) && (o->arg <= 1);
+}
+
+static int is_valid_action(const ProtoAction *a)
+{
+    if ((a->kind >= PROTO_ACTION_KIND_COUNT) || (a->action == 0U))
+    {
+        return 0;
+    }
+    switch (a->kind)
+    {
+    case PROTO_ACTION_CARD:
+        return a->ref < PROTO_MAX_CARDS;
+    case PROTO_ACTION_MEDIA:
+        return (a->ref == 0U) && (a->action <= PROTO_MEDIA_NEXT);
+    default:
+        return 1; /* PROTO_ACTION_PROMPT: any prompt id */
+    }
+}
+
+uint8_t Proto_RecordPartCount(uint16_t length)
+{
+    if (length == 0U)
+    {
+        return 1U;
+    }
+    return (uint8_t)((length + PROTO_PART_DATA_BYTES - 1U) / PROTO_PART_DATA_BYTES);
+}
+
+int Proto_RecordPart(const uint8_t *record, uint16_t length, uint8_t id, uint8_t generation,
+                     uint8_t part, ProtoRecordPart *out)
+{
+    const uint8_t parts = Proto_RecordPartCount(length);
+    uint32_t offset;
+    uint32_t len;
+
+    if ((out == NULL) || ((record == NULL) && (length != 0U)) || (part >= parts) ||
+        (length > (uint16_t)(PROTO_PART_DATA_BYTES * 64U)))
+    {
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    offset = (uint32_t)part * PROTO_PART_DATA_BYTES;
+    len = length - offset;
+    if (len > PROTO_PART_DATA_BYTES)
+    {
+        len = PROTO_PART_DATA_BYTES;
+    }
+    if ((len != 0U) && (memchr(&record[offset], 0, len) != NULL))
+    {
+        return 0;
+    }
+    out->id = id;
+    out->generation = generation;
+    out->part = part;
+    out->parts = parts;
+    out->len = (uint8_t)len;
+    if (len != 0U)
+    {
+        memcpy(out->data, &record[offset], len);
+    }
+    return 1;
+}
+
+void Proto_AssemblerInit(ProtoAssembler *asm_, uint8_t *buffer, uint16_t capacity)
+{
+    if (asm_ == NULL)
+    {
+        return;
+    }
+    memset(asm_, 0, sizeof(*asm_));
+    asm_->buffer = buffer;
+    asm_->capacity = capacity;
+}
+
+void Proto_AssemblerReset(ProtoAssembler *asm_)
+{
+    if (asm_ != NULL)
+    {
+        asm_->active = 0U;
+        asm_->received = 0U;
+        asm_->length = 0U;
+    }
+}
+
+ProtoAsmResult Proto_AssemblerAdd(ProtoAssembler *asm_, const ProtoRecordPart *part)
+{
+    uint32_t offset;
+    uint64_t bit;
+    uint64_t all;
+
+    if ((asm_ == NULL) || (part == NULL) || (asm_->buffer == NULL) || (part->parts == 0U) ||
+        (part->parts > 64U) || (part->part >= part->parts) || (part->len > PROTO_PART_DATA_BYTES))
+    {
+        if (asm_ != NULL)
+        {
+            Proto_AssemblerReset(asm_);
+        }
+        return PROTO_ASM_OVERFLOW;
+    }
+    offset = (uint32_t)part->part * PROTO_PART_DATA_BYTES;
+    if ((offset + part->len) > asm_->capacity)
+    {
+        Proto_AssemblerReset(asm_);
+        return PROTO_ASM_OVERFLOW;
+    }
+    if (!asm_->active || (asm_->id != part->id) || (asm_->generation != part->generation) ||
+        (asm_->parts != part->parts))
+    {
+        /* A new record (or another one): drop what was collected. */
+        asm_->active = 1U;
+        asm_->id = part->id;
+        asm_->generation = part->generation;
+        asm_->parts = part->parts;
+        asm_->received = 0U;
+        asm_->length = 0U;
+    }
+    bit = (uint64_t)1U << part->part;
+    if ((asm_->received & bit) != 0U)
+    {
+        return PROTO_ASM_DUPLICATE;
+    }
+    memcpy(&asm_->buffer[offset], part->data, part->len);
+    asm_->received |= bit;
+    if ((part->part + 1U) == part->parts)
+    {
+        asm_->length = (uint16_t)(offset + part->len);
+    }
+    all = (part->parts == 64U) ? ~(uint64_t)0U : (((uint64_t)1U << part->parts) - 1U);
+    if (asm_->received != all)
+    {
+        return PROTO_ASM_PARTIAL;
+    }
+    asm_->buffer[asm_->length] = '\0';
+    asm_->active = 0U;
+    asm_->received = 0U;
+    return PROTO_ASM_COMPLETE;
 }
 
 /* Write the payload of @p msg; return its length, or -1 if a field is
@@ -303,6 +519,69 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
         }
         settings_to_bytes(&msg->u.settings, payload);
         return (int)PROTO_SETTINGS_BYTES;
+
+    case PROTO_CMD_GET_CARDS:
+        return 0;
+
+    case PROTO_CMD_TIME:
+    {
+        const uint32_t t = msg->u.local_time;
+
+        payload[0] = (uint8_t)(t & 0xFFU);
+        payload[1] = (uint8_t)((t >> 8) & 0xFFU);
+        payload[2] = (uint8_t)((t >> 16) & 0xFFU);
+        payload[3] = (uint8_t)((t >> 24) & 0xFFU);
+        return 4;
+    }
+
+    case PROTO_CMD_CARD_PART:
+    case PROTO_CMD_DETAIL_PART:
+    case PROTO_CMD_PROMPT_PART:
+    {
+        const ProtoRecordPart *p = &msg->u.part;
+
+        if (!is_valid_part(msg->command, p) || has_nul(p->data, p->len))
+        {
+            return -1;
+        }
+        payload[0] = p->id;
+        payload[1] = p->generation;
+        payload[2] = p->part;
+        payload[3] = p->parts;
+        memcpy(&payload[PROTO_PART_HEADER_BYTES], p->data, p->len);
+        return (int)(PROTO_PART_HEADER_BYTES + p->len);
+    }
+
+    case PROTO_CMD_CARD_CLEAR:
+        if (msg->u.slot >= PROTO_MAX_CARDS)
+        {
+            return -1;
+        }
+        payload[0] = msg->u.slot;
+        return 1;
+
+    case PROTO_CMD_PROMPT_CLOSE:
+        payload[0] = msg->u.prompt_id;
+        return 1;
+
+    case PROTO_CMD_OPEN_DETAIL:
+        if (!is_valid_open_detail(&msg->u.open_detail))
+        {
+            return -1;
+        }
+        payload[0] = msg->u.open_detail.slot;
+        payload[1] = (uint8_t)msg->u.open_detail.arg;
+        return 2;
+
+    case PROTO_CMD_ACTION:
+        if (!is_valid_action(&msg->u.action))
+        {
+            return -1;
+        }
+        payload[0] = msg->u.action.kind;
+        payload[1] = msg->u.action.ref;
+        payload[2] = msg->u.action.action;
+        return 3;
 
     case PROTO_CMD_ERROR:
         if (!is_valid_error_code(msg->u.error.code))
@@ -465,6 +744,76 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
         }
         settings_from_bytes(payload, &msg->u.settings);
         return Proto_SettingsValid(&msg->u.settings);
+
+    case PROTO_CMD_GET_CARDS:
+        return len == 0U;
+
+    case PROTO_CMD_TIME:
+        if (len != 4U)
+        {
+            return 0;
+        }
+        msg->u.local_time = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) |
+                            ((uint32_t)payload[2] << 16) | ((uint32_t)payload[3] << 24);
+        return 1;
+
+    case PROTO_CMD_CARD_PART:
+    case PROTO_CMD_DETAIL_PART:
+    case PROTO_CMD_PROMPT_PART:
+    {
+        ProtoRecordPart *p = &msg->u.part;
+
+        if (len < PROTO_PART_HEADER_BYTES)
+        {
+            return 0;
+        }
+        p->id = payload[0];
+        p->generation = payload[1];
+        p->part = payload[2];
+        p->parts = payload[3];
+        p->len = (uint8_t)(len - PROTO_PART_HEADER_BYTES);
+        if (!is_valid_part(msg->command, p) || has_nul(&payload[PROTO_PART_HEADER_BYTES], p->len))
+        {
+            return 0;
+        }
+        memcpy(p->data, &payload[PROTO_PART_HEADER_BYTES], p->len);
+        return 1;
+    }
+
+    case PROTO_CMD_CARD_CLEAR:
+        if ((len != 1U) || (payload[0] >= PROTO_MAX_CARDS))
+        {
+            return 0;
+        }
+        msg->u.slot = payload[0];
+        return 1;
+
+    case PROTO_CMD_PROMPT_CLOSE:
+        if (len != 1U)
+        {
+            return 0;
+        }
+        msg->u.prompt_id = payload[0];
+        return 1;
+
+    case PROTO_CMD_OPEN_DETAIL:
+        if (len != 2U)
+        {
+            return 0;
+        }
+        msg->u.open_detail.slot = payload[0];
+        msg->u.open_detail.arg = (int8_t)payload[1];
+        return is_valid_open_detail(&msg->u.open_detail);
+
+    case PROTO_CMD_ACTION:
+        if (len != 3U)
+        {
+            return 0;
+        }
+        msg->u.action.kind = payload[0];
+        msg->u.action.ref = payload[1];
+        msg->u.action.action = payload[2];
+        return is_valid_action(&msg->u.action);
 
     case PROTO_CMD_ERROR:
         if ((len != 3U) || !is_valid_error_code(payload[0]))

@@ -2,9 +2,12 @@
 
 ## Status
 
-**Protocol version 2.** Version 1 plus user preferences and UI settings
-(aliases, display order, favorites, the settings record), and the list
-`generation` in `SELECT_DEVICE`. Design: `docs/decisions/ADR-004-device-preferences-and-settings.md`.
+**Protocol version 3.** Version 2 (audio: device list, selection,
+volume, mute, preferences and settings; ADR-004) plus the dashboard:
+time, cards, details, prompts and actions sent as chunked text records,
+and one more byte in the settings record (`startup_screen`). Design:
+`docs/decisions/ADR-006-cards-and-protocol-v3.md` and
+`docs/decisions/ADR-005-tabbed-shell-and-global-settings.md`.
 
 This document is the source of truth for communication between the STM32
 firmware and the Windows host application. The reference implementation
@@ -35,6 +38,8 @@ Timing, applied by the STM32:
 | A new list stays incomplete (a `DEVICE_LIST` or `DEVICE_ALIAS` frame was lost) while an older list is shown | 1000 ms after its last frame → `GET_DEVICE_LIST` again; the older list stays on screen |
 | Edits (`SET_ALIAS`, `SET_FAVORITE`, `MOVE_DEVICE`) | one at a time |
 | `SET_VOLUME` while the user drags the slider | at most every 100 ms, the latest value; the last value is always sent |
+| A card, detail or prompt record stays incomplete | 1000 ms after its last part → `GET_CARDS` (card) or `OPEN_DETAIL` again (detail); an incomplete prompt is dropped |
+| No complete detail after `OPEN_DETAIL`, and no `ERROR` | 2000 ms → notice, the board stays on the dashboard |
 | `VOLUME_CHANGED` during a local volume change | not shown until 300 ms after the last `SET_VOLUME`; then the host's value is shown |
 
 The host does not time out; it answers requests and reports changes.
@@ -59,7 +64,7 @@ All frames are 64 bytes. Multi-byte fields are little endian.
 | Offset | Size | Field | Value |
 |---|---|---|---|
 | 0 | 1 | magic | `0xA5` |
-| 1 | 1 | version | `2` |
+| 1 | 1 | version | `3` |
 | 2 | 1 | command | see message set |
 | 3 | 1 | sequence | sender's counter, incremented per frame sent, wraps 255 → 0 |
 | 4 | 1 | length | payload bytes, 0–57 |
@@ -78,9 +83,9 @@ Senders must zero the padding. Receivers do not check it beyond the CRC.
 `SELECT_DEVICE` with sequence `0x2A`, `generation` = 5, `device_index` = 2:
 
 ```text
-offset 0..6:   A5 02 03 2A 02 05 02
+offset 0..6:   A5 03 03 2A 02 05 02
 offset 7..61:  00 (55 bytes)
-offset 62..63: DA 04            (CRC 0x04DA)
+offset 62..63: 6A 5D            (CRC 0x5D6A)
 ```
 
 ## Message set
@@ -101,6 +106,15 @@ offset 62..63: DA 04            (CRC 0x04DA)
 | `0x0C` | `MOVE_DEVICE` | STM32 → Host | `generation`, `device_index`, `new_position` (0 … `total` − 1, below 32) |
 | `0x0D` | `SETTINGS` | Host → STM32 | settings record (below) |
 | `0x0E` | `SET_SETTINGS` | STM32 → Host | settings record (below) |
+| `0x20` | `TIME` | Host → STM32 | `local_time` (u32, little endian): seconds since 1970-01-01 00:00 in Windows' local time |
+| `0x21` | `CARD_PART` | Host → STM32 | part header (`id` = card slot 0–7) + record text (below) |
+| `0x22` | `CARD_CLEAR` | Host → STM32 | `slot` (0–7): the slot is empty |
+| `0x23` | `DETAIL_PART` | Host → STM32 | part header (`id` = card slot 0–7) + record text |
+| `0x24` | `PROMPT_PART` | Host → STM32 | part header (`id` = prompt id 0–255) + record text |
+| `0x25` | `PROMPT_CLOSE` | Host → STM32 | `prompt_id`: hide this prompt |
+| `0x30` | `GET_CARDS` | STM32 → Host | none |
+| `0x31` | `OPEN_DETAIL` | STM32 → Host | `slot` (0–7), `arg` (int8: 0 default, −1 previous, +1 next) |
+| `0x32` | `ACTION` | STM32 → Host | `kind`, `ref`, `action` (below) |
 | `0x7F` | `ERROR` | Either | `code`, `ref_command`, `ref_sequence` (1 byte each) |
 
 Volume and mute refer to the current default playback device. After
@@ -179,7 +193,7 @@ the Windows endpoint ID, and survive USB reconnects and host restarts
 (ADR-004). A device that is not present keeps them; new devices are
 appended to the order. The board stores nothing.
 
-Settings record (11 bytes, payload of `SETTINGS` and `SET_SETTINGS`):
+Settings record (12 bytes, payload of `SETTINGS` and `SET_SETTINGS`):
 
 | Byte | Field | Values | Default |
 |---|---|---|---|
@@ -194,11 +208,82 @@ Settings record (11 bytes, payload of `SETTINGS` and `SET_SETTINGS`):
 | 8 | `language` | 0 Turkish, 1 English | 0 |
 | 9 | `volume_limit_on` | 0 off, 1 on | 0 |
 | 10 | `volume_limit` | 0–100 percent | 50 |
+| 11 | `startup_screen` | 0 Dashboard, 1 Audio (ADR-005; version 3) | 0 |
 
 The STM32 uses the defaults until the host's `SETTINGS` arrive. The host
 stores the record as received and interprets only `volume_limit_on` and
 `volume_limit` (volume limit on switch: a device the STM32 selects is
 lowered to it first, ADR-004).
+
+## Dashboard records
+
+Cards, details and prompts (ADR-006) are UTF-8 text records sent in
+parts. The board draws them with generic components; it does not know
+what a record is about.
+
+### Record text
+
+Lines end with `\n` (`0x0A`); fields within a line are separated by
+`0x1F`. Neither byte appears inside a field (the host replaces them by a
+space), and no record holds a NUL byte. Empty fields are allowed;
+missing trailing fields count as empty.
+
+| Record | Max bytes | Lines |
+|---|---|---|
+| Card | 256 | 1: `icon` ␟ `title` ␟ `badge`; 2–4: text lines |
+| Detail | 2048 | 1: `title` ␟ `subtitle`; then rows, section titles and buttons |
+| Prompt | 1024 | 1: `title` ␟ `subtitle` ␟ `seconds` (countdown, decimal; empty = none); then as a detail |
+
+Detail and prompt lines after the first:
+
+- a row: `icon` ␟ `label` ␟ `value`;
+- a section title: a line starting with `#` (the rest is the title);
+- a button: a line starting with `!`: `!action` ␟ `label`, `action`
+  decimal 1–255; at most 3 buttons, drawn at the bottom in their order.
+
+`icon` is a decimal number from the table below. The board draws nothing
+for 0, an empty field, or a number it does not know, so numbers can be
+added without a new protocol version. The board cuts text that does not
+fit with "…" and never wraps a card line.
+
+| Icon | Meaning |
+|---|---|
+| 0 | none |
+
+(Numbers are added here with the features that use them.)
+
+### Part header
+
+`CARD_PART`, `DETAIL_PART` and `PROMPT_PART` start with:
+
+| Byte | Field | Value |
+|---|---|---|
+| 0 | `id` | card slot 0–7 (card, detail), or prompt id 0–255 |
+| 1 | `generation` | changed by the host for every new version of the record |
+| 2 | `part` | 0 … `parts` − 1 |
+| 3 | `parts` | 1–5 (card), 1–39 (detail), 1–20 (prompt) |
+| 4 … | data | part `n` holds record bytes `53·n` … ; every part but the last has 53 bytes |
+
+- The last part has 1–53 bytes; only an empty record (`parts` = 1) has
+  an empty part. A part that would end beyond the record's maximum size
+  is invalid (`BAD_PAYLOAD`).
+- The receiver collects the parts of one `id` and `generation` (in any
+  order) and uses the record only when all `parts` have arrived. A part
+  of another `id` or `generation` discards a partial record; a repeated
+  part is ignored.
+- The host sends one record completely before it starts the next.
+
+### `ACTION`
+
+| `kind` | `ref` | `action` |
+|---|---|---|
+| 0 card detail | card slot 0–7 | the button's `action` (1–255) |
+| 1 prompt | prompt id | the button's `action` (1–255) |
+| 2 media strip | 0 | 1 previous track, 2 play/pause, 3 next track |
+
+`ACTION` has no direct answer; its effect comes back as cards, a detail
+or `PROMPT_CLOSE`. The host answers an `ACTION` it cannot carry out with
+`ERROR OPERATION_FAILED`.
 
 ## Exchanges
 
@@ -213,6 +298,19 @@ lowered to it first, ADR-004).
 | User edits an alias, a favorite or the order | STM32 → `SET_ALIAS` / `SET_FAVORITE` / `MOVE_DEVICE`; Host stores it → new list (new `generation`, also when nothing changed), then `DEVICE_CHANGED`; or `ERROR UNKNOWN_DEVICE` (stale `generation` or index), `BAD_PAYLOAD` (`new_position` ≥ `total`), `OPERATION_FAILED` (not stored) |
 | User changes a setting (or the tab) | STM32 → `SET_SETTINGS` (whole record); Host stores it → `SETTINGS` |
 | Preferences changed on the host (e.g. `dashboard-host alias`) | Host → new list if it changed, then `SETTINGS` |
+| Firmware starts or USB (re)connects (dashboard) | STM32 → `GET_CARDS`; Host → `TIME`, then for every slot 0–7 its `CARD_PART`s or `CARD_CLEAR` |
+| Every 10 minutes, and when Windows' time or time zone changes | Host → `TIME` |
+| A card changes | Host → its `CARD_PART`s with a new `generation`, or `CARD_CLEAR` |
+| User taps a card | STM32 → `OPEN_DETAIL slot, 0`; Host → `DETAIL_PART`s, or `ERROR OPERATION_FAILED` (no detail for that slot) |
+| User taps ‹ / › in a detail | STM32 → `OPEN_DETAIL slot, −1 / +1`; Host → the new detail |
+| The open detail changes on the host | Host → its `DETAIL_PART`s, unasked |
+| User taps a detail button or the media strip | STM32 → `ACTION` |
+| Host needs a decision (ADR-007) | Host → `PROMPT_PART`s; the board shows the prompt over every screen and wakes a dark screen |
+| User answers the prompt | STM32 → `ACTION kind 1`; Host → `PROMPT_CLOSE` |
+| The prompt is answered elsewhere or times out | Host → `PROMPT_CLOSE` |
+
+The board shows one prompt at a time; the host keeps further prompts
+queued until the shown one is closed.
 
 The firmware shows the state reported by the host. It does not mark a
 device as active after `SELECT_DEVICE` until `DEVICE_CHANGED` arrives,
@@ -231,7 +329,7 @@ Retries and timeouts: see "Transport".
 A receiver checks, in this order, and stops at the first failure:
 
 1. magic is `0xA5`;
-2. version is `2`;
+2. version is `3`;
 3. CRC matches;
 4. length ≤ 57;
 5. command is known;
@@ -242,7 +340,7 @@ A rejected frame is dropped. The receiver may answer with `ERROR`:
 | Code | Name | Meaning |
 |---|---|---|
 | `0x01` | `BAD_FRAME` | magic, CRC or length wrong |
-| `0x02` | `UNSUPPORTED_VERSION` | version is not 2 |
+| `0x02` | `UNSUPPORTED_VERSION` | version is not 3 |
 | `0x03` | `UNKNOWN_COMMAND` | command code not in the message set |
 | `0x04` | `BAD_PAYLOAD` | payload length or a field value invalid |
 | `0x05` | `UNKNOWN_DEVICE` | `device_index` not in the current list |
@@ -270,3 +368,4 @@ A receiver rejects frames of any other version (`UNSUPPORTED_VERSION`).
 | 0 | Draft: message list and a header proposal (magic, version, command, 16-bit length). |
 | 1 | Fixed 64-byte frame with sequence byte, 8-bit length and CRC-16; payloads, device list format, error codes and validation rules defined. |
 | 2 | ADR-004: `DEVICE_ALIAS`, `SET_ALIAS`, `SET_FAVORITE`, `MOVE_DEVICE`, `SETTINGS`, `SET_SETTINGS`; favorite and alias flags in `DEVICE_LIST`; list in the user's order; `generation` in `SELECT_DEVICE`. |
+| 3 | ADR-005, ADR-006: `TIME`, `CARD_PART`, `CARD_CLEAR`, `DETAIL_PART`, `PROMPT_PART`, `PROMPT_CLOSE`, `GET_CARDS`, `OPEN_DETAIL`, `ACTION`; chunked text records; settings record 12 bytes (`startup_screen`). stm32-desk-dashboard only; the audio controller stays on version 2. |

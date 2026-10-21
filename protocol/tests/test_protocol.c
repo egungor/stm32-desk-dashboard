@@ -67,7 +67,7 @@ static void test_crc_check_value(void)
 static void test_header_and_golden_frame(void)
 {
     /* Byte-exact example documented in protocol.md. */
-    static const uint8_t expected_head[] = { 0xA5, 0x02, 0x03, 0x2A, 0x02, 0x05, 0x02 };
+    static const uint8_t expected_head[] = { 0xA5, 0x03, 0x03, 0x2A, 0x02, 0x05, 0x02 };
     ProtoMessage m = simple(PROTO_CMD_SELECT_DEVICE, 0x2AU);
     uint8_t frame[PROTO_FRAME_SIZE];
 
@@ -79,8 +79,8 @@ static void test_header_and_golden_frame(void)
     {
         CHECK(frame[i] == 0U);
     }
-    CHECK(frame[62] == 0xDAU);
-    CHECK(frame[63] == 0x04U);
+    CHECK(frame[62] == 0x6AU);
+    CHECK(frame[63] == 0x5DU);
 }
 
 static void test_round_trip_simple(void)
@@ -384,8 +384,8 @@ static void test_round_trip_aliases(void)
 
 static void test_settings(void)
 {
-    static const uint8_t bytes[PROTO_SETTINGS_BYTES] = { 2, 1, 5, 3, 2, 1, 60, 1, 1, 1, 40 };
-    static const uint8_t first_bad[PROTO_SETTINGS_BYTES] = { 3, 2, 6, 4, 3, 2, 61, 2, 2, 2, 101 };
+    static const uint8_t bytes[PROTO_SETTINGS_BYTES] = { 2, 1, 5, 3, 2, 1, 60, 1, 1, 1, 40, 1 };
+    static const uint8_t first_bad[PROTO_SETTINGS_BYTES] = { 3, 2, 6, 4, 3, 2, 61, 2, 2, 2, 101, 2 };
     ProtoMessage in = simple(PROTO_CMD_SET_SETTINGS, 6U);
     ProtoMessage out;
     ProtoSettings d;
@@ -395,6 +395,7 @@ static void test_settings(void)
     CHECK(Proto_SettingsValid(&d));
     CHECK(d.layout == 0U && d.theme == 0U && d.accent == 0U && d.flipped == 0U);
     CHECK(d.volume_limit_on == 0U && d.volume_limit == PROTO_DEFAULT_VOLUME_LIMIT);
+    CHECK(d.startup_screen == 0U); /* Dashboard */
 
     in.u.settings.layout = 2U;
     in.u.settings.theme = 1U;
@@ -407,6 +408,7 @@ static void test_settings(void)
     in.u.settings.language = 1U;
     in.u.settings.volume_limit_on = 1U;
     in.u.settings.volume_limit = 40U;
+    in.u.settings.startup_screen = 1U;
     CHECK(Proto_Encode(&in, frame) == PROTO_OK);
     CHECK(frame[4] == PROTO_SETTINGS_BYTES);
     CHECK(memcmp(&frame[5], bytes, sizeof(bytes)) == 0); /* field order of protocol.md */
@@ -484,6 +486,336 @@ static void test_v2_rejects(void)
     CHECK(out.u.request.alias_len == 0U); /* fields cleared on error */
 }
 
+
+/* ------------------------------------------------- version 3 (ADR-006) */
+
+static void test_v2_frame_rejected(void)
+{
+    ProtoMessage m = simple(PROTO_CMD_GET_DEVICE_LIST, 1U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    CHECK(Proto_Encode(&m, frame) == PROTO_OK);
+    frame[1] = 2U; /* a version 2 frame (stm32-audio-controller) */
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_VERSION);
+    CHECK(Proto_ErrorCodeFor(PROTO_ERR_VERSION) == PROTO_ERROR_UNSUPPORTED_VERSION);
+
+    /* A version 2 settings record (11 bytes) is too short now. */
+    m = simple(PROTO_CMD_SETTINGS, 2U);
+    Proto_DefaultSettings(&m.u.settings);
+    CHECK(Proto_Encode(&m, frame) == PROTO_OK);
+    CHECK(frame[4] == 12U);
+    frame[4] = 11U;
+    frame[5 + 11] = 0U;
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+}
+
+static void test_time_and_small_commands(void)
+{
+    ProtoMessage in;
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    in = simple(PROTO_CMD_TIME, 3U);
+    in.u.local_time = 0x6512A0B4UL;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[4] == 4U);
+    CHECK(frame[5] == 0xB4U && frame[6] == 0xA0U && frame[7] == 0x12U && frame[8] == 0x65U); /* little endian */
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK);
+    CHECK(out.u.local_time == 0x6512A0B4UL);
+    frame[4] = 3U;
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+
+    in = simple(PROTO_CMD_GET_CARDS, 4U);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[4] == 0U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.command == PROTO_CMD_GET_CARDS);
+
+    in = simple(PROTO_CMD_CARD_CLEAR, 5U);
+    in.u.slot = PROTO_MAX_CARDS - 1U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.slot == PROTO_MAX_CARDS - 1U);
+    in.u.slot = PROTO_MAX_CARDS;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    in = simple(PROTO_CMD_PROMPT_CLOSE, 6U);
+    in.u.prompt_id = 255U; /* any id */
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.prompt_id == 255U);
+
+    in = simple(PROTO_CMD_OPEN_DETAIL, 7U);
+    in.u.open_detail.slot = 1U;
+    in.u.open_detail.arg = -1;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[6] == 0xFFU);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK);
+    CHECK(out.u.open_detail.slot == 1U && out.u.open_detail.arg == -1);
+    in.u.open_detail.arg = 2;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.open_detail.arg = 1;
+    in.u.open_detail.slot = PROTO_MAX_CARDS;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+}
+
+static void test_action(void)
+{
+    ProtoMessage in = simple(PROTO_CMD_ACTION, 8U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    in.u.action.kind = PROTO_ACTION_MEDIA;
+    in.u.action.ref = 0U;
+    in.u.action.action = PROTO_MEDIA_PLAY_PAUSE;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[4] == 3U && frame[5] == 2U && frame[6] == 0U && frame[7] == 2U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK);
+    CHECK(out.u.action.kind == PROTO_ACTION_MEDIA && out.u.action.action == PROTO_MEDIA_PLAY_PAUSE);
+
+    in.u.action.action = PROTO_MEDIA_NEXT + 1U; /* no such media key */
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.action.action = PROTO_MEDIA_NEXT;
+    in.u.action.ref = 1U; /* media has no ref */
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    in.u.action.kind = PROTO_ACTION_CARD;
+    in.u.action.ref = 3U;
+    in.u.action.action = 200U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    in.u.action.ref = PROTO_MAX_CARDS;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    in.u.action.kind = PROTO_ACTION_PROMPT;
+    in.u.action.ref = 250U;
+    in.u.action.action = 1U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    in.u.action.action = 0U; /* 0 is never an action */
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.action.action = 1U;
+    in.u.action.kind = PROTO_ACTION_KIND_COUNT;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+}
+
+static void test_record_parts_on_the_wire(void)
+{
+    static const uint8_t cmds[] = { PROTO_CMD_CARD_PART, PROTO_CMD_DETAIL_PART, PROTO_CMD_PROMPT_PART };
+    ProtoMessage in;
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    for (size_t c = 0U; c < sizeof(cmds); c++)
+    {
+        in = simple(cmds[c], (uint8_t)c);
+        in.u.part.id = 2U;
+        in.u.part.generation = 9U;
+        in.u.part.part = 0U;
+        in.u.part.parts = 1U;
+        in.u.part.len = 5U;
+        memcpy(in.u.part.data, "a\x1F" "b\nc", 5U);
+        CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+        CHECK(frame[4] == 9U);
+        CHECK(frame[5] == 2U && frame[6] == 9U && frame[7] == 0U && frame[8] == 1U);
+        CHECK(Proto_Decode(frame, &out) == PROTO_OK);
+        CHECK(out.u.part.len == 5U && memcmp(out.u.part.data, "a\x1F" "b\nc", 5U) == 0);
+
+        /* An empty record: one part, no data. */
+        in.u.part.len = 0U;
+        CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+        CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.part.len == 0U);
+
+        /* A part that is not the last must be full. */
+        in.u.part.parts = 2U;
+        in.u.part.len = 10U;
+        CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+        /* The last part of several may not be empty. */
+        in.u.part.part = 1U;
+        in.u.part.len = 0U;
+        CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+        /* part >= parts, parts 0 */
+        in.u.part.len = 1U;
+        in.u.part.part = 2U;
+        CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+        in.u.part.part = 0U;
+        in.u.part.parts = 0U;
+        CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+        /* NUL in the data */
+        in.u.part.parts = 1U;
+        in.u.part.len = 2U;
+        in.u.part.data[0] = 'x';
+        in.u.part.data[1] = '\0';
+        CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    }
+
+    /* Slot range: cards and details 0..7, prompts any id. */
+    in = simple(PROTO_CMD_CARD_PART, 0U);
+    in.u.part.id = PROTO_MAX_CARDS;
+    in.u.part.parts = 1U;
+    in.u.part.len = 1U;
+    in.u.part.data[0] = 'x';
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.command = PROTO_CMD_DETAIL_PART;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.command = PROTO_CMD_PROMPT_PART;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+
+    /* Part count limits: card 5, detail 39, prompt 20, and the byte limit. */
+    in = simple(PROTO_CMD_CARD_PART, 0U);
+    in.u.part.parts = PROTO_CARD_MAX_PARTS + 1U;
+    in.u.part.part = 0U;
+    in.u.part.len = PROTO_PART_DATA_BYTES;
+    memset(in.u.part.data, 'y', PROTO_PART_DATA_BYTES);
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.part.parts = PROTO_CARD_MAX_PARTS;
+    in.u.part.part = PROTO_CARD_MAX_PARTS - 1U; /* bytes 212..264 > 256 */
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.part.len = (uint8_t)(PROTO_CARD_MAX_BYTES - (PROTO_CARD_MAX_PARTS - 1U) * PROTO_PART_DATA_BYTES);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK); /* exactly 256 bytes */
+
+    in.command = PROTO_CMD_DETAIL_PART;
+    in.u.part.parts = PROTO_DETAIL_MAX_PARTS;
+    in.u.part.part = PROTO_DETAIL_MAX_PARTS - 1U;
+    in.u.part.len = (uint8_t)(PROTO_DETAIL_MAX_BYTES - (PROTO_DETAIL_MAX_PARTS - 1U) * PROTO_PART_DATA_BYTES);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK); /* exactly 2048 bytes */
+    in.u.part.len++;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.part.parts = PROTO_DETAIL_MAX_PARTS + 1U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    in.command = PROTO_CMD_PROMPT_PART;
+    in.u.part.parts = PROTO_PROMPT_MAX_PARTS;
+    in.u.part.part = PROTO_PROMPT_MAX_PARTS - 1U;
+    in.u.part.len = (uint8_t)(PROTO_PROMPT_MAX_BYTES - (PROTO_PROMPT_MAX_PARTS - 1U) * PROTO_PART_DATA_BYTES);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK); /* exactly 1024 bytes */
+    in.u.part.len++;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    /* A frame shorter than the part header. */
+    in = simple(PROTO_CMD_CARD_PART, 0U);
+    in.u.part.parts = 1U;
+    in.u.part.len = 1U;
+    in.u.part.data[0] = 'x';
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    frame[4] = 3U;
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+
+    CHECK(Proto_RecordMaxBytes(PROTO_CMD_CARD_PART) == PROTO_CARD_MAX_BYTES);
+    CHECK(Proto_RecordMaxBytes(PROTO_CMD_DETAIL_PART) == PROTO_DETAIL_MAX_BYTES);
+    CHECK(Proto_RecordMaxBytes(PROTO_CMD_PROMPT_PART) == PROTO_PROMPT_MAX_BYTES);
+    CHECK(Proto_RecordMaxBytes(PROTO_CMD_TIME) == 0U);
+}
+
+/* Split @p record with Proto_RecordPart, send every part through
+ * Encode/Decode in @p order, and feed the assembler. */
+static ProtoAsmResult send_record(ProtoAssembler *a, uint8_t command, const char *record, uint8_t id,
+                                  uint8_t generation, const uint8_t *order)
+{
+    const uint16_t length = (uint16_t)strlen(record);
+    const uint8_t parts = Proto_RecordPartCount(length);
+    ProtoAsmResult result = PROTO_ASM_PARTIAL;
+
+    for (uint8_t i = 0U; i < parts; i++)
+    {
+        const uint8_t part = (order != NULL) ? order[i] : i;
+        ProtoMessage in = simple(command, i);
+        ProtoMessage out;
+        uint8_t frame[PROTO_FRAME_SIZE];
+
+        CHECK(Proto_RecordPart((const uint8_t *)record, length, id, generation, part, &in.u.part) == 1);
+        CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+        CHECK(Proto_Decode(frame, &out) == PROTO_OK);
+        result = Proto_AssemblerAdd(a, &out.u.part);
+        CHECK(result == (((i + 1U) == parts) ? PROTO_ASM_COMPLETE : PROTO_ASM_PARTIAL));
+    }
+    return result;
+}
+
+static void test_record_split_and_assemble(void)
+{
+    static uint8_t detail_buf[PROTO_DETAIL_MAX_BYTES + 1U];
+    static uint8_t card_buf[PROTO_CARD_MAX_BYTES + 1U];
+    static char big[PROTO_DETAIL_MAX_BYTES + 1U];
+    static const uint8_t reversed[3] = { 2U, 0U, 1U };
+    const char *card = "3\x1F" "Hava\x1F" "\n14\xC2\xB0 Par\xC3\xA7" "al\xC4\xB1 bulutlu\nE 17\xC2\xB0 / 8\xC2\xB0";
+    ProtoAssembler a;
+    ProtoRecordPart p;
+
+    CHECK(Proto_RecordPartCount(0U) == 1U);
+    CHECK(Proto_RecordPartCount(1U) == 1U);
+    CHECK(Proto_RecordPartCount(53U) == 1U);
+    CHECK(Proto_RecordPartCount(54U) == 2U);
+    CHECK(Proto_RecordPartCount(PROTO_DETAIL_MAX_BYTES) == PROTO_DETAIL_MAX_PARTS);
+    CHECK(Proto_RecordPartCount(PROTO_PROMPT_MAX_BYTES) == PROTO_PROMPT_MAX_PARTS);
+    CHECK(Proto_RecordPartCount(PROTO_CARD_MAX_BYTES) == PROTO_CARD_MAX_PARTS);
+
+    /* A short card in one part. */
+    Proto_AssemblerInit(&a, card_buf, PROTO_CARD_MAX_BYTES);
+    CHECK(send_record(&a, PROTO_CMD_CARD_PART, card, 0U, 1U, NULL) == PROTO_ASM_COMPLETE);
+    CHECK(a.length == strlen(card) && strcmp((const char *)card_buf, card) == 0);
+
+    /* A detail of the largest size, in order and in another order. */
+    for (size_t i = 0U; i < PROTO_DETAIL_MAX_BYTES; i++)
+    {
+        big[i] = (char)('a' + (i % 26U));
+    }
+    big[PROTO_DETAIL_MAX_BYTES] = '\0';
+    Proto_AssemblerInit(&a, detail_buf, PROTO_DETAIL_MAX_BYTES);
+    CHECK(send_record(&a, PROTO_CMD_DETAIL_PART, big, 1U, 7U, NULL) == PROTO_ASM_COMPLETE);
+    CHECK(a.length == PROTO_DETAIL_MAX_BYTES && memcmp(detail_buf, big, PROTO_DETAIL_MAX_BYTES) == 0);
+    CHECK(detail_buf[PROTO_DETAIL_MAX_BYTES] == '\0');
+
+    big[150] = '\0'; /* 3 parts */
+    CHECK(send_record(&a, PROTO_CMD_DETAIL_PART, big, 1U, 8U, reversed) == PROTO_ASM_COMPLETE);
+    CHECK(a.length == 150U && strcmp((const char *)detail_buf, big) == 0);
+
+    /* A duplicate part is ignored; the record still completes. */
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 1U, 9U, 0U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_PARTIAL);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_DUPLICATE);
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 1U, 9U, 1U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_PARTIAL);
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 1U, 9U, 2U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_COMPLETE);
+
+    /* A part of another generation discards the partial record. */
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 1U, 10U, 0U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_PARTIAL);
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 1U, 10U, 1U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_PARTIAL);
+    CHECK(Proto_RecordPart((const uint8_t *)"new", 3U, 1U, 11U, 0U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_COMPLETE);
+    CHECK(strcmp((const char *)detail_buf, "new") == 0);
+
+    /* ... and so does a part of another id. */
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 1U, 12U, 0U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_PARTIAL);
+    CHECK(Proto_RecordPart((const uint8_t *)big, 150U, 2U, 12U, 1U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_PARTIAL);
+    CHECK(a.id == 2U && a.received == 2U);
+
+    /* A record larger than the buffer is dropped. */
+    big[PROTO_DETAIL_MAX_BYTES] = '\0';
+    big[150] = 'x';
+    Proto_AssemblerInit(&a, card_buf, PROTO_CARD_MAX_BYTES);
+    CHECK(Proto_RecordPart((const uint8_t *)big, 300U, 0U, 1U, 5U, &p) == 1);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_OVERFLOW);
+    CHECK(a.active == 0U);
+
+    /* An empty record. */
+    CHECK(Proto_RecordPart(NULL, 0U, 0U, 3U, 0U, &p) == 1);
+    CHECK(p.parts == 1U && p.len == 0U);
+    CHECK(Proto_AssemblerAdd(&a, &p) == PROTO_ASM_COMPLETE);
+    CHECK(a.length == 0U && card_buf[0] == '\0');
+
+    /* Sender-side errors. */
+    CHECK(Proto_RecordPart((const uint8_t *)"ab", 2U, 0U, 0U, 1U, &p) == 0); /* no part 1 */
+    CHECK(Proto_RecordPart((const uint8_t *)"a\0b", 3U, 0U, 0U, 0U, &p) == 0); /* NUL */
+    CHECK(Proto_RecordPart((const uint8_t *)"ab", 2U, 0U, 0U, 0U, NULL) == 0);
+    CHECK(Proto_AssemblerAdd(NULL, &p) == PROTO_ASM_OVERFLOW);
+}
+
 int main(void)
 {
     test_crc_check_value();
@@ -498,6 +830,11 @@ int main(void)
     test_round_trip_aliases();
     test_settings();
     test_v2_rejects();
+    test_v2_frame_rejected();
+    test_time_and_small_commands();
+    test_action();
+    test_record_parts_on_the_wire();
+    test_record_split_and_assemble();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

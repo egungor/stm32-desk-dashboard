@@ -1,4 +1,4 @@
-# Protocol (v2)
+# Protocol (v3)
 
 Authoritative description: [protocol/protocol.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/protocol/protocol.md).
 Both sides link the same C codec (`protocol/src/protocol.c`).
@@ -78,3 +78,6 @@ are 65 bytes: report ID 0, then the frame.
 Any incompatible change needs a version bump, `protocol.md`, codec tests,
 and both implementations. Version 2 added the generation to
 `SELECT_DEVICE`, so a selection can no longer refer to an older list.
+Version 3 adds the dashboard: `TIME`, cards, details and prompts sent as
+chunked text records, `ACTION` (detail buttons, prompt answers, media
+keys), and `startup_screen` in the settings record (ADR-005, ADR-006).
