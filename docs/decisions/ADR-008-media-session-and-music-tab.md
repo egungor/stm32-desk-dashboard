@@ -15,6 +15,17 @@ arrives late gets its own `art_id`. While a track changes (`Changing`)
 the last status is kept, so the play / pause icon does not flicker.
 `host.log` shows the first and last `ART_PART` of a cover only.
 
+Notes from #32 (board): the two cover buffers sit in SDRAM right after
+the framebuffers (`UI_PORT_ART_RX_ADDR` 0xC0100000 for `dash_client.c`,
+`UI_PORT_ART_SHOW_ADDR` 0xC0108000 for the UI, which copies a complete
+cover in). Internal RAM grows by about 1.8 KB (the media record being
+assembled and the shown one, the part bitmap). The board's USB receive
+queue (40 frames) drops frames when it is full; a lost cover part is
+asked for again with `GET_MEDIA` and the parts received are kept, so a
+cover completes, but how often that happens while the UI redraws is
+REQUIRES HARDWARE. The Dashboard's bottom strip also got the volume
+control (owner's request): the Audio tab's volume and mute, drawn twice.
+
 ## Context
 
 The owner's requests of 2026-10-21, before v1.0.0:

@@ -63,6 +63,12 @@ argument):
 | `70-list.png`, `71-list-favorites.png`, `72-list-light.png` | Layout B: all devices, favorites tab, light theme after raising the vertical volume |
 | `73-tiles.png`, `74-tiles-switched.png`, `75-tiles-light.png` | Layout C; after tapping the first tile; light theme with the purple accent |
 | `76-settings-layout-list.png` | Settings page with "Liste" chosen: the grid row greyed out |
+| `90-dashboard-strip-muted.png` | Dashboard bottom strip (#32): media controls on the left, volume muted on the right |
+| `91-music-none.png` | Music tab, nothing playing |
+| `92-music-playing.png`, `92-music-playing-later.png` | Music tab: cover (a test gradient), texts, progress at 1:23 and 10 s later |
+| `93-music-paused.png` | Paused, long Turkish title, no cover and no duration, only play/pause enabled |
+| `94-dashboard-playing.png` | Dashboard strip while playing: pause in the middle |
+| `95-music-light.png` | Music tab in the light theme after a rebuild |
 | `50-screen-off.png` | Screen timeout of 1 minute run out: black, backlight off |
 | `51-screen-woken.png` | After the waking touch and one more tap |
 

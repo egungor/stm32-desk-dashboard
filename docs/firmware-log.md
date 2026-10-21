@@ -78,6 +78,9 @@ Then, as the USB host link works (`App/Src/link_port.c`, `protocol.md`):
 | `UI VOLUME value=<n>` | User released the volume slider at `n` percent (`SET_VOLUME` is sent while dragging, at most every 100 ms) |
 | `UI MUTE on\|off` | User tapped the mute button, or moved the volume slider while muted (`off`, once); `SET_MUTE` sent |
 | `LINK MUTE muted=<0\|1>` | The host reported the mute state (`MUTE_CHANGED`) |
+| `DASH MEDIA bytes=<n>` | A complete media record (now playing, ADR-008) arrived and is shown on the Music tab |
+| `DASH ART shown\|none` | A complete 120 × 120 cover arrived and is shown (`shown`), or the track has none (`none`, also on a disconnect) |
+| `UI MEDIA action=<1\|2\|3>` | User tapped previous / play-pause / next on the Dashboard strip or the Music tab; `ACTION` kind 2 sent |
 
 With `-DAPP_UI_DEMO=ON` demo data replaces the host link (no USB lines):
 
