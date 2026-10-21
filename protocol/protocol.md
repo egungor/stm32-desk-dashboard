@@ -17,7 +17,7 @@ USB HID, Full Speed (design: `docs/decisions/ADR-003-usb-hid-interface.md`).
 
 | Item | Value |
 |---|---|
-| VID / PID | `0x1209` / `0x0001` (pid.codes test range, development only) |
+| VID / PID | `0x1209` / `0x0002` (pid.codes test range, development only; `0x0001` is stm32-audio-controller) |
 | Interface | HID class, no boot subclass; vendor usage page `0xFF00`, usage `0x01` |
 | Device → host | 64-byte input report on interrupt IN endpoint `0x81`, 5 ms interval |
 | Host → device | 64-byte output report on interrupt OUT endpoint `0x01`, 5 ms interval |
@@ -212,7 +212,7 @@ lowered to it first, ADR-004).
 | User changes volume or mute | STM32 → `SET_VOLUME` / `SET_MUTE`; Host → `VOLUME_CHANGED` / `MUTE_CHANGED`, or `ERROR OPERATION_FAILED` |
 | User edits an alias, a favorite or the order | STM32 → `SET_ALIAS` / `SET_FAVORITE` / `MOVE_DEVICE`; Host stores it → new list (new `generation`, also when nothing changed), then `DEVICE_CHANGED`; or `ERROR UNKNOWN_DEVICE` (stale `generation` or index), `BAD_PAYLOAD` (`new_position` ≥ `total`), `OPERATION_FAILED` (not stored) |
 | User changes a setting (or the tab) | STM32 → `SET_SETTINGS` (whole record); Host stores it → `SETTINGS` |
-| Preferences changed on the host (e.g. `stm32-audio-host alias`) | Host → new list if it changed, then `SETTINGS` |
+| Preferences changed on the host (e.g. `dashboard-host alias`) | Host → new list if it changed, then `SETTINGS` |
 
 The firmware shows the state reported by the host. It does not mark a
 device as active after `SELECT_DEVICE` until `DEVICE_CHANGED` arrives,

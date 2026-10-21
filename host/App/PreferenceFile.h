@@ -4,7 +4,7 @@
 // and LF inside a field are written as \\, \t, \r, \n. Lines starting with
 // '#' and unknown records are ignored, so newer files stay readable.
 //
-//   # stm32-audio-controller preferences
+//   # stm32-desk-dashboard preferences
 //   version  1
 //   setting  <name>  <value>          one per settings field
 //   device   <endpoint id>  favorite  <0|1>  alias  <text>

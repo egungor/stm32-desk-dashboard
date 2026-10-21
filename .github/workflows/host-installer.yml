@@ -40,10 +40,10 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF#refs/tags/v}"
           else
-            version="0.7.0-dev.${GITHUB_RUN_NUMBER}+${GITHUB_SHA::7}"
+            version="0.1.0-dev.${GITHUB_RUN_NUMBER}+${GITHUB_SHA::7}"
           fi
           echo "app=$version" >> "$GITHUB_OUTPUT"
-          echo "file=0.7.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "file=0.1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Configure (Release, static runtime)
         run: cmake -S host -B build/host -DBUILD_TESTING=OFF "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
@@ -60,13 +60,13 @@ jobs:
           }
           & $iscc "/DAppVersion=${{ steps.version.outputs.app }}" "/DFileVersion=${{ steps.version.outputs.file }}" `
                   "/DBinDir=$env:GITHUB_WORKSPACE\build\host\Release" `
-                  "/O$env:GITHUB_WORKSPACE\build\installer" installer\stm32-audio-controller.iss
+                  "/O$env:GITHUB_WORKSPACE\build\installer" installer\stm32-desk-dashboard.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload installer
         uses: actions/upload-artifact@v7
         with:
-          name: stm32-audio-controller-setup
+          name: stm32-desk-dashboard-setup
           path: build/installer/*.exe
 
       - name: Attach to release
@@ -75,7 +75,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # A tag with a "-" (v0.7.0-beta.1) makes a pre-release.
+          # A tag with a "-" (v1.0.0-beta.1) makes a pre-release.
           pre=""
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then pre="--prerelease"; fi
           # The firmware workflow may create the release at the same time,

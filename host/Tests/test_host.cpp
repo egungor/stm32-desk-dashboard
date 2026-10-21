@@ -944,7 +944,7 @@ void testPreferenceFileRoundTrip()
     (void)p.setSettings(s);
 
     const std::string text = serializePreferences(p);
-    CHECK(text.rfind("# stm32-audio-controller preferences\nversion\t1\n", 0) == 0);
+    CHECK(text.rfind("# stm32-desk-dashboard preferences\nversion\t1\n", 0) == 0);
     Preferences q;
     CHECK(parsePreferences(text, q));
     CHECK(std::memcmp(&q.settings(), &p.settings(), sizeof(ProtoSettings)) == 0);
@@ -1273,7 +1273,7 @@ void testHidMatch()
 {
     HidInfo info;
     info.vendorId = 0x1209;
-    info.productId = 0x0001;
+    info.productId = 0x0002;
     info.usagePage = 0xFF00;
     info.usage = 0x0001;
     info.inputReportBytes = 65;
@@ -1286,7 +1286,7 @@ void testHidMatch()
     other.vendorId = 0x0483;  // ST
     CHECK(!isController(other));
     other = info;
-    other.productId = 0x0002;
+    other.productId = 0x0001;  // stm32-audio-controller board
     CHECK(!isController(other));
     other = info;
     other.usagePage = 0x0001;  // e.g. a keyboard collection of the same device
@@ -1370,21 +1370,21 @@ void testFrameText()
 // Start with Windows (#74): the Run value and its comparison.
 void testStartupCommand()
 {
-    const std::string exe = "C:\\Program Files\\STM32 Audio\\stm32-audio-tray.exe";
+    const std::string exe = "C:\\Program Files\\STM32 Audio\\dashboard-tray.exe";
 
     CHECK(startupCommand(exe) == "\"" + exe + "\"");
     CHECK(startupCommandMatches(startupCommand(exe), exe));
-    CHECK(startupCommandMatches("  \"c:\\program files\\stm32 audio\\STM32-AUDIO-TRAY.EXE\"  ", exe));
+    CHECK(startupCommandMatches("  \"c:\\program files\\stm32 audio\\DASHBOARD-TRAY.EXE\"  ", exe));
     CHECK(startupCommandMatches("\"" + exe + "\" --minimized", exe));
-    CHECK(!startupCommandMatches("\"C:\\Other\\stm32-audio-tray.exe\"", exe));
+    CHECK(!startupCommandMatches("\"C:\\Other\\dashboard-tray.exe\"", exe));
     CHECK(!startupCommandMatches("\"" + exe, exe));  // no closing quote
     CHECK(!startupCommandMatches("", exe));
     CHECK(!startupCommandMatches(startupCommand(exe), ""));
 
-    const std::string plain = "C:\\Tools\\stm32-audio-tray.exe";
+    const std::string plain = "C:\\Tools\\dashboard-tray.exe";
     CHECK(startupCommandMatches(plain, plain));
     CHECK(startupCommandMatches(plain + " --x", plain));
-    CHECK(!startupCommandMatches("C:\\Tools\\stm32-audio-tray.exe.bak", plain));
+    CHECK(!startupCommandMatches("C:\\Tools\\dashboard-tray.exe.bak", plain));
 }
 
 void testTrayText()

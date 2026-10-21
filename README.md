@@ -1,30 +1,39 @@
-# STM32 Audio Controller
+# STM32 Desk Dashboard
 
-A touchscreen hardware controller for switching the default Windows audio output device.
+A Windows desk dashboard on the 4.3" touchscreen of an STM32F746G-DISCO
+board: a dashboard tab (clock, weather, menu of the day, media keys,
+Claude Code approvals) next to an audio tab that switches the default
+Windows playback device.
+
+This repository continues
+[stm32-audio-controller](https://github.com/egungor/stm32-audio-controller)
+(its history is kept here). **Today the code is still the audio controller,
+renamed**; the dashboard is being built step by step, see
+[`docs/roadmap.md`](docs/roadmap.md).
 
 The project consists of:
 
 - **STM32F7 firmware** — touchscreen UI and USB HID communication
-- **Windows host application** — enumerates Windows audio endpoints and changes the default playback device
+- **Windows host application** — tray program and console tools; today:
+  Windows audio endpoints and the default playback device
 - **Shared protocol** — the contract between STM32 and Windows
 - **Tests and CI** — automated validation for host/protocol code
 
 ## Download
 
-The Windows installer and the STM32 firmware are on the
-**[Releases page](https://github.com/egungor/stm32-audio-controller/releases)**
-(latest: [v0.7.0-beta.2](https://github.com/egungor/stm32-audio-controller/releases/tag/v0.7.0-beta.2), pre-release):
+There is no release of the dashboard yet. Releases will be on the
+**[Releases page](https://github.com/egungor/stm32-desk-dashboard/releases)**:
 
 | File | What |
 |---|---|
-| `stm32-audio-controller-setup-<version>.exe` | Windows installer: tray program, `stm32-audio-host` console tools, start with Windows; current user, no administrator rights ([`installer/README.md`](installer/README.md)) |
-| `stm32-audio-controller-firmware-<version>.elf` / `.hex` / `.bin` | Firmware for the STM32F746G-DISCO (Release build; the `.bin` starts at `0x08000000`) |
+| `stm32-desk-dashboard-setup-<version>.exe` | Windows installer: tray program, `dashboard-host` console tools, start with Windows; current user, no administrator rights ([`installer/README.md`](installer/README.md)) |
+| `stm32-desk-dashboard-firmware-<version>.elf` / `.hex` / `.bin` | Firmware for the STM32F746G-DISCO (Release build; the `.bin` starts at `0x08000000`) |
 
 Flash the firmware through the board's ST-LINK USB connector with
 STM32CubeProgrammer:
 
 ```text
-STM32_Programmer_CLI -c port=SWD -w stm32-audio-controller-firmware-<version>.elf -v -rst
+STM32_Programmer_CLI -c port=SWD -w stm32-desk-dashboard-firmware-<version>.elf -v -rst
 ```
 
 Then connect the board's USB OTG FS connector to the PC and run the
@@ -33,7 +42,11 @@ SmartScreen may warn ("More info" → "Run anyway"). A `v*` tag builds both
 files in CI and attaches them to the release
 ([`installer/README.md`](installer/README.md), "Where to get it").
 
-## Project status
+The board uses USB VID:PID `1209:0002`; the audio controller uses
+`1209:0001`, so the two products and their host programs do not take each
+other's board.
+
+## Project status (inherited from the audio controller)
 
 M0–M6 are done: firmware, host and protocol are tested in CI, and the
 board and Windows checks ran on 2026-10-14 (bring-up log in
@@ -62,7 +75,7 @@ host v0.7.0-beta.2: layout A, layouts B and C, the settings page. More:
 | Board bring-up: boot, ST-LINK VCP log, clock, SDRAM (also from a power cycle), LCD | VERIFIED on the board |
 | FT5336 touch | VERIFIED on the board |
 | LVGL UI (device buttons, pages, waiting screen, notices) | Simulator in CI; VERIFIED on the board |
-| USB HID interface `1209:0001` and STM32 protocol client | Unit tests in CI; VERIFIED on the board and Windows |
+| USB HID interface and STM32 protocol client | Unit tests in CI; VERIFIED on the board and Windows as `1209:0001`; as `1209:0002` REQUIRES HARDWARE |
 | Protocol v2 (64-byte frames, CRC-16; preferences and settings, ADR-004) | Codec tests in CI (Linux, Windows); VERIFIED on the board and Windows (#58) |
 | Windows host: Core Audio, default device switching, HID transport | Unit tests in CI; VERIFIED on Windows |
 | Firmware ↔ host together | Loopback integration test in CI; end to end VERIFIED; adding or removing a Windows device while connected NOT TESTED |
@@ -82,7 +95,7 @@ host v0.7.0-beta.2: layout A, layouts B and C, the settings page. More:
 │ firmware/link      protocol client         │
 │      ▲ │                                   │
 │      │ ▼                                   │
-│ App/usb_link.c     vendor HID 1209:0001    │
+│ App/usb_link.c     vendor HID 1209:0002    │
 └──────────────────────┬─────────────────────┘
                        │ USB, 64-byte reports (protocol/protocol.md)
 ┌──────────────────────▼─────────────────────┐
@@ -120,7 +133,7 @@ Done in code (verification status above):
 ## Repository layout
 
 ```text
-stm32-audio-controller/
+stm32-desk-dashboard/
 ├── firmware/
 │   ├── STM32AudioController/   # STM32CubeMX project (CMake)
 │   │   └── App/                # hand-written firmware code
@@ -155,7 +168,7 @@ stm32-audio-controller/
 After cloning, run `git submodule update --init` (LVGL).
 
 An overview for readers is in the
-[wiki](https://github.com/egungor/stm32-audio-controller/wiki); its pages
+[wiki](https://github.com/egungor/stm32-desk-dashboard/wiki); its pages
 are kept in [`docs/wiki/`](docs/wiki/README.md).
 
 ## Development model

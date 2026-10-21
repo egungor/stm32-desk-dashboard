@@ -2,7 +2,7 @@
 
 All of these checks ran on the board and on Windows on 2026-10-14 (#48);
 the results are in the bring-up log of
-[docs/hardware.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/hardware.md).
+[docs/hardware.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/hardware.md).
 Keep this list as the procedure for re-testing after firmware or host
 changes. Work top to bottom; each step needs the previous one. Record
 each result (date, firmware commit, PASS/FAIL, the log line) in
@@ -49,7 +49,7 @@ Default firmware, board connected to the PC through **USB OTG FS**.
 
 ## 5. Windows audio — #28
 
-`stm32-audio-host` on Windows, no board needed.
+`dashboard-host` on Windows, no board needed.
 
 - [ ] `list` matches Settings → Sound (devices and default)
 - [ ] `set-default <n>` switches; Settings → Sound follows
@@ -59,7 +59,7 @@ Default firmware, board connected to the PC through **USB OTG FS**.
 
 ## 6. End to end
 
-Default firmware, `stm32-audio-host run`.
+Default firmware, `dashboard-host run`.
 
 - [ ] Start `run`, then plug in the board: `Controller connected`, the
       list goes out, the LCD shows the same devices and default

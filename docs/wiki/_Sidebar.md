@@ -1,4 +1,4 @@
-**STM32 Audio Controller**
+**STM32 Desk Dashboard**
 
 - [Home](Home)
 - [User Guide](User-Guide)
@@ -13,7 +13,7 @@
 - [Development Workflow](Development-Workflow)
 - [Troubleshooting](Troubleshooting)
 
-[Releases](https://github.com/egungor/stm32-audio-controller/releases) ·
-[Repository](https://github.com/egungor/stm32-audio-controller) ·
-[Roadmap](https://github.com/egungor/stm32-audio-controller/blob/main/docs/roadmap.md) ·
-[Issues](https://github.com/egungor/stm32-audio-controller/issues)
+[Releases](https://github.com/egungor/stm32-desk-dashboard/releases) ·
+[Repository](https://github.com/egungor/stm32-desk-dashboard) ·
+[Roadmap](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/roadmap.md) ·
+[Issues](https://github.com/egungor/stm32-desk-dashboard/issues)

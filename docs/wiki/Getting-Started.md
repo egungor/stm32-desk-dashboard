@@ -2,9 +2,9 @@
 
 ## Quick start from a release
 
-No build needed. From the [Releases page](https://github.com/egungor/stm32-audio-controller/releases) take the latest
-`stm32-audio-controller-setup-<version>.exe` and
-`stm32-audio-controller-firmware-<version>.elf`.
+No build needed. From the [Releases page](https://github.com/egungor/stm32-desk-dashboard/releases) take the latest
+`stm32-desk-dashboard-setup-<version>.exe` and
+`stm32-desk-dashboard-firmware-<version>.elf`.
 
 1. **Flash the board.** Connect the board's **ST-LINK** USB connector to
    the PC, install
@@ -12,7 +12,7 @@ No build needed. From the [Releases page](https://github.com/egungor/stm32-audio
    then:
 
    ```text
-   STM32_Programmer_CLI -c port=SWD -w stm32-audio-controller-firmware-<version>.elf -v -rst
+   STM32_Programmer_CLI -c port=SWD -w stm32-desk-dashboard-firmware-<version>.elf -v -rst
    ```
 
    The output ends with `Download verified successfully`. The `.hex` and
@@ -35,15 +35,15 @@ read on.
   FS** micro-USB connector (the link to the PC).
 - A Windows PC for flashing, the log and the host program.
 - For the firmware: the ST toolchain installed through *STM32Cube for VS
-  Code* (versions in [toolchain.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/toolchain.md)).
+  Code* (versions in [toolchain.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/toolchain.md)).
 - For the host program: Visual Studio 2022 or newer with the C++ desktop
   workload, and CMake.
 
 ## 1. Clone
 
 ```text
-git clone https://github.com/egungor/stm32-audio-controller
-cd stm32-audio-controller
+git clone https://github.com/egungor/stm32-desk-dashboard
+cd stm32-desk-dashboard
 git submodule update --init      # LVGL; without it the firmware build stops
 ```
 
@@ -94,11 +94,11 @@ ctest --test-dir build/host --build-config Release --output-on-failure
 ```
 
 With the Visual Studio generator the program is
-`build\host\Release\stm32-audio-host.exe`.
+`build\host\Release\dashboard-host.exe`.
 
 ```text
-stm32-audio-host list          # playback devices, * = default
-stm32-audio-host run           # serve the board over USB HID (Ctrl+C stops)
+dashboard-host list          # playback devices, * = default
+dashboard-host run           # serve the board over USB HID (Ctrl+C stops)
 ```
 
 All commands: [Host Application](Host-Application).

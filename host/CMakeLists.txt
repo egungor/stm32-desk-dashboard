@@ -4,9 +4,9 @@ cmake_minimum_required(VERSION 3.20)
 #
 # host_core: platform-independent device model and protocol controller,
 #            with tests; builds on Windows and Linux.
-# stm32-audio-host: Windows console program on Core Audio and USB HID
+# dashboard-host: Windows console program on Core Audio and USB HID
 #                   (Windows only).
-# stm32-audio-tray: the same service as "stm32-audio-host run" as a system
+# dashboard-tray: the same service as "dashboard-host run" as a system
 #                   tray program (Windows only, #74).
 project(stm32_audio_host LANGUAGES C CXX)
 
@@ -54,17 +54,17 @@ if(WIN32)
     target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32)
 
     # Console program: run, list, set-default, volume, mute, watch, alias, startup.
-    add_executable(stm32-audio-host Platform/Windows/main.cpp)
-    target_link_libraries(stm32-audio-host PRIVATE host_windows)
+    add_executable(dashboard-host Platform/Windows/main.cpp)
+    target_link_libraries(dashboard-host PRIVATE host_windows)
 
     # Tray program (#74): no console; same service as "run".
-    add_executable(stm32-audio-tray WIN32 Platform/Windows/tray.cpp Platform/Windows/tray.rc)
-    target_link_libraries(stm32-audio-tray PRIVATE host_windows)
+    add_executable(dashboard-tray WIN32 Platform/Windows/tray.cpp Platform/Windows/tray.rc)
+    target_link_libraries(dashboard-tray PRIVATE host_windows)
     if(NOT MSVC)
-        target_link_options(stm32-audio-tray PRIVATE -municode)
+        target_link_options(dashboard-tray PRIVATE -municode)
     endif()
 
-    foreach(target host_windows stm32-audio-host stm32-audio-tray)
+    foreach(target host_windows dashboard-host dashboard-tray)
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8)
         else()

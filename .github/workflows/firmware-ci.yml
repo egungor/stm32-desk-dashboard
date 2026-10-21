@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
           objcopy="$HOME/.cache/stm32-tools/gcc/bin/arm-none-eabi-objcopy"
           out="firmware/STM32AudioController/build/linux-Release"
-          name="stm32-audio-controller-firmware-${GITHUB_REF_NAME#v}"
+          name="stm32-desk-dashboard-firmware-${GITHUB_REF_NAME#v}"
           mkdir -p release
           cp "$out/STM32AudioController.elf" "release/$name.elf"
           "$objcopy" -O ihex "$out/STM32AudioController.elf" "release/$name.hex"

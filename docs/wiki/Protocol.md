@@ -1,6 +1,6 @@
 # Protocol (v2)
 
-Authoritative description: [protocol/protocol.md](https://github.com/egungor/stm32-audio-controller/blob/main/protocol/protocol.md).
+Authoritative description: [protocol/protocol.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/protocol/protocol.md).
 Both sides link the same C codec (`protocol/src/protocol.c`).
 
 ## Frame
@@ -68,7 +68,7 @@ User changes a setting
 
 ## USB transport
 
-Vendor HID, VID:PID `1209:0001` (pid.codes test range, development only),
+Vendor HID, VID:PID `1209:0002` (pid.codes test range, development only),
 usage page `0xFF00`, one 64-byte input and one 64-byte output report on
 interrupt endpoints (5 ms), no report ID. On Windows the read/write buffers
 are 65 bytes: report ID 0, then the frame.

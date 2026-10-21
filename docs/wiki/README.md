@@ -1,7 +1,7 @@
 # Wiki sources
 
 These files are the pages of the
-[GitHub wiki](https://github.com/egungor/stm32-audio-controller/wiki).
+[GitHub wiki](https://github.com/egungor/stm32-desk-dashboard/wiki).
 `.github/workflows/wiki-sync.yml` copies them to the wiki when they
 change on `main` (this README is not copied).
 

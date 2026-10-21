@@ -28,7 +28,7 @@ to `ctest`.
 
 ## The loopback integration test
 
-[tests/integration](https://github.com/egungor/stm32-audio-controller/blob/main/tests/integration/README.md) runs the real STM32
+[tests/integration](https://github.com/egungor/stm32-desk-dashboard/blob/main/tests/integration/README.md) runs the real STM32
 protocol client and the real host controller against each other. USB, the
 LCD and Windows are models, with time simulated in 1 ms steps:
 

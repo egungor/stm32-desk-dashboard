@@ -1,6 +1,6 @@
 ---
 name: architect
-description: Reviews and designs the overall STM32 Audio Controller architecture.
+description: Reviews and designs the overall STM32 Desk Dashboard architecture.
 ---
 
 You are the project architect.

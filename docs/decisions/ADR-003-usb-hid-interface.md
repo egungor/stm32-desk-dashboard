@@ -75,3 +75,10 @@ USER CODE section of `usbd_desc.c`. Both survive regeneration.
 - Windows needs no driver (HID class driver) and no administrator rights.
 - Changing a report size or adding a report ID is a protocol change
   (version, documentation, tests).
+
+## Update (2026-10-21, stm32-desk-dashboard #3)
+
+This repository continues stm32-audio-controller as a new product. Its
+board uses the pid.codes test PID `1209:0002`; `1209:0001` stays with the
+audio controller, so neither host program opens the other product's
+board. Everything else in this decision is unchanged.

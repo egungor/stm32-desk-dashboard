@@ -13,7 +13,7 @@ namespace stm32_audio::host::win {
 // Folder of the running program, with a trailing backslash.
 std::wstring programDirectory();
 
-// The tray program next to the running program (stm32-audio-tray.exe).
+// The tray program next to the running program (dashboard-tray.exe).
 std::wstring trayProgramPath();
 
 // True if the Run value starts @p exe (Startup.h: startupCommandMatches).

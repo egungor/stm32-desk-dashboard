@@ -37,7 +37,7 @@ reads SDRAM words directly.
 ## The LCD shows the waiting screen ("Bilgisayar bekleniyor")
 
 No host is talking to the board: start the tray program (Start menu,
-"STM32 Ses Kumandası") or `stm32-audio-host run`. After a selection that
+"STM32 Masa Paneli") or `dashboard-host run`. After a selection that
 the host did not answer in 2 s the board also returns to the waiting
 screen and asks for the list again.
 
@@ -57,6 +57,6 @@ backlight on. Tap again.
 ## `set-default` fails
 
 Switching uses the undocumented `IPolicyConfig` interface
-([ADR-002](https://github.com/egungor/stm32-audio-controller/blob/main/docs/decisions/ADR-002-default-device-switching.md)). If a
+([ADR-002](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-002-default-device-switching.md)). If a
 Windows update breaks it, `set-default` reports FAIL and the board shows
 the notice "Ses çıkışı değiştirilemedi"; the rest keeps working.

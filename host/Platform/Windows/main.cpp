@@ -1,23 +1,23 @@
-// stm32-audio-host: Windows console program.
+// dashboard-host: Windows console program.
 //
 // Console front end of the host application:
 //
-//   stm32-audio-host run               connect to the controller over USB HID
+//   dashboard-host run               connect to the controller over USB HID
 //                                      and serve it; log every frame (Ctrl+C)
-//   stm32-audio-host list              playback devices, default, volume
-//   stm32-audio-host set-default <n>   make device <n> (from "list") the default
-//   stm32-audio-host volume <0-100>    volume of the default device
-//   stm32-audio-host mute on|off       mute of the default device
-//   stm32-audio-host watch             run HostController; print the frames it
+//   dashboard-host list              playback devices, default, volume
+//   dashboard-host set-default <n>   make device <n> (from "list") the default
+//   dashboard-host volume <0-100>    volume of the default device
+//   dashboard-host mute on|off       mute of the default device
+//   dashboard-host watch             run HostController; print the frames it
 //                                      would send to the STM32 (Ctrl+C to stop)
-//   stm32-audio-host alias <n> <name>  set the alias of device <n> (from "list")
-//   stm32-audio-host alias <n> --clear remove it
-//   stm32-audio-host startup on|off|status
-//                                      start the tray program (stm32-audio-tray,
+//   dashboard-host alias <n> <name>  set the alias of device <n> (from "list")
+//   dashboard-host alias <n> --clear remove it
+//   dashboard-host startup on|off|status
+//                                      start the tray program (dashboard-tray,
 //                                      next to this program) at Windows logon
 //
 // Aliases, the device order, favorites and the board's settings are kept in
-// %APPDATA%\stm32-audio-controller\preferences.txt (ADR-004). "run" saves
+// %APPDATA%\stm32-desk-dashboard\preferences.txt (ADR-004). "run" saves
 // what the board changes and picks up changes made by "alias" within a
 // second.
 
@@ -255,7 +255,7 @@ int cmdRun(win::WinAudioSystem& audio, EventQueue& events)
 {
     win::SingleInstance single;
     if (!single.first()) {
-        std::printf("FAIL: the controller is already served (stm32-audio-tray or another \"run\").\n");
+        std::printf("FAIL: the controller is already served (dashboard-tray or another \"run\").\n");
         return 1;
     }
     win::HostServiceHooks hooks;
@@ -294,7 +294,7 @@ int cmdStartup(const std::string& arg)
 int usage()
 {
     std::printf(
-        "usage: stm32-audio-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
+        "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status\n");
     return 2;
 }

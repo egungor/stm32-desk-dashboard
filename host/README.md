@@ -15,8 +15,8 @@ Target language: C++17.
 
 The platform-independent core, the Windows Core Audio layer and the USB
 HID transport exist. Two Windows programs share them:
-`stm32-audio-tray.exe` serves the controller from the system tray and can
-start with Windows (#74); `stm32-audio-host.exe` is the console program
+`dashboard-tray.exe` serves the controller from the system tray and can
+start with Windows (#74); `dashboard-host.exe` is the console program
 (`run` serves the controller the same way with a log on screen; the other
 commands test the audio layer on their own).
 
@@ -42,12 +42,12 @@ host/
 │   ├── WinAudioSystem.*    # IAudioSystem on Core Audio / MMDevice
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
-│   ├── WinPreferenceFile.* # %APPDATA%\stm32-audio-controller\preferences.txt
+│   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8
 │   ├── HostService.*       # the "run" loop, shared by console and tray (#74)
 │   ├── WinStartup.*        # HKCU Run value, single instance mutex (#74)
-│   ├── main.cpp            # stm32-audio-host console program
-│   └── tray.cpp, tray.rc   # stm32-audio-tray tray program and its icon (#74)
+│   ├── main.cpp            # dashboard-host console program
+│   └── tray.cpp, tray.rc   # dashboard-tray tray program and its icon (#74)
 ├── Tests/
 │   └── test_host.cpp       # fake audio system + fake sink, no framework
 └── CMakeLists.txt
@@ -71,7 +71,7 @@ Details of the USB interface: `docs/decisions/ADR-003-usb-hid-interface.md`.
 
 - Discovery: every second, while not connected, the HID interfaces
   present (`SetupDiGetClassDevs`) are checked with `HidD_GetAttributes`
-  and `HidP_GetCaps`. The controller is VID:PID `1209:0001`, usage page
+  and `HidP_GetCaps`. The controller is VID:PID `1209:0002`, usage page
   `0xFF00`, usage `1`, 65-byte input and output reports (report ID 0 +
   one 64-byte frame). The rule is `isController()` in `Hid/HidMatch.h`
   and is unit tested.
@@ -89,22 +89,22 @@ Details of the USB interface: `docs/decisions/ADR-003-usb-hid-interface.md`.
 - Only the consumer thread touches `HostController` and the audio
   system; the HID thread and the Core Audio threads only push events.
 
-## Console program (`stm32-audio-host.exe`)
+## Console program (`dashboard-host.exe`)
 
 ```text
-stm32-audio-host run               serve the controller over USB HID; log every
+dashboard-host run               serve the controller over USB HID; log every
                                    frame in both directions (Ctrl+C stops)
-stm32-audio-host list              playback devices (* = default), volume, mute
-stm32-audio-host set-default <n>   make device <n> from "list" the default
-stm32-audio-host volume <0-100>    volume of the default device
-stm32-audio-host mute on|off       mute of the default device
-stm32-audio-host watch             run HostController; print the frames it
+dashboard-host list              playback devices (* = default), volume, mute
+dashboard-host set-default <n>   make device <n> from "list" the default
+dashboard-host volume <0-100>    volume of the default device
+dashboard-host mute on|off       mute of the default device
+dashboard-host watch             run HostController; print the frames it
                                    would send to the STM32 (Ctrl+C stops)
-stm32-audio-host alias <n> <name>  show device <n> from "list" as <name> on the
+dashboard-host alias <n> <name>  show device <n> from "list" as <name> on the
                                    board (at most 32 bytes of UTF-8)
-stm32-audio-host alias <n> --clear remove the alias
-stm32-audio-host startup on|off|status
-                                   start stm32-audio-tray.exe (next to this
+dashboard-host alias <n> --clear remove the alias
+dashboard-host startup on|off|status
+                                   start dashboard-tray.exe (next to this
                                    program) at Windows logon, or not
 ```
 
@@ -117,9 +117,9 @@ mark under its name.
 `installer/` builds a setup (Inno Setup) that installs both programs for
 the current user, starts the tray program with Windows and starts it right
 away; see `installer/README.md`. CI builds it as the artifact
-`stm32-audio-controller-setup` (workflow "Host installer").
+`stm32-desk-dashboard-setup` (workflow "Host installer").
 
-## Tray program (`stm32-audio-tray.exe`, #74)
+## Tray program (`dashboard-tray.exe`, #74)
 
 The same service as `run` without a console window (Windows GUI
 subsystem). The service loop (`HostService`) runs on a worker thread; the
@@ -129,9 +129,9 @@ main thread owns a hidden window, the tray icon and its menu:
   in the icon's tooltip;
 - "Windows ile başlat": a check mark when
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has the value
-  `STM32 Audio Controller` = `"<folder>\stm32-audio-tray.exe"` (current
+  `STM32 Desk Dashboard` = `"<folder>\dashboard-tray.exe"` (current
   user only, no administrator rights); a click adds or removes it;
-- "Ayarlar klasörünü aç": `%APPDATA%\stm32-audio-controller`;
+- "Ayarlar klasörünü aç": `%APPDATA%\stm32-desk-dashboard`;
 - "Günlüğü aç": `host.log` in that folder: the same lines as `run`
   prints, with the local time; above 1 MB at start it becomes
   `host.log.1`;
@@ -143,14 +143,14 @@ the service the same way. The icon comes back when Explorer restarts
 (`TaskbarCreated`).
 
 One program serves the controller at a time: `run` and the tray program
-hold the named mutex `Local\stm32-audio-controller-host`; the second one
+hold the named mutex `Local\stm32-desk-dashboard-host`; the second one
 says so and exits. The other console commands (`list`, `alias`, …) still
 work while the tray program runs.
 
 ### Preferences
 
 Aliases, the device order, favorites and the board's settings record
-(ADR-004) are kept in `%APPDATA%\stm32-audio-controller\preferences.txt`,
+(ADR-004) are kept in `%APPDATA%\stm32-desk-dashboard\preferences.txt`,
 a UTF-8 text file (format in `App/PreferenceFile.h`).
 
 - `run` loads the file at start (`Preferences: <path>`, `(new)` if it does
@@ -287,7 +287,7 @@ cp /usr/lib/gcc/x86_64-w64-mingw32/13-posix/{libstdc++-6.dll,libgcc_s_seh-1.dll}
 wine build/host-mingw/test_host.exe
 ```
 
-What Wine shows: `test_host.exe` passes, `stm32-audio-host` starts,
+What Wine shows: `test_host.exe` passes, `dashboard-host` starts,
 `run` scans for the board and stops on Ctrl+C. What it cannot show: no
 HID devices, and Core Audio is limited (`set-default` and `volume` fail
 under Wine). None of this replaces the checks on Windows above.

@@ -1,38 +1,39 @@
-# STM32 Audio Controller — Claude Code Instructions
+# STM32 Desk Dashboard — Claude Code Instructions
 
 ## Mission
 
-Build a reliable touchscreen controller that allows a user to select the
-default Windows audio playback device from an STM32F7 Discovery-class board.
+Build a Windows desk dashboard on the touchscreen of an STM32F7
+Discovery board. The LCD has tabs: **Dashboard** (the main tab: clock,
+weather, menu of the day, media keys, Claude Code approvals) and **Audio**
+(selecting the default Windows playback device, volume and mute — the
+inherited stm32-audio-controller), plus settings. More tabs come later.
+
+This repository continues egungor/stm32-audio-controller; its history,
+milestones M0–M7 and ADR-001…004 are kept. The audio features must keep
+working as they do there.
 
 The system has three major parts:
 
 1. STM32 firmware
-2. Windows C++ host application
+2. Windows C++ host application (tray program + console tools)
 3. Shared STM32 ↔ Windows protocol
+
+Design principle: **thin firmware, content from the host.** The board
+knows a few generic components (card, detail list, approval prompt, media
+strip); weather, menu, notifications and other features are written on the
+host. Avoid over-engineering: no plugin systems, no generic frameworks
+beyond what the current step needs.
 
 ## Current milestone
 
-M0–M6 are done and verified on the board and on Windows (2026-10-14,
-bring-up log in `docs/hardware.md`; milestone status in
-`docs/roadmap.md`). M7 (polish) is in progress:
+Dashboard v1, step 1 (repository setup, #3): the code is the audio
+controller renamed (product name, program names, settings folder, USB PID
+`1209:0002`). The v1 steps and their status are in `docs/roadmap.md`,
+"Dashboard v1". Do not start a later step unless the current task asks
+for it.
 
-- Coded and merged: protocol version 2
-  (`docs/decisions/ADR-004-device-preferences-and-settings.md`, #58),
-  host preference store, alias command and volume limit (#59; on switch since 2026-10-16),
-  and the firmware UI of #60 (designs from #57): tabs, themes, accent
-  colours, grids (#66), settings page (#70), screen timeout (#71), edit
-  mode with favorites, ordering and the alias keyboard (#72), layouts B
-  and C with the 128 KB LVGL heap (#73). The Windows installer with
-  start with Windows is merged (#76).
-- What remains of #60 is verification on the board and on Windows: the
-  open checks are in `docs/hardware.md`, "Pending hardware and Windows
-  tests". There is no #60 code left to write.
-- The system tray program with start with Windows (#74) is merged
-  (#75); its Windows check is in the same list.
-
-The display flip (#42, #51) is done. Do not start other new product
-features unless the current task explicitly asks for it.
+Inherited open work: the M7 board and Windows checks listed in
+`docs/hardware.md`, "Pending hardware and Windows tests".
 
 ## Target hardware
 
@@ -41,7 +42,7 @@ features unless the current task explicitly asks for it.
 - LCD: 4.3" 480x272 capacitive touchscreen, ROCKTECH RK043FN48H-CT672B
 - Touch controller: FT5336
 - GUI: LVGL v9.5.0 (`firmware/ui`, git submodule)
-- USB: vendor USB HID, VID:PID `1209:0001` (ADR-003)
+- USB: vendor USB HID, VID:PID `1209:0002` (ADR-003; `1209:0001` is the audio controller)
 
 The board identity above has been verified on the physical board. See
 `docs/hardware.md` for details. Do not invent GPIO or peripheral mappings;

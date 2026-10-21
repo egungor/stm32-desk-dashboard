@@ -7,7 +7,7 @@
 | LCD | 4.3" 480×272, ROCKTECH RK043FN48H-CT672B, LTDC RGB565 | VERIFIED |
 | Touch | FT5336 capacitive, I²C3 | VERIFIED |
 | SDRAM | 8 MB usable on FMC bank 1 (`0xC0000000`) | VERIFIED (self-test) |
-| USB to PC | USB OTG FS micro-USB connector | VERIFIED; vendor HID `1209:0001` |
+| USB to PC | USB OTG FS micro-USB connector | VERIFIED; vendor HID `1209:0002` |
 | Debug | ST-LINK/V2-1 (flash, SWD, virtual COM port) | VERIFIED |
 
 ## Peripherals in use
@@ -17,11 +17,11 @@
 | LTDC | LCD, two RGB565 framebuffers in SDRAM, swapped on vertical blanking |
 | FMC | SDRAM |
 | I²C3 | FT5336, polled (no interrupt) |
-| USB OTG FS | Vendor HID `1209:0001` |
+| USB OTG FS | Vendor HID `1209:0002` |
 | USART1 | Log on the ST-LINK virtual COM port, 115200 8N1 |
 | TIM5 | Clock measurement against the 32.768 kHz LSE at boot |
 
-Pins and their verification status: [pin-mapping.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/pin-mapping.md).
+Pins and their verification status: [pin-mapping.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/pin-mapping.md).
 GPIO and peripheral assignments come from UM1907, the MB1191 schematic and
 the STM32CubeF7 BSP, never from guesses.
 
@@ -35,4 +35,4 @@ the STM32CubeF7 BSP, never from guesses.
   uses **USB OTG FS**.
 
 The full log with dates and register values:
-[docs/hardware.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/hardware.md).
+[docs/hardware.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/hardware.md).

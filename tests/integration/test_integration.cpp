@@ -207,7 +207,7 @@ public:
         }
     }
 
-    // stm32-audio-host started / stopped while the board stays plugged in.
+    // dashboard-host started / stopped while the board stays plugged in.
     void startHost()
     {
         host.emplace(audio, *this);
@@ -767,7 +767,7 @@ void testHostTimeoutAndRecovery()
     addHomeSetup(r.audio);
     connect(r);
 
-    // stm32-audio-host is closed; the board stays plugged in and does not
+    // dashboard-host is closed; the board stays plugged in and does not
     // know. The user taps a device.
     r.stopHost();
     r.tap(*r.shownIdOf("LG HDR 4K"));

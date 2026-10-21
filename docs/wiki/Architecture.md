@@ -12,7 +12,7 @@
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ App/link_port.c, App/usb_link.c  │◄───────►│ Platform/Windows/WinHidLink      │
-│   vendor HID 1209:0001           │ USB HID │   SetupDi, overlapped I/O        │
+│   vendor HID 1209:0002           │ USB HID │   SetupDi, overlapped I/O        │
 └──────────────────────────────────┘         └──────────────────────────────────┘
                      protocol/ (C codec, shared by both sides)
 ```
@@ -47,8 +47,8 @@ The STM32 shows **only** what the host reports. A tapped device is marked
 
 | ADR | Decision |
 |---|---|
-| [ADR-001](https://github.com/egungor/stm32-audio-controller/blob/main/docs/decisions/ADR-001-firmware-peripheral-set.md) | Peripheral set enabled in CubeMX |
-| [ADR-002](https://github.com/egungor/stm32-audio-controller/blob/main/docs/decisions/ADR-002-default-device-switching.md) | Switch the Windows default through the undocumented `IPolicyConfig` |
-| [ADR-003](https://github.com/egungor/stm32-audio-controller/blob/main/docs/decisions/ADR-003-usb-hid-interface.md) | Vendor USB HID, `1209:0001`, 64-byte reports, registered from USER CODE |
+| [ADR-001](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-001-firmware-peripheral-set.md) | Peripheral set enabled in CubeMX |
+| [ADR-002](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-002-default-device-switching.md) | Switch the Windows default through the undocumented `IPolicyConfig` |
+| [ADR-003](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-003-usb-hid-interface.md) | Vendor USB HID, `1209:0002`, 64-byte reports, registered from USER CODE |
 
-More: [docs/architecture.md](https://github.com/egungor/stm32-audio-controller/blob/main/docs/architecture.md).
+More: [docs/architecture.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/architecture.md).
