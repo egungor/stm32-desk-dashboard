@@ -34,6 +34,7 @@
 #include "Startup.h"
 #include "VolumeLimit.h"
 #include "BackgroundFetch.h"
+#include "ApprovalService.h"
 #include "ClaudeHook.h"
 #include "WeatherCard.h"
 #include "WeatherLocation.h"
@@ -1191,6 +1192,20 @@ std::optional<HostEvent> popEvent(EventQueue& q)
     return e->event;
 }
 
+void testEventQueueHook()
+{
+    EventQueue q;
+    q.pushHook(HostEvent::HookRequest, 7, "{\"tool_name\":\"Bash\"}");
+    q.pushHook(HostEvent::HookRequest, 8, "x");
+    q.pushHook(HostEvent::HookCancelled, 7);
+    std::optional<QueuedEvent> e = q.pop(std::chrono::milliseconds(1));
+    CHECK(e && e->event == HostEvent::HookRequest && e->ticket == 7U && e->text.find("Bash") != std::string::npos);
+    e = q.pop(std::chrono::milliseconds(1));
+    CHECK(e && e->event == HostEvent::HookRequest && e->ticket == 8U);  // never merged
+    e = q.pop(std::chrono::milliseconds(1));
+    CHECK(e && e->event == HostEvent::HookCancelled && e->ticket == 7U && e->text.empty());
+}
+
 void testEventQueue()
 {
     EventQueue q;
@@ -1410,7 +1425,7 @@ void testTrayText()
     CHECK(std::strcmp(trayText(TrayText::Exit, 1), "Exit") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 0), "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 7), trayText(TrayText::Exit, 0)) == 0);  // unknown: Turkish
-    for (int id = 0; id <= static_cast<int>(TrayText::MenuImportFailed); ++id) {
+    for (int id = 0; id <= static_cast<int>(TrayText::HookSettingsCopied); ++id) {
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 0)) > 0);
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 1)) > 0);
     }
@@ -2424,6 +2439,198 @@ void testClaudeHook()
     CHECK(end["answer"] == "allow" && end["wait_s"] == 5 && end["elapsed_ms"] == 5003 && !end.contains("input"));
 }
 
+void testHookPipeAndSnippet()
+{
+    const std::optional<std::string> line = hookRequestLine("{\n  \"tool_name\": \"Bash\",\n  \"x\": \"a\\nb\"\n}\n");
+    CHECK(line.has_value() && line->back() == '\n' && line->find('\n') == line->size() - 1U);
+    CHECK(line.has_value() && nlohmann::json::parse(*line)["x"] == "a\nb");
+    CHECK(!hookRequestLine("[1]").has_value() && !hookRequestLine("").has_value() && !hookRequestLine("{").has_value());
+    CHECK(hookReplyLine(HookAnswer::Allow) == "allow\n" && hookReplyLine(HookAnswer::None) == "none\n");
+    CHECK(parseHookReply("allow\r\n") == HookAnswer::Allow && parseHookReply(" deny") == HookAnswer::Deny);
+    CHECK(parseHookReply("") == HookAnswer::None && parseHookReply("Allow") == HookAnswer::None);
+
+    const nlohmann::json snippet =
+        nlohmann::json::parse(hookSettingsSnippet("C:\\Users\\e\\AppData\\Local\\Programs\\STM32 Desk Dashboard\\dashboard-host.exe"));
+    const nlohmann::json& entry = snippet["hooks"]["PermissionRequest"][0];
+    CHECK(entry["matcher"].get<std::string>().find("Bash") != std::string::npos);
+    const nlohmann::json& hook = entry["hooks"][0];
+    CHECK(hook["type"] == "command" && hook["timeout"] == kHookTimeoutSeconds);
+    CHECK(hook["command"].get<std::string>().find("dashboard-host.exe") != std::string::npos);
+    CHECK(hook["args"].is_array() && hook["args"].size() == 2U && hook["args"][1] == "permission");
+    CHECK(!hook.contains("onFailure"));  // a closed tray must not refuse every request (ADR-007)
+}
+
+void testDashPrompt()
+{
+    DashRig r;
+    r.dash.showPrompt(3, "before sync");  // kept, not sent
+    CHECK(r.sink.sent.empty() && !r.dash.synced());
+    r.dash.onConnected();
+    CHECK(r.dash.synced());
+    // TIME, 8 slots, then the kept prompt.
+    while (!r.sink.sent.empty() && r.sink.sent.front().command != PROTO_CMD_PROMPT_PART) {
+        r.sink.pop();
+    }
+    std::uint8_t id = 0;
+    CHECK(popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id) == "before sync" && id == 3U);
+    r.dash.showPrompt(4, std::string(PROTO_PROMPT_MAX_BYTES + 50U, 'x'));
+    CHECK(popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id).size() == PROTO_PROMPT_MAX_BYTES && id == 4U);
+    r.dash.closePrompt(4);
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_PROMPT_CLOSE && m.u.prompt_id == 4U);
+    // After a GET_CARDS nothing is shown again.
+    r.dash.onMessage(dashMessage(PROTO_CMD_GET_CARDS));
+    bool prompt = false;
+    while (!r.sink.sent.empty()) {
+        prompt = prompt || r.sink.pop().command == PROTO_CMD_PROMPT_PART;
+    }
+    CHECK(!prompt);
+}
+
+std::string hookInput(const std::string& tool, const nlohmann::json& toolInput, const std::string& cwd = "C:\\src\\ayrac")
+{
+    nlohmann::json j = {{"session_id", "s1"},       {"hook_event_name", "PermissionRequest"}, {"cwd", cwd},
+                        {"tool_name", tool},        {"tool_input", toolInput},               {"permission_mode", "default"}};
+    return j.dump();
+}
+
+void testApprovalPrompt()
+{
+    const char sep = '\x1F';
+    std::optional<ApprovalInfo> info =
+        parseApprovalInput(hookInput("Bash", {{"command", "npm install\nnpm test"}, {"description", "Kur"}}), 0);
+    CHECK(info.has_value() && info->tool == "Bash" && info->project == "ayrac" && info->rows.size() == 3U);
+    CHECK(info->rows[1].label == "Komut" && info->rows[1].value == "npm install ¶ npm test" && info->rows[1].essential);
+    CHECK(!info->rows[2].essential);
+    bool approvable = false;
+    std::string text = approvalPrompt(*info, 1, 2, 60, 0, approvable);
+    CHECK(approvable);
+    CHECK(text == std::string("Claude Code izin istiyor") + sep + "ayrac · 1/2" + sep + "60\n" + sep + "Araç" + sep +
+                      "Bash\n" + sep + "Komut" + sep + "npm install ¶ npm test\n" + sep + "Açıklama" + sep + "Kur\n" +
+                      "!1" + sep + "Onayla\n!2" + sep + "Reddet\n!3" + sep + "Terminalde sor");
+
+    info = parseApprovalInput(hookInput("Edit", {{"file_path", "a.txt"}, {"old_string", "x"}, {"new_string", "y"},
+                                                {"replace_all", true}}, "/home/e/proj/"),
+                              1);
+    CHECK(info.has_value() && info->project == "proj" && info->rows.size() == 5U && info->rows[4].label == "All");
+    info = parseApprovalInput(hookInput("mcp__x__y", {{"a", 1}}), 0);
+    CHECK(info.has_value() && info->rows.size() == 2U && info->rows[1].value == "{\"a\":1}");
+    CHECK(!parseApprovalInput("{\"tool_input\":{}}", 0).has_value() && !parseApprovalInput("x", 0).has_value());
+
+    // Long context only: dropped, still approvable.
+    info = parseApprovalInput(hookInput("Bash", {{"command", "ls"}, {"description", std::string(1200, 'd')}}), 0);
+    text = approvalPrompt(*info, 1, 1, 60, 0, approvable);
+    CHECK(approvable && text.find("ddd") == std::string::npos && text.size() <= PROTO_PROMPT_MAX_BYTES);
+    // A long command: cut, not approvable, no "Onayla".
+    info = parseApprovalInput(hookInput("Write", {{"file_path", "big.ts"}, {"content", std::string(3000, 'c')}}), 0);
+    text = approvalPrompt(*info, 1, 1, 60, 0, approvable);
+    CHECK(!approvable && text.size() <= PROTO_PROMPT_MAX_BYTES);
+    CHECK(text.find("!1") == std::string::npos && text.find("!2") != std::string::npos &&
+          text.find("!3") != std::string::npos);
+    CHECK(text.find("kısaltıldı") != std::string::npos && text.find("big.ts") != std::string::npos &&
+          text.find("ccc") != std::string::npos);
+}
+
+void testApprovalService()
+{
+    DashRig r;
+    std::vector<std::pair<std::uint64_t, HookAnswer>> replies;
+    std::vector<std::string> logs;
+    ApprovalService approvals(r.dash, [&r] { return r.now; },
+                              [&replies](std::uint64_t t, HookAnswer a) { replies.emplace_back(t, a); },
+                              [&logs](const std::string& l) { logs.push_back(l); });
+    const std::string bash = hookInput("Bash", {{"command", "npm test"}});
+    std::uint64_t ms = 1000;
+
+    // No board: no decision at once.
+    approvals.onRequest(1, bash, ms);
+    CHECK(replies.size() == 1U && replies[0] == std::make_pair(std::uint64_t{1}, HookAnswer::None));
+    CHECK(r.dash.card(3).find("kart yok") != std::string::npos);
+
+    r.dash.onConnected();
+    r.sink.sent.clear();
+    approvals.onRequest(2, bash, ms);
+    std::uint8_t id = 0;
+    std::string shown = popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
+    const std::uint8_t first = id;
+    CHECK(shown.find("1/1") != std::string::npos && shown.find("60\n") != std::string::npos);
+    CHECK(r.dash.card(3).find("1 onay bekliyor") != std::string::npos);
+
+    // A second request: the first is shown again as "1/2" with the time left.
+    r.sink.sent.clear();
+    approvals.onRequest(3, hookInput("Write", {{"file_path", "a.txt"}, {"content", "hi"}}), ms + 10000);
+    shown = popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
+    CHECK(id == first && shown.find("1/2") != std::string::npos && shown.find("50\n") != std::string::npos);
+    CHECK(approvals.waiting() == 2U);
+
+    // "Onayla" on the board: allow, close, the next is shown.
+    r.sink.sent.clear();
+    ProtoAction a{};
+    a.kind = PROTO_ACTION_PROMPT;
+    a.ref = first;
+    a.action = 1;
+    CHECK(approvals.onAction(a, ms + 11000));
+    CHECK(replies.back() == std::make_pair(std::uint64_t{2}, HookAnswer::Allow));
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_PROMPT_CLOSE && m.u.prompt_id == first);
+    shown = popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
+    const std::uint8_t second = id;
+    CHECK(second != first && shown.find("Write") != std::string::npos && shown.find("1/1") != std::string::npos);
+    CHECK(approvals.onAction(a, ms + 11000) && replies.size() == 2U);  // stale answer: nothing
+
+    // "Reddet"; then "Terminalde sor".
+    a.ref = second;
+    a.action = 2;
+    CHECK(approvals.onAction(a, ms + 12000) && replies.back() == std::make_pair(std::uint64_t{3}, HookAnswer::Deny));
+    approvals.onRequest(4, bash, ms + 13000);
+    a.ref = static_cast<std::uint8_t>(second + 1U);
+    a.action = 3;
+    CHECK(approvals.onAction(a, ms + 14000) && replies.back() == std::make_pair(std::uint64_t{4}, HookAnswer::None));
+
+    // A cut request: "allow" (not offered) counts as no decision.
+    approvals.onRequest(5, hookInput("Write", {{"file_path", "b"}, {"content", std::string(2000, 'z')}}), ms + 15000);
+    a.ref = static_cast<std::uint8_t>(second + 2U);
+    a.action = 1;
+    CHECK(approvals.onAction(a, ms + 16000) && replies.back() == std::make_pair(std::uint64_t{5}, HookAnswer::None));
+
+    // Timeout, cancel, other kinds, a bad request.
+    approvals.onRequest(6, bash, ms + 20000);
+    approvals.onRequest(7, bash, ms + 21000);
+    approvals.onTick(ms + 20000 + ApprovalService::kAnswerTimeoutMs - 1);
+    CHECK(approvals.waiting() == 2U);
+    approvals.onTick(ms + 20000 + ApprovalService::kAnswerTimeoutMs);
+    CHECK(approvals.waiting() == 1U && replies.back() == std::make_pair(std::uint64_t{6}, HookAnswer::None));
+    approvals.onCancelled(7, ms + 82000);
+    CHECK(approvals.waiting() == 0U && replies.back() == std::make_pair(std::uint64_t{7}, HookAnswer::None));
+    ProtoAction media{};
+    media.kind = PROTO_ACTION_MEDIA;
+    CHECK(!approvals.onAction(media, ms));
+    approvals.onRequest(8, "not json", ms);
+    CHECK(replies.back() == std::make_pair(std::uint64_t{8}, HookAnswer::None));
+
+    // Full queue, then the board goes away: all "none".
+    for (std::uint64_t t = 10; t < 10 + ApprovalService::kMaxQueue + 1; ++t) {
+        approvals.onRequest(t, bash, ms + 90000);
+    }
+    CHECK(approvals.waiting() == ApprovalService::kMaxQueue &&
+          replies.back() == std::make_pair(std::uint64_t{10 + ApprovalService::kMaxQueue}, HookAnswer::None));
+    const std::size_t before = replies.size();
+    approvals.onDisconnected();
+    CHECK(approvals.waiting() == 0U && replies.size() == before + ApprovalService::kMaxQueue);
+    for (std::size_t i = before; i < replies.size(); ++i) {
+        CHECK(replies[i].second == HookAnswer::None);
+    }
+
+    // Card and detail.
+    CHECK(r.dash.card(3).find("Onay bekleyen yok") != std::string::npos);
+    const std::optional<std::string> detail = approvals.detail();
+    CHECK(detail.has_value() && detail->find("#Son kararlar") != std::string::npos);
+    CHECK(detail->find("kart yok · npm test") != std::string::npos && detail->size() <= PROTO_DETAIL_MAX_BYTES);
+    approvals.setLanguage(1);
+    CHECK(r.dash.card(3).find("No approval waiting") != std::string::npos);
+    CHECK(!logs.empty());
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -2490,6 +2697,11 @@ int main()
     testMenuImport();
     testMenuService();
     testClaudeHook();
+    testHookPipeAndSnippet();
+    testDashPrompt();
+    testApprovalPrompt();
+    testApprovalService();
+    testEventQueueHook();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

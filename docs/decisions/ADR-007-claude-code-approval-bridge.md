@@ -2,9 +2,43 @@
 
 ## Status
 
-Proposed (issue #5). Open points are settled by the spike of Dashboard
-v1 step 10 and recorded here; the bridge is built in step 11
-(`docs/roadmap.md`).
+Accepted (issue #5); built in step 11 (#26). The spike of step 10 (#24,
+`docs/hook-spike.md`) has not run yet: the values below are the
+defaults of this ADR and are adjusted when its results are in.
+
+Notes from step 11 (#26):
+
+- The hook runs in exec form (`command` = `dashboard-host.exe`, `args` =
+  `["hook", "permission"]`), matcher
+  `Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch`, timeout
+  90 s, no `onFailure`. The tray menu item "Claude Code hook ayarını
+  kopyala" puts this snippet, with the installed path, on the clipboard.
+- Times: the board answers within 60 s (`ApprovalService::kAnswerTimeoutMs`);
+  the pipe server gives up 5 s later; the hook client waits at most 75 s
+  (`kHookClientWaitMs`); Claude Code's timeout is 90 s. Each step ends
+  before the one that waits for it, so a late part always means "no
+  decision".
+- Pipe protocol: one request line (the hook input as compact JSON), one
+  reply line `allow`, `deny` or `none`. The server is created with
+  `FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_REJECT_REMOTE_CLIENTS` and a DACL
+  for the current user only. A hook that goes away while waiting
+  (Claude Code's timeout) is noticed and its prompt dropped.
+- What the prompt shows per tool: Bash / PowerShell the command (and its
+  description as context); Edit the file, the old and the new text;
+  Write the file and its content; MultiEdit the file and the edits;
+  NotebookEdit the notebook and the new source; WebFetch the URL (the
+  prompt as context); other tools their input as JSON. Line breaks show
+  as "¶". Context rows are dropped first; when the request itself does
+  not fit 1024 bytes, the prompt is cut, says so, and offers only Reddet
+  and Terminalde sor. "Onayla" on a cut prompt counts as no decision.
+- The board shows one prompt at a time over every screen (`lv_layer_top`),
+  lights the screen and keeps it lit, counts down, and disables its
+  buttons after one tap; it closes itself 5 s after the countdown if no
+  `PROMPT_CLOSE` came. Requests are numbered "1/2" in the subtitle; at
+  most 8 wait, more get no decision at once.
+- Card slot 3 shows how many requests wait and the last decision; its
+  detail lists the waiting requests and the last five decisions. The host
+  log names the tool and the result, not the command.
 
 ## Context
 
@@ -133,7 +167,10 @@ go into "Spike results" below.
 
 ## Spike results
 
-Not run yet (#24, `docs/hook-spike.md`): REQUIRES WINDOWS.
+Not run yet (#24, `docs/hook-spike.md`): REQUIRES WINDOWS. Step 11 was
+built with the defaults above; the spike decides whether the matcher,
+the timeouts and "the terminal question while the hook waits" need
+changes.
 
 ## Alternatives
 

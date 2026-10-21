@@ -137,8 +137,8 @@ parallel after step 3.
 - [x] 8. Weather — Open-Meteo, one fixed location, card and 10-day detail (#18)
 - [x] 9. Menu of the day — menu images → Claude API → monthly JSON; card and daily detail with the salad bar (#20)
 - Test release `v0.9.0-beta.1` after step 9 (#22): steps 1–9 on the board and Windows; findings decide what is fixed before step 10
-- [ ] 10. Claude Code approval: spike — hook behaviour on Windows, timeouts (#24, `docs/hook-spike.md`)
-- [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board
+- [ ] 10. Claude Code approval: spike — hook behaviour on Windows, timeouts (#24, `docs/hook-spike.md`; the probe is in, the runs on Windows are open)
+- [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board (#26; built with ADR-007's defaults, the spike may change them)
 - [ ] 12. Release v1.0.0
 
 After v1:

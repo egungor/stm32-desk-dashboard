@@ -26,11 +26,13 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 10 (#24): the Claude Code approval spike. The probe
-hook `dashboard-host hook probe` and the scenarios in
-`docs/hook-spike.md` run on the user's PC; their results go into ADR-007
-("Spike results") and set the values of step 11. Done: steps 1–9 and the
-test release `v0.9.0-beta.1` (#22). The v1 steps and their status are in
+Dashboard v1, step 11 (#26): Claude Code approvals on the board
+(`host/Hook/ApprovalService`, `Platform/Windows/WinHookPipe`,
+`dashboard-host hook permission`; the prompt in `dash_client.c` and
+`ui_dash.c`), built with ADR-007's default values. Open: the spike of
+step 10 (#24, `docs/hook-spike.md`) on the user's PC; its results may
+change the matcher and the timeouts. Done: steps 1–9 and the test release
+`v0.9.0-beta.1` (#22). The v1 steps and their status are in
 `docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the
 current task asks for it.
 

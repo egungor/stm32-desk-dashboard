@@ -16,9 +16,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <string>
 
 #include "IFrameSink.h"
 
@@ -32,12 +34,16 @@ enum class HostEvent {
     HidConnected,     // the controller's HID interface was opened
     HidDisconnected,  // the controller's HID interface went away
     MenuChanged,      // a menu import wrote the month files
+    HookRequest,      // a Claude Code permission request from the pipe (ticket, text)
+    HookCancelled,    // its hook went away before an answer (ticket)
     Quit,
 };
 
 struct QueuedEvent {
     HostEvent event;
-    Frame frame{};  // FrameReceived only
+    Frame frame{};           // FrameReceived only
+    std::uint64_t ticket = 0;  // HookRequest, HookCancelled
+    std::string text;        // HookRequest: the hook input
 };
 
 class EventQueue {
@@ -55,7 +61,17 @@ public:
                     }
                 }
             }
-            events_.push_back(QueuedEvent{event, Frame{}});
+            events_.push_back(QueuedEvent{event, Frame{}, 0U, {}});
+        }
+        cv_.notify_one();
+    }
+
+    // HookRequest / HookCancelled: never merged.
+    void pushHook(HostEvent event, std::uint64_t ticket, std::string text = {})
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            events_.push_back(QueuedEvent{event, Frame{}, ticket, std::move(text)});
         }
         cv_.notify_one();
     }
@@ -70,7 +86,7 @@ public:
                 ++droppedFrames_;
                 return false;
             }
-            events_.push_back(QueuedEvent{HostEvent::FrameReceived, frame});
+            events_.push_back(QueuedEvent{HostEvent::FrameReceived, frame, 0U, {}});
             ++framesWaiting_;
         }
         cv_.notify_one();

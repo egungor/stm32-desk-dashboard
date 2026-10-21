@@ -96,6 +96,49 @@ HookProbeConfig parseHookProbeConfig(const std::optional<std::string>& text)
     return config;
 }
 
+std::optional<std::string> hookRequestLine(const std::string& input)
+{
+    const nlohmann::json parsed = nlohmann::json::parse(input, nullptr, false);
+    if (!parsed.is_object()) {
+        return std::nullopt;
+    }
+    return parsed.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+}
+
+std::string hookReplyLine(HookAnswer answer)
+{
+    return std::string(hookAnswerName(answer)) + "\n";
+}
+
+HookAnswer parseHookReply(const std::string& line)
+{
+    const std::string word = trim(line);
+    if (word == "allow") {
+        return HookAnswer::Allow;
+    }
+    if (word == "deny") {
+        return HookAnswer::Deny;
+    }
+    return HookAnswer::None;
+}
+
+std::string hookSettingsSnippet(const std::string& exePath)
+{
+    const nlohmann::ordered_json hook = {
+        {"type", "command"},
+        {"command", exePath},
+        {"args", nlohmann::ordered_json::array({"hook", "permission"})},
+        {"timeout", kHookTimeoutSeconds},
+    };
+    const nlohmann::ordered_json root = {
+        {"hooks",
+         {{"PermissionRequest",
+           nlohmann::ordered_json::array({{{"matcher", "Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch"},
+                                           {"hooks", nlohmann::ordered_json::array({hook})}}})}}},
+    };
+    return root.dump(2, ' ', false, nlohmann::ordered_json::error_handler_t::replace) + "\n";
+}
+
 std::string hookProbeLogLine(const std::string& phase, const std::string& localTime, std::uint64_t elapsedMs,
                              std::uint32_t pid, const std::string& input, const HookProbeConfig& config)
 {

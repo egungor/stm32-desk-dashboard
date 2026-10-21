@@ -9,6 +9,8 @@
 //   Windows ile başlat          check mark; HKCU\...\Run (WinStartup)
 //   Menü görüntülerini yükle…   images -> Claude API -> menu-YYYY-MM.json (#20);
 //                               a balloon shows the summary
+//   Claude Code hook ayarını kopyala
+//                               the settings.json snippet for this PC (#26)
 //   Ayarlar klasörünü aç        %APPDATA%\stm32-desk-dashboard
 //   Günlüğü aç                  host.log
 //   Çıkış
@@ -24,6 +26,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <mutex>
 #include <string>
@@ -36,6 +39,7 @@
 #include "WinAudioSystem.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
+#include "ClaudeHook.h"
 #include "WinMenuImport.h"
 #include "WinStrings.h"
 #include "tray_resource.h"
@@ -55,6 +59,7 @@ enum MenuId : UINT {
     kMenuState = 1,
     kMenuStartup,
     kMenuLoadMenu,
+    kMenuCopyHook,
     kMenuFolder,
     kMenuLog,
     kMenuExit,
@@ -279,6 +284,38 @@ void onMenuImportDone()
                 !result.ok);
 }
 
+// The Claude Code hook snippet (ADR-007) on the clipboard: dashboard-host.exe
+// next to this program, exec form.
+void copyHookSettings(const std::wstring& trayExe)
+{
+    const std::size_t slash = trayExe.find_last_of(L'\\');
+    const std::wstring host = (slash == std::wstring::npos ? std::wstring() : trayExe.substr(0, slash + 1U)) +
+                              L"dashboard-host.exe";
+    const std::wstring snippet = win::toWide(hookSettingsSnippet(win::toUtf8(host.c_str())));
+    bool copied = false;
+    if (OpenClipboard(g_app.window)) {
+        const SIZE_T bytes = (snippet.size() + 1U) * sizeof(wchar_t);
+        HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if (memory != nullptr) {
+            void* p = GlobalLock(memory);
+            if (p != nullptr) {
+                std::memcpy(p, snippet.c_str(), bytes);
+                GlobalUnlock(memory);
+                (void)EmptyClipboard();
+                copied = SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+            }
+            if (!copied) {
+                GlobalFree(memory);
+            }
+        }
+        CloseClipboard();
+    }
+    logLine(copied ? "Claude Code hook setting copied." : "WARN: could not copy the Claude Code hook setting.");
+    if (copied) {
+        showBalloon(text(TrayText::Title), text(TrayText::HookSettingsCopied), false);
+    }
+}
+
 void showMenu(POINT at)
 {
     const std::wstring exe = win::trayProgramPath();
@@ -292,6 +329,7 @@ void showMenu(POINT at)
     AppendMenuW(menu, MF_STRING | (win::startupEnabled(exe) ? MF_CHECKED : MF_UNCHECKED), kMenuStartup,
                 text(TrayText::StartWithWindows).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.importing ? MF_GRAYED : 0U), kMenuLoadMenu, text(TrayText::LoadMenu).c_str());
+    AppendMenuW(menu, MF_STRING, kMenuCopyHook, text(TrayText::CopyHookSettings).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.dir.empty() ? MF_GRAYED : 0U), kMenuFolder, text(TrayText::OpenFolder).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.log == nullptr ? MF_GRAYED : 0U), kMenuLog, text(TrayText::OpenLog).c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -318,6 +356,9 @@ void showMenu(POINT at)
     }
     case kMenuLoadMenu:
         loadMenuImages();
+        break;
+    case kMenuCopyHook:
+        copyHookSettings(exe);
         break;
     case kMenuFolder:
         (void)ShellExecuteW(nullptr, L"open", g_app.dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);

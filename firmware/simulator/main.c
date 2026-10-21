@@ -896,6 +896,9 @@ static struct
     uint8_t action;
     int     media_calls;
     uint8_t media;
+    int     prompt_calls;
+    uint8_t prompt_id;
+    uint8_t prompt_action;
 } s_dash;
 
 static void dash_open(uint8_t slot, int8_t arg, void *user)
@@ -929,9 +932,37 @@ static void dash_media(uint8_t action, void *user)
 
 #define F "\x1F"
 
+static void dash_prompt(uint8_t id, uint8_t action, void *user)
+{
+    LV_UNUSED(user);
+    s_dash.prompt_calls++;
+    s_dash.prompt_id = id;
+    s_dash.prompt_action = action;
+}
+
+/* Prompt texts as host/Hook/ApprovalService makes them (#26). */
+static const char *const prompt_bash =
+    "Claude Code izin istiyor" "\x1F" "ayrac \xC2\xB7 1/2" "\x1F" "60\n"
+    "\x1F" "Ara\xC3\xA7" "\x1F" "Bash\n"
+    "\x1F" "Komut" "\x1F" "npm install --save-dev vitest\n"
+    "\x1F" "A\xC3\xA7\xC4\xB1klama" "\x1F" "Test arac\xC4\xB1n\xC4\xB1 kur\n"
+    "!1" "\x1F" "Onayla\n"
+    "!2" "\x1F" "Reddet\n"
+    "!3" "\x1F" "Terminalde sor";
+static const char *const prompt_cut =
+    "Claude Code izin istiyor" "\x1F" "ayrac \xC2\xB7 2/2" "\x1F" "60\n"
+    "\x1F" "Ara\xC3\xA7" "\x1F" "Write\n"
+    "\x1F" "Dosya" "\x1F" "src/test/long.test.ts\n"
+    "\x1F" "\xC4\xB0\xC3\xA7" "erik" "\x1F" "import { describe, it, expect } from 'vitest'; \xC2\xB6 \xC2\xB6 describe('long'\xE2\x80\xA6\n"
+    "\x1F" "\x1F" "(k\xC4\xB1salt\xC4\xB1ld\xC4\xB1: tamam\xC4\xB1 ekrana s\xC4\xB1\xC4\x9Fm\xC4\xB1yor, burada onaylanamaz)\n"
+    "!2" "\x1F" "Reddet\n"
+    "!3" "\x1F" "Terminalde sor";
+
+static void run_prompt_script(UiSettings *s);
+
 static void run_dashboard_script(void)
 {
-    static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media };
+    static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media, dash_prompt };
     /* Card and detail as host/Weather/WeatherCard makes them (#18). */
     static const char *const weather_card =
         "3" F "\xC4\xB0stanbul" F "\n"
@@ -1061,6 +1092,9 @@ static void run_dashboard_script(void)
     tap(364, 250);
     check((s_dash.media_calls == 3) && (s_dash.media == UI_MEDIA_NEXT), "> > sends next track");
 
+    /* Claude Code prompt (ADR-007, #26). */
+    run_prompt_script(&s);
+
     /* The clock runs on; a card update replaces the card. */
     run_ms(60000U);
     Ui_SetCard(0U, "0" F "HAVA" F "yeni\n9\xC2\xB0  Ya\xC4\x9Fmurlu");
@@ -1086,6 +1120,50 @@ static void run_dashboard_script(void)
         check(after <= before + 512U, "opening and closing details does not leak memory");
     }
     report_memory("dashboard-end");
+}
+
+/* The prompt over every screen: buttons answer once, the host closes it,
+ * it wakes a dark screen and closes itself after its countdown. Buttons
+ * of the 3-button strip at x 106 / 236 / 370, y 236. */
+static void run_prompt_script(UiSettings *s)
+{
+    Ui_ShowPrompt(5U, prompt_bash);
+    run_ms(50U);
+    check(Ui_PromptShown() == 5U, "a prompt is shown over the Dashboard tab");
+    snapshot("87-prompt");
+    tap(106, 236);
+    check((s_dash.prompt_calls == 1) && (s_dash.prompt_id == 5U) && (s_dash.prompt_action == 1U),
+          "\"Onayla\" answers the prompt with action 1");
+    tap(236, 236);
+    check(s_dash.prompt_calls == 1, "a prompt is answered only once");
+    run_ms(50U);
+    snapshot("88-prompt-answered");
+    Ui_ClosePrompt(4U);
+    check(Ui_PromptShown() == 5U, "closing another prompt changes nothing");
+    Ui_ClosePrompt(5U);
+    run_ms(50U);
+    check(Ui_PromptShown() == UI_NO_PROMPT, "the host closes the prompt");
+
+    /* A request that did not fit: only Reddet and Terminalde sor; over the
+     * Audio tab; it wakes the dark screen. */
+    s->screen_timeout = 1U;
+    Ui_ApplySettings(s);
+    tap(RAIL_AUDIO_X, RAIL_AUDIO_Y);
+    run_ms(61000U + UI_SCREEN_OFF_CHECK_MS);
+    check(!Ui_ScreenOn(), "the screen went dark");
+    Ui_ShowPrompt(6U, prompt_cut);
+    run_ms(50U);
+    check(Ui_ScreenOn() && (Ui_PromptShown() == 6U), "a prompt wakes the screen");
+    snapshot("89-prompt-cut");
+    run_ms(2U * 60000U);
+    check(Ui_ScreenOn() || (Ui_PromptShown() == UI_NO_PROMPT), "a prompt keeps the screen lit until it closes");
+    check(Ui_PromptShown() == UI_NO_PROMPT, "a prompt closes itself after its countdown");
+    tap(170, 140); /* wakes the screen if it went dark after the prompt */
+    run_ms(50U);
+    s->screen_timeout = 0U;
+    Ui_ApplySettings(s);
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
 }
 
 #undef F

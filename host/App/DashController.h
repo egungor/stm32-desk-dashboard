@@ -88,6 +88,16 @@ public:
     // one the board has open.
     void refreshDetail(std::uint8_t slot);
 
+    // Show prompt @p id on the board (PROMPT_PART, ADR-007), replacing the
+    // one shown. Cut to PROTO_PROMPT_MAX_BYTES. Kept and sent again after a
+    // GET_CARDS; sent at once if the board is synced.
+    void showPrompt(std::uint8_t id, std::string text);
+    // Close prompt @p id (PROMPT_CLOSE) and forget it.
+    void closePrompt(std::uint8_t id);
+
+    // The board asked for the cards since it was connected: frames reach it.
+    bool synced() const { return synced_; }
+
     void setDetailHandler(DetailFn handler) { detail_ = std::move(handler); }
     void setActionHandler(ActionFn handler) { action_ = std::move(handler); }
 
@@ -118,6 +128,13 @@ private:
     std::optional<std::uint64_t> timeSentAtMs_;  // nullopt: sent before the first tick
     std::uint32_t timeSent_ = 0;
     std::optional<std::uint8_t> openSlot_;  // detail the board asked for last
+    struct Prompt {
+        std::uint8_t id = 0;
+        std::uint8_t generation = 0;
+        std::string text;
+    };
+    std::optional<Prompt> prompt_;
+    std::uint8_t promptGeneration_ = 0;
     std::uint8_t detailGeneration_ = 0;
 };
 

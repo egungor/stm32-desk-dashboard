@@ -45,7 +45,8 @@ host/
 │   ├── FrameText.*         # readable one-line form of a protocol message
 │   └── Startup.*           # Run value of "start with Windows", tray text (#74)
 ├── Hook/
-│   └── ClaudeHook.*        # PermissionRequest decision JSON; the spike's probe (#24)
+│   ├── ClaudeHook.*        # PermissionRequest decision JSON, pipe lines, settings snippet, probe (#24)
+│   └── ApprovalService.*   # Claude Code requests: queue, prompt, timeouts, card slot 3 (#26)
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
@@ -60,6 +61,7 @@ host/
 │   ├── WinAudioSystem.*    # IAudioSystem on Core Audio / MMDevice
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
+│   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
 │   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
@@ -134,6 +136,8 @@ dashboard-host weather <city>    find <city> with the Open-Meteo geocoding API
                                    and save it as the weather location
 dashboard-host weather <lat> <lon> [name]
                                    save a location exactly
+dashboard-host hook permission   Claude Code PermissionRequest hook: the request goes
+                                   to the board through the tray program (ADR-007)
 dashboard-host hook probe        Claude Code PermissionRequest hook for the step 10
                                    spike: logs to hook-probe.log, answers as
                                    hook-probe.txt says (docs/hook-spike.md)
@@ -198,6 +202,27 @@ model=claude-sonnet-5-5
 (`model` is optional) or the `ANTHROPIC_API_KEY` environment variable.
 The images are sent to Anthropic for this one call; nothing else is.
 
+## Claude Code approvals (#26, ADR-007)
+
+Permission requests of Claude Code sessions on this PC can be answered
+on the board:
+
+1. Tray menu → "Claude Code hook ayarını kopyala" and merge the snippet
+   into `%USERPROFILE%\.claude\settings.json` (user settings of this PC,
+   not a repository's `.claude/`).
+2. When a session wants to run a command or edit a file, Claude Code
+   starts `dashboard-host hook permission`; it hands the request to the
+   tray program over `\\.\pipe\stm32-desk-dashboard-hook`, and the
+   board shows it over every screen: Onayla / Reddet / Terminalde sor,
+   with a 60 s countdown.
+3. Onayla allows, Reddet denies; Terminalde sor, no answer, no tray
+   program, no board, or a request that does not fit the screen leave the
+   decision to the normal question in the terminal. Nothing is ever
+   allowed by default.
+
+The Claude Code card shows waiting requests and the last decision; its
+detail the last five.
+
 ## Install
 
 `installer/` builds a setup (Inno Setup) that installs both programs for
@@ -220,6 +245,7 @@ main thread owns a hidden window, the tray icon and its menu:
 - "Menü görüntülerini yükle…": the menu import (#20, "Menu of the day"
   above) on a background thread; a balloon shows the summary or the
   error;
+- "Claude Code hook ayarını kopyala": the settings snippet (#26);
 - "Ayarlar klasörünü aç": `%APPDATA%\stm32-desk-dashboard`;
 - "Günlüğü aç": `host.log` in that folder: the same lines as `run`
   prints, with the local time; above 1 MB at start it becomes

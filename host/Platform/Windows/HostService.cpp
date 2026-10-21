@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <vector>
 
+#include "ApprovalService.h"
 #include "DashController.h"
 #include "FrameRouter.h"
 #include "FrameText.h"
@@ -15,6 +16,7 @@
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
+#include "WinHookPipe.h"
 #include "WeatherService.h"
 #include "WinHttpClient.h"
 #include "WinMediaKeys.h"
@@ -122,9 +124,20 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     DashController dash(sink, localTimeNow);
     FrameRouter router(controller, dash, sink);
     WinMediaKeys mediaKeys;
-    // The media strip (<< || >>); card and prompt actions come with their
-    // features (v1 steps 8-11) and are answered with ERROR until then.
-    dash.setActionHandler([&](const ProtoAction& action) { return handleMediaAction(action, mediaKeys); });
+    // Claude Code permission requests (ADR-007): the pipe from
+    // "dashboard-host hook permission", the queue, the prompt and card 3.
+    WinHookPipe hookPipe(events, log);
+    ApprovalService approvals(
+        dash, localTimeNow, [&hookPipe](std::uint64_t ticket, HookAnswer answer) { hookPipe.answer(ticket, answer); },
+        log);
+    // The media strip (<< || >>) and the prompt's buttons; card buttons have
+    // no feature yet and are answered with ERROR.
+    dash.setActionHandler([&](const ProtoAction& action) {
+        if (action.kind == PROTO_ACTION_PROMPT) {
+            return approvals.onAction(action, GetTickCount64());
+        }
+        return handleMediaAction(action, mediaKeys);
+    });
     // Weather card and detail (slot 0, ADR-006); the forecast is fetched on
     // a worker thread.
     WinHttpClient http;
@@ -133,15 +146,19 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     // Menu card and day detail (slot 1), from the month files (#20).
     WinMenuFiles menuFiles;
     MenuService menu(dash, menuFiles, localTimeNow, log);
-    dash.setDetailHandler([&weather, &menu](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
-        if (slot == WeatherService::kSlot) {
-            return weather.detail(arg);
-        }
-        if (slot == MenuService::kSlot) {
-            return menu.detail(arg);
-        }
-        return std::nullopt;
-    });
+    dash.setDetailHandler(
+        [&weather, &menu, &approvals](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+            if (slot == WeatherService::kSlot) {
+                return weather.detail(arg);
+            }
+            if (slot == MenuService::kSlot) {
+                return menu.detail(arg);
+            }
+            if (slot == ApprovalService::kSlot && arg == 0) {
+                return approvals.detail();
+            }
+            return std::nullopt;
+        });
     WinPreferenceFile file;
     PreferenceStore store(file, controller.preferences());
     const bool saving = loadPreferences(file, store, false, log);
@@ -174,6 +191,10 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     if (hooks.connection) {
         hooks.connection(false);
     }
+    if (hookPipe.start()) {
+        log("Claude Code hook pipe ready.");
+    }
+    approvals.onTick(GetTickCount64());  // the card
 
     for (;;) {
         const std::optional<QueuedEvent> item = events.pop(std::chrono::milliseconds(500));
@@ -186,6 +207,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         weather.onTick(GetTickCount64());
         menu.setLanguage(controller.preferences().settings().language);
         menu.onTick(GetTickCount64());
+        approvals.setLanguage(controller.preferences().settings().language);
+        approvals.onTick(GetTickCount64());
         dash.onTick(GetTickCount64());
         if (!item) {
             continue;
@@ -206,16 +229,25 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::HidDisconnected:
             log("Controller disconnected.");
             controller.onDisconnected();
+            approvals.onDisconnected();  // nobody can answer: back to the terminal
             dash.onDisconnected();
             if (hooks.connection) {
                 hooks.connection(false);
             }
+            break;
+        case HostEvent::HookRequest:
+            approvals.onRequest(item->ticket, item->text, GetTickCount64());
+            break;
+        case HostEvent::HookCancelled:
+            approvals.onCancelled(item->ticket, GetTickCount64());
             break;
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
             menu.reload();
             break;
         case HostEvent::Quit: {
+            approvals.cancelAll();
+            hookPipe.stop();
             link.stop();
             if (saving && !store.flush()) {
                 log("WARN: could not save " + file.location());

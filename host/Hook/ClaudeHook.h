@@ -32,6 +32,26 @@ HookProbeConfig parseHookProbeConfig(const std::optional<std::string>& text);
 
 const char* hookAnswerName(HookAnswer answer);
 
+// ------------------------------------------------- hook <-> tray program
+//
+// "dashboard-host hook permission" passes the hook input to the tray
+// program over a named pipe: one request line (the input as compact JSON),
+// one reply line ("allow", "deny" or "none"). Anything else, or no reply,
+// counts as "none": no decision.
+
+// The hook input as one line (compact JSON + "\n"); nullopt if it is not
+// a JSON object.
+std::optional<std::string> hookRequestLine(const std::string& input);
+std::string hookReplyLine(HookAnswer answer);
+HookAnswer parseHookReply(const std::string& line);
+
+// The snippet for %USERPROFILE%\.claude\settings.json of this PC (exec
+// form: Claude Code starts @p exePath without a shell).
+std::string hookSettingsSnippet(const std::string& exePath);
+
+inline constexpr int kHookTimeoutSeconds = 90;        // Claude Code's timeout of the hook
+inline constexpr std::uint64_t kHookClientWaitMs = 75000;  // the hook's own limit for the reply
+
 // One line of hook-probe.log (JSON, no line end). @p phase "start" or
 // "end"; @p input is the hook input as received (kept as JSON when it
 // parses, as a string otherwise); @p pid tells parallel hooks apart.

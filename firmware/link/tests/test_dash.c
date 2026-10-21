@@ -40,6 +40,11 @@ static struct
     int     notices[2];
     int     time_calls;
     uint32_t time;
+    int     prompt_calls;
+    uint8_t prompt_id;
+    char    prompt_text[PROTO_PROMPT_MAX_BYTES + 1U];
+    int     close_calls;
+    uint8_t close_id;
 } g;
 
 static bool fake_send(const uint8_t frame[PROTO_FRAME_SIZE], void *ctx)
@@ -88,11 +93,27 @@ static void fake_time(uint32_t t, void *ctx)
     g.time = t;
 }
 
+static void fake_prompt(uint8_t id, const char *text, void *ctx)
+{
+    (void)ctx;
+    g.prompt_calls++;
+    g.prompt_id = id;
+    (void)snprintf(g.prompt_text, sizeof(g.prompt_text), "%s", text);
+}
+
+static void fake_close(uint8_t id, void *ctx)
+{
+    (void)ctx;
+    g.close_calls++;
+    g.close_id = id;
+}
+
 static DashClient s_dash;
 
 static void reset(void)
 {
-    static const DashCallbacks cb = { fake_send, fake_card, fake_detail, fake_notice, fake_time, NULL };
+    static const DashCallbacks cb = { fake_send, fake_card,   fake_detail, fake_notice,
+                                      fake_time, fake_prompt, fake_close,  NULL };
 
     memset(&g, 0, sizeof(g));
     Dash_Init(&s_dash, &cb);
@@ -323,6 +344,49 @@ static void test_action_and_time(void)
     CHECK(g.sent_count == 1);
 }
 
+static void test_prompt(void)
+{
+    static char big[PROTO_PROMPT_MAX_BYTES + 1U];
+    ProtoMessage close = simple(PROTO_CMD_PROMPT_CLOSE);
+    const char *text = "Claude Code izin istiyor\x1F" "ayrac \xC2\xB7 1/1\x1F" "60\n\x1F" "Ara\xC3\xA7\x1F" "Bash\n!1\x1FOnayla";
+
+    reset();
+    Dash_OnConnected(&s_dash, 0U);
+    CHECK(!Dash_AnswerPrompt(&s_dash, 7U, 1U)); /* nothing shown */
+
+    feed_record(PROTO_CMD_PROMPT_PART, text, 7U, 1U, 100U, -1);
+    CHECK(g.prompt_calls == 1 && g.prompt_id == 7U && strcmp(g.prompt_text, text) == 0);
+    CHECK(!Dash_AnswerPrompt(&s_dash, 8U, 1U) && !Dash_AnswerPrompt(&s_dash, 7U, 0U));
+    CHECK(Dash_AnswerPrompt(&s_dash, 7U, 2U));
+    CHECK(g.sent[g.sent_count - 1].command == PROTO_CMD_ACTION &&
+          g.sent[g.sent_count - 1].u.action.kind == PROTO_ACTION_PROMPT &&
+          g.sent[g.sent_count - 1].u.action.ref == 7U && g.sent[g.sent_count - 1].u.action.action == 2U);
+
+    /* PROMPT_CLOSE for another id is ignored; for the shown one it closes. */
+    close.u.prompt_id = 6U;
+    Dash_OnMessage(&s_dash, &close, 200U);
+    CHECK(g.close_calls == 0);
+    close.u.prompt_id = 7U;
+    Dash_OnMessage(&s_dash, &close, 200U);
+    CHECK(g.close_calls == 1 && g.close_id == 7U && !Dash_AnswerPrompt(&s_dash, 7U, 1U));
+
+    /* A full-size prompt (20 parts); a lost part drops it after the retry time. */
+    memset(big, 'p', PROTO_PROMPT_MAX_BYTES);
+    big[PROTO_PROMPT_MAX_BYTES] = '\0';
+    feed_record(PROTO_CMD_PROMPT_PART, big, 8U, 2U, 300U, -1);
+    CHECK(g.prompt_calls == 2 && g.prompt_id == 8U && strlen(g.prompt_text) == PROTO_PROMPT_MAX_BYTES);
+    feed_record(PROTO_CMD_PROMPT_PART, text, 9U, 3U, 400U, 0);
+    CHECK(g.prompt_calls == 2);
+    Dash_Poll(&s_dash, 400U + DASH_RETRY_MS);
+    feed_record(PROTO_CMD_PROMPT_PART, text, 9U, 3U, 2000U, 1); /* the rest alone: not complete */
+    CHECK(g.prompt_calls == 2);
+
+    /* A disconnect closes the shown prompt (8). */
+    Dash_OnDisconnected(&s_dash);
+    CHECK(g.close_calls == 2 && g.close_id == 8U);
+    CHECK(!Dash_AnswerPrompt(&s_dash, 8U, 1U));
+}
+
 int main(void)
 {
     test_owns();
@@ -333,6 +397,7 @@ int main(void)
     test_detail();
     test_detail_failures();
     test_action_and_time();
+    test_prompt();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

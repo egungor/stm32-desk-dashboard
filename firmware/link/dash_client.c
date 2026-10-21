@@ -96,6 +96,52 @@ static void on_detail_part(DashClient *dash, const ProtoRecordPart *part, uint32
     }
 }
 
+static void close_prompt(DashClient *dash)
+{
+    if (dash->prompt_shown != DASH_NO_PROMPT)
+    {
+        const uint8_t id = (uint8_t)dash->prompt_shown;
+
+        dash->prompt_shown = DASH_NO_PROMPT;
+        if (dash->cb.close_prompt != NULL)
+        {
+            dash->cb.close_prompt(id, dash->cb.ctx);
+        }
+    }
+}
+
+static void on_prompt_part(DashClient *dash, const ProtoRecordPart *part, uint32_t now_ms)
+{
+    if (Proto_AssemblerAdd(&dash->prompt_asm, part) == PROTO_ASM_COMPLETE)
+    {
+        dash->prompt_shown = part->id;
+        if (dash->cb.show_prompt != NULL)
+        {
+            dash->cb.show_prompt(part->id, (const char *)dash->prompt_buf, dash->cb.ctx);
+        }
+    }
+    else
+    {
+        dash->prompt_part_ms = now_ms;
+    }
+}
+
+static void on_prompt_close(DashClient *dash, uint8_t id)
+{
+    if ((dash->prompt_asm.active != 0U) && (dash->prompt_asm.id == id))
+    {
+        Proto_AssemblerReset(&dash->prompt_asm);  /* a newer version of it, half here */
+    }
+    if (dash->prompt_shown == id)
+    {
+        close_prompt(dash);
+    }
+    else
+    {
+        dash->frames_ignored++;
+    }
+}
+
 static void on_error(DashClient *dash, const ProtoError *error)
 {
     if ((error->ref_command == PROTO_CMD_OPEN_DETAIL) && dash->detail_waiting)
@@ -134,7 +180,9 @@ void Dash_Init(DashClient *dash, const DashCallbacks *callbacks)
     dash->sequence = &dash->own_sequence;
     Proto_AssemblerInit(&dash->card_asm, dash->card_buf, PROTO_CARD_MAX_BYTES);
     Proto_AssemblerInit(&dash->detail_asm, dash->detail_buf, PROTO_DETAIL_MAX_BYTES);
+    Proto_AssemblerInit(&dash->prompt_asm, dash->prompt_buf, PROTO_PROMPT_MAX_BYTES);
     dash->detail_slot = DASH_NO_SLOT;
+    dash->prompt_shown = DASH_NO_PROMPT;
 }
 
 void Dash_OnConnected(DashClient *dash, uint32_t now_ms)
@@ -150,8 +198,10 @@ void Dash_OnDisconnected(DashClient *dash)
     dash->connected = false;
     Proto_AssemblerReset(&dash->card_asm);
     Proto_AssemblerReset(&dash->detail_asm);
+    Proto_AssemblerReset(&dash->prompt_asm);
     dash->detail_waiting = false;
     dash->detail_slot = DASH_NO_SLOT;
+    close_prompt(dash);  /* nobody could receive its answer */
 }
 
 void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
@@ -176,11 +226,17 @@ void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
     case PROTO_CMD_DETAIL_PART:
         on_detail_part(dash, &msg->u.part, now_ms);
         break;
+    case PROTO_CMD_PROMPT_PART:
+        on_prompt_part(dash, &msg->u.part, now_ms);
+        break;
+    case PROTO_CMD_PROMPT_CLOSE:
+        on_prompt_close(dash, msg->u.prompt_id);
+        break;
     case PROTO_CMD_ERROR:
         on_error(dash, &msg->u.error);
         break;
     default:
-        /* PROMPT_* (ADR-007, v1 step 11) and STM32 -> host commands. */
+        /* STM32 -> host commands. */
         dash->frames_ignored++;
         break;
     }
@@ -197,6 +253,12 @@ void Dash_Poll(DashClient *dash, uint32_t now_ms)
         /* A card part was lost: ask for all cards again. */
         Proto_AssemblerReset(&dash->card_asm);
         send_get_cards(dash);
+    }
+    if ((dash->prompt_asm.active != 0U) && ((now_ms - dash->prompt_part_ms) >= DASH_RETRY_MS))
+    {
+        /* A prompt part was lost: drop it; the host times the request out. */
+        Proto_AssemblerReset(&dash->prompt_asm);
+        dash->frames_ignored++;
     }
     if (dash->detail_slot == DASH_NO_SLOT)
     {
@@ -261,6 +323,15 @@ bool Dash_Action(DashClient *dash, uint8_t kind, uint8_t ref, uint8_t action)
     msg.u.action.ref = ref;
     msg.u.action.action = action;
     return send_message(dash, &msg);
+}
+
+bool Dash_AnswerPrompt(DashClient *dash, uint8_t id, uint8_t action)
+{
+    if ((dash->prompt_shown != id) || (action == 0U))
+    {
+        return false;
+    }
+    return Dash_Action(dash, PROTO_ACTION_PROMPT, id, action);
 }
 
 uint32_t Dash_LocalTime(const DashClient *dash, uint32_t now_ms)

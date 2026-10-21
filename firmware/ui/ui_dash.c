@@ -355,6 +355,39 @@ static void add_section(lv_obj_t *list, const char *title)
     lv_obj_set_style_pad_bottom(label, 2, 0);
 }
 
+/* A row of up to MAX_BUTTONS buttons ("action ␟ label", modified), each
+ * calling @p cb with its action number as user data. */
+static lv_obj_t *add_button_strip(lv_obj_t *parent, char **buttons, uint32_t count, lv_event_cb_t cb)
+{
+    lv_obj_t *strip = ui_make_box(parent);
+
+    lv_obj_set_size(strip, LV_PCT(100), MEDIA_H);
+    lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    for (uint32_t b = 0U; b < count; b++)
+    {
+        char *f[2];
+        long action;
+        lv_obj_t *btn;
+        lv_obj_t *label;
+
+        split_fields(buttons[b], f, 2U);
+        action = strtol(f[0], NULL, 10);
+        if ((action < 1) || (action > 255))
+        {
+            continue;
+        }
+        btn = lv_button_create(strip);
+        ui_style_card(btn, 8);
+        lv_obj_set_height(btn, MEDIA_H - 8);
+        lv_obj_set_style_pad_hor(btn, 14, 0);
+        lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, (void *)(uintptr_t)action);
+        label = ui_make_label(btn, &ui_font_16, g_ui.pal.text, f[1]);
+        lv_obj_center(label);
+    }
+    return strip;
+}
+
 static void build_detail_body(lv_obj_t *view, char **lines, uint32_t n)
 {
     char *buttons[MAX_BUTTONS];
@@ -397,33 +430,9 @@ static void build_detail_body(lv_obj_t *view, char **lines, uint32_t n)
 
     if (button_count > 0U)
     {
-        lv_obj_t *strip = ui_make_box(view);
+        lv_obj_t *strip = add_button_strip(view, buttons, button_count, on_detail_button);
 
-        lv_obj_set_size(strip, LV_PCT(100), MEDIA_H);
         lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, 0);
-        lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        for (uint32_t b = 0U; b < button_count; b++)
-        {
-            char *f[2];
-            long action;
-            lv_obj_t *btn;
-            lv_obj_t *label;
-
-            split_fields(buttons[b], f, 2U);
-            action = strtol(f[0], NULL, 10);
-            if ((action < 1) || (action > 255))
-            {
-                continue;
-            }
-            btn = lv_button_create(strip);
-            ui_style_card(btn, 8);
-            lv_obj_set_height(btn, MEDIA_H - 8);
-            lv_obj_set_style_pad_hor(btn, 14, 0);
-            lv_obj_add_event_cb(btn, on_detail_button, LV_EVENT_CLICKED, (void *)(uintptr_t)action);
-            label = ui_make_label(btn, &ui_font_16, g_ui.pal.text, f[1]);
-            lv_obj_center(label);
-        }
     }
 }
 
@@ -601,6 +610,184 @@ void ui_dash_build(void)
     }
 }
 
+/* --------------------------------------------------------------- prompt */
+
+#define PROMPT_W        464
+#define PROMPT_H        260
+#define PROMPT_GRACE_S  5U   /**< kept after the countdown before closing itself */
+
+static char s_prompt_scratch[UI_PROMPT_BYTES + 1U];
+
+static void close_prompt_view(void)
+{
+    if (g_ui.prompt_obj != NULL)
+    {
+        /* May run inside an event of one of its buttons. */
+        lv_obj_delete_async(g_ui.prompt_obj);
+        g_ui.prompt_obj = NULL;
+        g_ui.prompt_count = NULL;
+    }
+}
+
+static void update_prompt_count(void)
+{
+    uint32_t elapsed;
+
+    if ((g_ui.prompt_count == NULL) || (g_ui.prompt_seconds == 0U))
+    {
+        return;
+    }
+    elapsed = lv_tick_elaps(g_ui.prompt_tick) / 1000U;
+    lv_label_set_text_fmt(g_ui.prompt_count, "%us",
+                          (unsigned)((elapsed < g_ui.prompt_seconds) ? (g_ui.prompt_seconds - elapsed) : 0U));
+}
+
+static void on_prompt_button(lv_event_t *e)
+{
+    const uint8_t action = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
+    lv_obj_t *strip = lv_obj_get_parent(lv_event_get_target_obj(e));
+
+    if (g_ui.prompt_answered || (g_ui.prompt_id == UI_NO_PROMPT))
+    {
+        return;
+    }
+    g_ui.prompt_answered = true;
+    for (uint32_t i = 0U; i < lv_obj_get_child_count(strip); i++)
+    {
+        lv_obj_add_state(lv_obj_get_child(strip, (int32_t)i), LV_STATE_DISABLED);
+    }
+    if (g_ui.dash.prompt_action != NULL)
+    {
+        g_ui.dash.prompt_action((uint8_t)g_ui.prompt_id, action, g_ui.dash_user);
+    }
+}
+
+/* Backdrop over everything (it takes the touches), a panel with the header
+ * (title, subtitle, countdown), the rows and the buttons. */
+static void build_prompt_view(void)
+{
+    char *lines[MAX_LINES];
+    char *head[3];
+    char *buttons[MAX_BUTTONS];
+    uint32_t button_count = 0U;
+    uint32_t n;
+    lv_obj_t *panel;
+    lv_obj_t *bar;
+    lv_obj_t *label;
+    lv_obj_t *list;
+    lv_obj_t *back = lv_obj_create(lv_layer_top());
+
+    lv_obj_remove_style_all(back);
+    lv_obj_set_size(back, UI_WIDTH, UI_HEIGHT);
+    lv_obj_set_style_bg_color(back, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(back, LV_OPA_60, 0);
+    lv_obj_add_flag(back, LV_OBJ_FLAG_CLICKABLE);
+    g_ui.prompt_obj = back;
+
+    panel = ui_make_box(back);
+    ui_style_card(panel, BTN_RADIUS);
+    lv_obj_set_size(panel, PROMPT_W, PROMPT_H);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, ui_color(g_ui.pal.bar), 0); /* buttons in the card colour stand out */
+    lv_obj_set_style_border_color(panel, ui_color(g_ui.pal.accent), 0);
+    lv_obj_set_style_border_width(panel, 2, 0);
+    lv_obj_set_style_pad_all(panel, 8, 0);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+
+    (void)memcpy(s_prompt_scratch, g_ui.prompt_text, sizeof(s_prompt_scratch));
+    n = split_lines(s_prompt_scratch, lines, MAX_LINES);
+    split_fields(lines[0], head, 3U);
+    g_ui.prompt_seconds = (uint32_t)strtoul(head[2], NULL, 10);
+
+    bar = ui_make_box(panel);
+    lv_obj_set_size(bar, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(bar, 8, 0);
+    (void)ui_make_label(bar, &ui_font_16, g_ui.pal.accent, SYM_WARNING);
+    label = ui_make_label(bar, &ui_font_16, g_ui.pal.text, head[0]);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    label = ui_make_label(bar, &ui_font_14, g_ui.pal.muted, head[1]);
+    lv_obj_set_flex_grow(label, 1);
+    lv_obj_set_height(label, lv_font_get_line_height(&ui_font_14));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    g_ui.prompt_count = ui_make_label(bar, &ui_font_16, g_ui.pal.accent, "");
+    update_prompt_count();
+
+    for (uint32_t i = 1U; i < n; i++)
+    {
+        if ((lines[i][0] == '!') && (button_count < MAX_BUTTONS))
+        {
+            buttons[button_count++] = &lines[i][1];
+        }
+    }
+    list = ui_make_box(panel);
+    lv_obj_set_width(list, LV_PCT(100));
+    lv_obj_set_flex_grow(list, 1);
+    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_style_pad_ver(list, 4, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    for (uint32_t i = 1U; i < n; i++)
+    {
+        if (lines[i][0] == '#')
+        {
+            add_section(list, &lines[i][1]);
+        }
+        else if (lines[i][0] != '!')
+        {
+            add_row(list, lines[i]);
+        }
+        else
+        {
+            /* a button, below */
+        }
+    }
+    if (button_count > 0U)
+    {
+        lv_obj_t *strip = add_button_strip(panel, buttons, button_count, on_prompt_button);
+
+        if (g_ui.prompt_answered)
+        {
+            for (uint32_t i = 0U; i < lv_obj_get_child_count(strip); i++)
+            {
+                lv_obj_add_state(lv_obj_get_child(strip, (int32_t)i), LV_STATE_DISABLED);
+            }
+        }
+    }
+}
+
+void ui_prompt_rebuild(void)
+{
+    if (g_ui.prompt_obj != NULL)
+    {
+        lv_obj_delete(g_ui.prompt_obj);
+        g_ui.prompt_obj = NULL;
+        g_ui.prompt_count = NULL;
+    }
+    if (g_ui.prompt_id != UI_NO_PROMPT)
+    {
+        build_prompt_view();
+    }
+}
+
+void ui_prompt_tick(void)
+{
+    if (g_ui.prompt_id == UI_NO_PROMPT)
+    {
+        return;
+    }
+    update_prompt_count();
+    if ((g_ui.prompt_seconds > 0U) &&
+        ((lv_tick_elaps(g_ui.prompt_tick) / 1000U) >= (g_ui.prompt_seconds + PROMPT_GRACE_S)))
+    {
+        /* The host did not close it (a lost frame): it has timed out there. */
+        g_ui.prompt_id = UI_NO_PROMPT;
+        close_prompt_view();
+    }
+}
+
 /* ------------------------------------------------------------------- API */
 
 void Ui_SetDashHandlers(const UiDashHandlers *handlers, void *user)
@@ -658,4 +845,35 @@ void Ui_SetTime(uint32_t local_time)
 uint32_t Ui_DashView(void)
 {
     return g_ui.dash_view;
+}
+
+void Ui_ShowPrompt(uint8_t id, const char *text)
+{
+    (void)snprintf(g_ui.prompt_text, sizeof(g_ui.prompt_text), "%s", (text != NULL) ? text : "");
+    g_ui.prompt_id = id;
+    g_ui.prompt_answered = false;
+    g_ui.prompt_tick = lv_tick_get();
+    if (g_ui.prompt_obj != NULL)
+    {
+        lv_obj_delete(g_ui.prompt_obj);
+        g_ui.prompt_obj = NULL;
+        g_ui.prompt_count = NULL;
+    }
+    build_prompt_view();
+    ui_wake_screen();
+}
+
+void Ui_ClosePrompt(uint8_t id)
+{
+    if (g_ui.prompt_id != id)
+    {
+        return;
+    }
+    g_ui.prompt_id = UI_NO_PROMPT;
+    close_prompt_view();
+}
+
+uint16_t Ui_PromptShown(void)
+{
+    return g_ui.prompt_id;
 }

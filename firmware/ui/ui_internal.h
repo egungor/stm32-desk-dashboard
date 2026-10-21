@@ -241,6 +241,16 @@ typedef struct
     uint32_t       clock_shown;        /**< minute shown, to update once a minute */
     lv_timer_t    *clock_timer;        /**< created once in Ui_Init */
 
+    /* Prompt over every screen (ui_dash.c, ADR-007); kept over a rebuild. */
+    char           prompt_text[UI_PROMPT_BYTES + 1U];
+    uint16_t       prompt_id;          /**< shown prompt, UI_NO_PROMPT if none */
+    bool           prompt_answered;    /**< a button was tapped: buttons disabled */
+    uint32_t       prompt_seconds;     /**< countdown from the record, 0 = none */
+    uint32_t       prompt_tick;        /**< lv_tick_get() when it arrived */
+    lv_obj_t      *prompt_obj;         /**< backdrop on lv_layer_top() */
+    lv_obj_t      *prompt_count;       /**< countdown label */
+    lv_timer_t    *prompt_timer;       /**< created once in Ui_Init */
+
     /* Screen timeout: created once in Ui_Init, never rebuilt. */
     UiBacklightCallback on_backlight;
     void               *backlight_user;
@@ -275,6 +285,11 @@ void ui_build_tiles_main(void);
 /* Dashboard tab (ui_dash.c, ADR-006). */
 void ui_dash_build(void);           /**< build g_ui.dash_tab's content from the kept texts */
 void ui_dash_clock_tick(void);      /**< update the clock strip (timer, Ui_SetTime) */
+void ui_prompt_rebuild(void);       /**< build the shown prompt again (theme change) */
+void ui_prompt_tick(void);          /**< countdown (timer, once a second) */
+
+/** Light the screen if it is dark (screen timeout), as a touch would. */
+void ui_wake_screen(void);
 
 /* Application screen (ui_shell.c, ADR-005). */
 void ui_shell_build(void);          /**< create g_ui.main_screen, rail, dash_tab, audio_tab */

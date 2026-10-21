@@ -74,6 +74,31 @@ static void cb_dash_time(uint32_t local_time, void *ctx)
     Ui_SetTime(local_time);
 }
 
+/* A Claude Code permission request (ADR-007). */
+static void cb_dash_prompt(uint8_t id, const char *text, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH PROMPT id=%u bytes=%u", (unsigned)id, (unsigned)strlen(text));
+    Ui_ShowPrompt(id, text);
+}
+
+static void cb_dash_close_prompt(uint8_t id, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH PROMPT CLOSE id=%u", (unsigned)id);
+    Ui_ClosePrompt(id);
+}
+
+static void on_ui_prompt_action(uint8_t id, uint8_t action, void *user)
+{
+    (void)user;
+    Log_Line("UI PROMPT id=%u action=%u", (unsigned)id, (unsigned)action);
+    if (!Dash_AnswerPrompt(&s_dash, id, action))
+    {
+        Ui_ShowNotice(UI_NOTICE_ACTION_FAILED);
+    }
+}
+
 static void on_ui_open_detail(uint8_t slot, int8_t arg, void *user)
 {
     (void)user;
@@ -303,10 +328,10 @@ void LinkPort_Init(void)
     }
     Link_Init(&s_link, &callbacks);
     {
-        static const DashCallbacks dash = { cb_send_frame, cb_dash_card, cb_dash_detail, cb_dash_notice,
-                                            cb_dash_time, NULL };
+        static const DashCallbacks dash = { cb_send_frame, cb_dash_card,   cb_dash_detail,       cb_dash_notice,
+                                            cb_dash_time,  cb_dash_prompt, cb_dash_close_prompt, NULL };
         static const UiDashHandlers ui_dash = { on_ui_open_detail, on_ui_close_detail, on_ui_detail_action,
-                                                on_ui_media };
+                                                on_ui_media, on_ui_prompt_action };
 
         Dash_Init(&s_dash, &dash);
         Dash_SetSequenceCounter(&s_dash, &s_link.sequence);

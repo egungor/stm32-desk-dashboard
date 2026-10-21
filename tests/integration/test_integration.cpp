@@ -32,6 +32,7 @@
 #include "FrameRouter.h"
 #include "HostController.h"
 #include "SequencedSink.h"
+#include "ApprovalService.h"
 #include "MenuService.h"
 #include "WeatherCard.h"
 #include "../../host/Tests/WeatherSamples.h"
@@ -157,6 +158,9 @@ struct FirmwareScreen {
     int detailFailed = 0;
     int actionFailed = 0;
     std::uint32_t time = 0;
+    std::string prompt;             // shown prompt text, "" if none
+    int promptId = -1;              // shown prompt id, -1 if none
+    int promptsShown = 0;
 };
 
 struct WireStats {
@@ -202,8 +206,8 @@ public:
         LinkCallbacks cb = callbacks;
         cb.ctx = this;
         Link_Init(&link, &cb);
-        const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard, &Rig::fwDetail, &Rig::fwDashNotice, &Rig::fwTime,
-                                   this};
+        const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard,   &Rig::fwDetail,      &Rig::fwDashNotice,
+                                   &Rig::fwTime, &Rig::fwPrompt, &Rig::fwClosePrompt, this};
         Dash_Init(&dashClient, &dcb);
         Dash_SetSequenceCounter(&dashClient, &link.sequence);  // link_port.c
     }
@@ -463,6 +467,21 @@ private:
         }
     }
     static void fwTime(std::uint32_t t, void* ctx) { self(ctx).screen.time = t; }
+    static void fwPrompt(std::uint8_t id, const char* text, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        screen.prompt = text;
+        screen.promptId = id;
+        ++screen.promptsShown;
+    }
+    static void fwClosePrompt(std::uint8_t id, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        if (screen.promptId == id) {
+            screen.prompt.clear();
+            screen.promptId = -1;
+        }
+    }
     static void fwSettings(const ProtoSettings* s, void* ctx)
     {
         FirmwareScreen& screen = self(ctx).screen;
@@ -1385,6 +1404,65 @@ void testMenuOnBoard()
     CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 }
 
+// A Claude Code permission request (ADR-007, #26): the host's queue shows
+// it on the board, the board's button answers it, PROMPT_CLOSE closes it;
+// an unplugged board leaves the decision to the terminal.
+void testApprovalOnBoard()
+{
+    g_scenario = "approval on the board";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    std::vector<std::pair<std::uint64_t, HookAnswer>> replies;
+    ApprovalService approvals(
+        *r.dash, [] { return localTimeValue(2026, 10, 21, 15, 0, 0); },
+        [&replies](std::uint64_t ticket, HookAnswer answer) { replies.emplace_back(ticket, answer); }, nullptr);
+    r.dash->setActionHandler([&](const ProtoAction& a) { return approvals.onAction(a, r.now); });
+    r.dash->setDetailHandler([&](std::uint8_t slot, std::int8_t) -> std::optional<std::string> {
+        return slot == ApprovalService::kSlot ? approvals.detail() : std::nullopt;
+    });
+    r.plugIn();
+    r.run(3000);
+    CHECK(r.inSync());
+
+    const std::string bash =
+        R"({"hook_event_name":"PermissionRequest","cwd":"C:\\src\\ayrac","tool_name":"Bash","tool_input":{"command":"npm test"}})";
+    approvals.onRequest(1, bash, r.now);
+    approvals.onRequest(2, bash, r.now);
+    r.run(300);
+    CHECK(r.screen.promptId >= 0 && r.screen.prompt.find("npm test") != std::string::npos &&
+          r.screen.prompt.find("1/2") != std::string::npos);
+    CHECK(r.screen.cards[3].find("2 onay bekliyor") != std::string::npos);
+
+    // Onayla on the board.
+    CHECK(Dash_AnswerPrompt(&r.dashClient, static_cast<std::uint8_t>(r.screen.promptId), 1U));
+    r.run(300);
+    CHECK(replies.size() == 1U && replies[0] == std::make_pair(std::uint64_t{1}, HookAnswer::Allow));
+    CHECK(r.screen.promptId >= 0 && r.screen.prompt.find("1/1") != std::string::npos);  // the second one
+
+    // Reddet.
+    CHECK(Dash_AnswerPrompt(&r.dashClient, static_cast<std::uint8_t>(r.screen.promptId), 2U));
+    r.run(300);
+    CHECK(replies.size() == 2U && replies[1] == std::make_pair(std::uint64_t{2}, HookAnswer::Deny));
+    CHECK(r.screen.promptId == -1 && r.screen.cards[3].find("Onay bekleyen yok") != std::string::npos);
+
+    // The board's card detail lists the decisions.
+    CHECK(Dash_OpenDetail(&r.dashClient, ApprovalService::kSlot, 0, r.now));
+    r.run(300);
+    CHECK(r.screen.detail.find("reddedildi") != std::string::npos);
+
+    // Unplugged with a request waiting: no decision, prompt gone on the board.
+    approvals.onRequest(3, bash, r.now);
+    r.run(300);
+    CHECK(r.screen.promptId >= 0);
+    r.unplug();
+    approvals.onDisconnected();  // HostService does this on HidDisconnected
+    r.run(300);
+    CHECK(replies.size() == 3U && replies[2] == std::make_pair(std::uint64_t{3}, HookAnswer::None));
+    CHECK(r.screen.promptId == -1);
+    CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
+}
+
 int main()
 {
     testConnect();
@@ -1409,6 +1487,7 @@ int main()
     testDashboardNextToAudio();
     testWeatherOnBoard();
     testMenuOnBoard();
+    testApprovalOnBoard();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();

@@ -37,8 +37,16 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   (`UiDashHandlers.action`). `Ui_DetailFailed` returns to the cards with
   a notice. The view is built when shown and deleted when closed; a
   rebuild keeps it open. The texts are kept in `g_ui` (4 cards + one
-  detail, about 3 KB). Icons: the record's icon numbers draw nothing yet
-  (protocol.md has only 0).
+  detail, about 3 KB). Icons: the record's icon numbers 1–10 (weather)
+  and 11 (menu) of protocol.md draw Font Awesome glyphs; a detail row with
+  an icon field keeps a 22 px icon column.
+- Prompt (`Ui_ShowPrompt`, ADR-007, #26): a Claude Code permission request
+  over every screen (`lv_layer_top`), the detail's record format with
+  `title ␟ subtitle ␟ seconds` first: header, countdown, rows, up to three
+  buttons (`UiDashHandlers.prompt_action`, once; then disabled). It lights
+  a dark screen and keeps it lit; `Ui_ClosePrompt` closes it, and it
+  closes itself 5 s after the countdown. A rebuild builds it again (1 KB
+  text kept in `g_ui`).
 - Audio tab: everything below; the settings button moved to the rail and
   the flip button to the settings page (the waiting screen keeps its
   button). Waiting screen, settings, edit mode and keyboard stay full
@@ -163,7 +171,7 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
 |---|---|
 | `ui.h`, `ui.c` | Screens and API; Audio tab layout A |
 | `ui_shell.c` | Main screen: rail, Dashboard and Audio tabs (ADR-005) |
-| `ui_dash.c` | Dashboard tab: clock, cards, detail view, media strip (ADR-006) |
+| `ui_dash.c` | Dashboard tab: clock, cards, detail view, media strip (ADR-006); the prompt over every screen (ADR-007) |
 | `ui_settings.c` | Settings page |
 | `ui_edit.c` | Edit mode (order, favorites) and alias keyboard |
 | `ui_layouts.c` | Audio tab of layouts B (list) and C (large tile) |

@@ -20,6 +20,10 @@
 //                                      make it the weather location
 //   dashboard-host weather <lat> <lon> [name]
 //                                      set the weather location exactly
+//   dashboard-host hook permission   Claude Code PermissionRequest hook (ADR-007):
+//                                      asks the tray program, which shows the
+//                                      request on the board; prints the decision
+//                                      or nothing (the question in the terminal)
 //   dashboard-host hook probe        Claude Code PermissionRequest hook of the
 //                                      step 10 spike (#24): logs its input to
 //                                      hook-probe.log, answers as hook-probe.txt
@@ -62,6 +66,7 @@
 #include "WeatherLocation.h"
 #include "WinAudioSystem.h"
 #include "WinHttpClient.h"
+#include "WinHookPipe.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
@@ -463,6 +468,89 @@ int cmdHookProbe()
     return probe.exitCode;
 }
 
+// The Claude Code hook (ADR-007): stdin -> the tray program's pipe -> the
+// board; the decision on stdout. Every failure (no tray, no board, no
+// answer in time, a broken pipe) prints nothing and exits 0, which leaves
+// the decision to the terminal question. Never "allow" by itself.
+int cmdHookPermission()
+{
+    (void)_setmode(_fileno(stdin), _O_BINARY);
+    (void)_setmode(_fileno(stdout), _O_BINARY);
+    std::string input;
+    char buffer[4096];
+    std::size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), stdin)) > 0) {
+        input.append(buffer, n);
+    }
+    const std::optional<std::string> request = hookRequestLine(input);
+    if (!request) {
+        return 0;
+    }
+
+    HANDLE pipe = INVALID_HANDLE_VALUE;
+    for (int attempt = 0; attempt < 2 && pipe == INVALID_HANDLE_VALUE; ++attempt) {
+        if (!WaitNamedPipeW(win::kHookPipeName, 1000)) {
+            if (GetLastError() != ERROR_SEM_TIMEOUT) {
+                return 0;  // no tray program
+            }
+            continue;
+        }
+        pipe = CreateFileW(win::kHookPipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                           FILE_FLAG_OVERLAPPED, nullptr);
+    }
+    if (pipe == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    HANDLE io = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    auto transfer = [&](bool write, char* data, DWORD size, DWORD timeoutMs) -> DWORD {
+        OVERLAPPED ov{};
+        ResetEvent(io);
+        ov.hEvent = io;
+        DWORD done = 0;
+        const BOOL started = write ? WriteFile(pipe, data, size, nullptr, &ov) : ReadFile(pipe, data, size, nullptr, &ov);
+        if (!started && GetLastError() != ERROR_IO_PENDING) {
+            return 0;
+        }
+        if (WaitForSingleObject(io, timeoutMs) != WAIT_OBJECT_0) {
+            CancelIoEx(pipe, &ov);
+            (void)GetOverlappedResult(pipe, &ov, &done, TRUE);
+            return 0;
+        }
+        return GetOverlappedResult(pipe, &ov, &done, FALSE) ? done : 0;
+    };
+
+    std::string line = *request;
+    HookAnswer answer = HookAnswer::None;
+    if (transfer(true, line.data(), static_cast<DWORD>(line.size()), 5000) == line.size()) {
+        std::string reply;
+        const ULONGLONG started = GetTickCount64();
+        while (reply.find('\n') == std::string::npos && reply.size() < 64U) {
+            const ULONGLONG spent = GetTickCount64() - started;
+            if (spent >= kHookClientWaitMs) {
+                break;
+            }
+            char chunk[64];
+            const DWORD got = transfer(false, chunk, sizeof(chunk), static_cast<DWORD>(kHookClientWaitMs - spent));
+            if (got == 0) {
+                break;
+            }
+            reply.append(chunk, got);
+        }
+        if (reply.find('\n') != std::string::npos) {
+            answer = parseHookReply(reply.substr(0, reply.find('\n')));
+        }
+    }
+    CloseHandle(io);
+    CloseHandle(pipe);
+
+    const std::string out = permissionDecisionJson(answer);
+    if (!out.empty()) {
+        std::fwrite(out.data(), 1, out.size(), stdout);
+        std::fflush(stdout);
+    }
+    return 0;
+}
+
 int cmdMenu(const std::vector<std::string>& args)
 {
     if (args.size() >= 4 && args[2] == "import") {
@@ -530,7 +618,7 @@ int usage()
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
-        "                        menu | menu import <image> [<image> ...] | hook probe\n");
+        "                        menu | menu import <image> [<image> ...] | hook permission | hook probe\n");
     return 2;
 }
 
@@ -562,6 +650,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "hook" && args.size() == 3 && args[2] == "probe") {
         return cmdHookProbe();  // started by Claude Code: no audio, nothing else on stdout
+    }
+    if (cmd == "hook" && args.size() == 3 && args[2] == "permission") {
+        return cmdHookPermission();  // the same
     }
     if (cmd == "weather") {
         return cmdWeather(args);
