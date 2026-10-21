@@ -59,6 +59,16 @@ endif()
 if(WIN32)
     enable_language(RC)
 
+    # WinMediaSession (ADR-008): C++/WinRT from the Windows SDK and WIC. The
+    # C++/WinRT headers need C++20 coroutines (in C++17 they fall back to
+    # <experimental/coroutine>, which current MSVC refuses), so this one
+    # file is its own library in C++20; the rest of the host stays C++17.
+    add_library(host_media_win STATIC Platform/Windows/WinMediaSession.cpp)
+    target_include_directories(host_media_win PUBLIC Platform/Windows)
+    target_compile_definitions(host_media_win PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    set_target_properties(host_media_win PROPERTIES CXX_STANDARD 20)
+    target_link_libraries(host_media_win PUBLIC host_core windowsapp windowscodecs shcore ole32)
+
     # Windows sources shared by the console and the tray program.
     add_library(host_windows STATIC
         Platform/Windows/HostService.cpp
@@ -67,16 +77,14 @@ if(WIN32)
         Platform/Windows/WinHookPipe.cpp
         Platform/Windows/WinHttpClient.cpp
         Platform/Windows/WinMediaKeys.cpp
-        Platform/Windows/WinMediaSession.cpp
         Platform/Windows/WinMenuImport.cpp
         Platform/Windows/WinPreferenceFile.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
     target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-    # WinMediaSession (ADR-008): C++/WinRT from the Windows SDK, WIC.
     target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32
-                          windowsapp windowscodecs shcore)
+                          host_media_win)
 
     # Console program: run, list, set-default, volume, mute, watch, alias, startup.
     add_executable(dashboard-host Platform/Windows/main.cpp)
@@ -89,7 +97,7 @@ if(WIN32)
         target_link_options(dashboard-tray PRIVATE -municode)
     endif()
 
-    foreach(target host_windows dashboard-host dashboard-tray)
+    foreach(target host_media_win host_windows dashboard-host dashboard-tray)
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8)
         else()
