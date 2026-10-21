@@ -140,5 +140,9 @@ parallel after step 3.
 - [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board
 - [ ] 12. Release v1.0.0
 
-After v1: notifications (spike first), controls (microphone, lock,
-shortcuts), the title of the playing track.
+After v1:
+
+- [ ] Notifications (spike first), the fourth card
+- [ ] Windows settings window (GUI) for the host program: location, Claude API key and menu import, card order, Claude Code hook status (#6; UI technology needs an ADR)
+- [ ] Controls: microphone, lock, shortcuts
+- [ ] The title of the playing track on the media strip
