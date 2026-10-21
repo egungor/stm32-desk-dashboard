@@ -65,6 +65,12 @@
 #define SYM_STORM      "\xEF\x83\xA7" /* bolt */
 /* Menu of the day ("Icon" 11, #20) */
 #define SYM_UTENSILS   "\xEF\x8B\xA7" /* utensils */
+/* Media controls and the Music tab (#32); play and pause also in ui_icons_40 */
+#define SYM_MUSIC      "\xEF\x80\x81" /* music */
+#define SYM_PLAY       "\xEF\x81\x8B" /* play */
+#define SYM_PAUSE      "\xEF\x81\x8C" /* pause */
+#define SYM_BACKWARD   "\xEF\x81\x88" /* step-backward */
+#define SYM_FORWARD    "\xEF\x81\x91" /* step-forward */
 
 LV_FONT_DECLARE(ui_font_14)
 LV_FONT_DECLARE(ui_font_16)
@@ -160,6 +166,7 @@ typedef struct
     lv_obj_t      *main_screen;    /**< application screen: rail and tabs (ui_shell.c) */
     lv_obj_t      *dash_tab;       /**< Dashboard tab content, 424 x 272 */
     lv_obj_t      *audio_tab;      /**< Audio tab content, 424 x 272 */
+    lv_obj_t      *music_tab;      /**< Music tab content, 424 x 272 (ui_music.c) */
     lv_obj_t      *rail_btns[UI_APP_TAB_COUNT];
     lv_obj_t      *rail_labels[UI_APP_TAB_COUNT];
     uint32_t       app_tab;        /**< UI_APP_TAB_*, kept over a rebuild */
@@ -174,6 +181,10 @@ typedef struct
     lv_obj_t      *mute_icon;
     lv_obj_t      *slider;
     lv_obj_t      *volume_label;
+    lv_obj_t      *dash_mute_btn;      /**< the same volume on the Dashboard's bottom strip */
+    lv_obj_t      *dash_mute_icon;
+    lv_obj_t      *dash_slider;
+    lv_obj_t      *dash_volume_label;
     lv_obj_t      *prev_btn;
     lv_obj_t      *next_btn;
     lv_obj_t      *flip_icons[2];  /**< waiting screen, main screen (NULL in B and C) */
@@ -251,6 +262,29 @@ typedef struct
     lv_obj_t      *prompt_count;       /**< countdown label */
     lv_timer_t    *prompt_timer;       /**< created once in Ui_Init */
 
+    /* Now playing (ui_music.c, ADR-008); state kept over a rebuild. */
+    char           media_text[UI_MEDIA_BYTES + 1U];
+    uint8_t        media_status;       /**< UI_MEDIA_* */
+    uint8_t        media_controls;     /**< UI_MEDIA_CAN_* */
+    uint32_t       media_position;     /**< seconds at media_tick */
+    uint32_t       media_duration;     /**< seconds, 0 = unknown */
+    uint32_t       media_tick;         /**< lv_tick_get() when the state arrived */
+    uint8_t       *art_buf;            /**< UI_ART_BYTES (Ui_SetMediaArtBuffer) */
+    bool           art_valid;          /**< art_buf holds the shown cover */
+    lv_image_dsc_t art_dsc;
+    lv_obj_t      *dash_play_label;    /**< play / pause glyph on the Dashboard strip */
+    lv_obj_t      *music_art;          /**< lv_image of the cover */
+    lv_obj_t      *music_art_ph;       /**< placeholder (music note) without a cover */
+    lv_obj_t      *music_title;
+    lv_obj_t      *music_artist;
+    lv_obj_t      *music_album;
+    lv_obj_t      *music_app;
+    lv_obj_t      *music_bar;
+    lv_obj_t      *music_pos;
+    lv_obj_t      *music_dur;
+    lv_obj_t      *music_btns[3];      /**< previous, play / pause, next */
+    lv_obj_t      *music_play_label;
+
     /* Screen timeout: created once in Ui_Init, never rebuilt. */
     UiBacklightCallback on_backlight;
     void               *backlight_user;
@@ -291,8 +325,14 @@ void ui_prompt_tick(void);          /**< countdown (timer, once a second) */
 /** Light the screen if it is dark (screen timeout), as a touch would. */
 void ui_wake_screen(void);
 
+/* Music tab and now playing (ui_music.c, ADR-008). */
+void ui_music_build(void);          /**< build g_ui.music_tab's content from the kept state */
+void ui_media_render(void);         /**< show the media state on the Music tab and the Dashboard strip */
+void ui_media_tick(void);           /**< count the position on while playing (timer) */
+void ui_on_media_clicked(lv_event_t *e); /**< user data: UI_MEDIA_* */
+
 /* Application screen (ui_shell.c, ADR-005). */
-void ui_shell_build(void);          /**< create g_ui.main_screen, rail, dash_tab, audio_tab */
+void ui_shell_build(void);          /**< create g_ui.main_screen, rail, dash_tab, music_tab, audio_tab */
 void ui_shell_show_tab(uint32_t tab); /**< show UI_APP_TAB_* in the content area */
 
 /** Fill g_ui.pal from g_ui.settings (theme, accent). */

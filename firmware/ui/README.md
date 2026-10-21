@@ -40,6 +40,22 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   detail, about 3 KB). Icons: the record's icon numbers 1–10 (weather)
   and 11 (menu) of protocol.md draw Font Awesome glyphs; a detail row with
   an icon field keeps a 22 px icon column.
+- Dashboard bottom strip (#32): media controls on the left (previous, play
+  or pause by the playback state, next; `ui_on_media_clicked`) and the
+  volume of the Windows default output on the right: the Audio tab's
+  volume and mute (`render_audio` draws both controls; dragging one moves
+  the other).
+- Music tab (`ui_music.c`, ADR-008, #32), on the rail after the Dashboard
+  (rail order Dashboard, Music, Audio; `UI_APP_TAB_MUSIC` 2 =
+  `startup_screen` 2): the cover (120 × 120 RGB565 image from the buffer
+  given with `Ui_SetMediaArtBuffer`, copied in by `Ui_SetMediaArt`; a
+  music note without one), title (two lines), artist, album, app ("·
+  Duraklatıldı" when paused), a progress bar with position and duration
+  (counted on once a second while playing, `ui_media_tick`, up to the
+  duration), and previous / play-pause / next, disabled when the session
+  does not take them. Without a media session the tab says so and the
+  controls stay enabled (the host sends media keys then). State and texts
+  are kept in `g_ui` over a rebuild (about 0.6 KB).
 - Prompt (`Ui_ShowPrompt`, ADR-007, #26): a Claude Code permission request
   over every screen (`lv_layer_top`), the detail's record format with
   `title ␟ subtitle ␟ seconds` first: header, countdown, rows, up to three

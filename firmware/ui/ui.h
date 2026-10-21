@@ -11,13 +11,18 @@
  * Screens:
  *   - waiting: no host connected;
  *   - main (the application screen, ADR-005): a rail on the left (56 px)
- *     with the Dashboard and Audio tabs, the settings button and the
- *     connection mark; the shown tab fills the remaining 424 x 272;
+ *     with the Dashboard, Music and Audio tabs, the settings button and
+ *     the connection mark; the shown tab fills the remaining 424 x 272;
  *   - Dashboard tab (ui_dash.c, ADR-006): a clock strip, four cards on a
- *     2x2 grid and a media strip (<< || >>). The cards' text comes from the
+ *     2x2 grid and a bottom strip: media controls on the left (previous,
+ *     play or pause by the playback state, next), the volume of the
+ *     Windows default output on the right. The cards' text comes from the
  *     host (Ui_SetCard); a tap opens the card's detail in the tab (header
  *     with back and, if the host asks, previous / next; rows; up to three
  *     buttons), filled by Ui_ShowDetail;
+ *   - Music tab (ui_music.c, ADR-008): what plays on the PC (cover, title,
+ *     artist, album, app, progress) and the media controls (Ui_SetMedia,
+ *     Ui_SetMediaState, Ui_SetMediaArt);
  *   - Audio tab: two sub-tabs, all devices and favorites, in one of three
  *     layouts (UiSettings.layout): A cards in a 2x2, 3x2 or 3x3 grid or as
  *     a list (UiSettings.grid); B a list with vertical volume; C the active
@@ -179,7 +184,8 @@ enum
     UI_STARTUP_LAST = 0, UI_STARTUP_ALL = 1, UI_STARTUP_FAVORITES = 2,
     UI_TAB_ALL = 0, UI_TAB_FAVORITES = 1,
     UI_LANGUAGE_TURKISH = 0, UI_LANGUAGE_ENGLISH = 1, UI_LANGUAGE_COUNT = 2,
-    UI_STARTUP_SCREEN_DASHBOARD = 0, UI_STARTUP_SCREEN_AUDIO = 1, UI_STARTUP_SCREEN_COUNT = 2,
+    UI_STARTUP_SCREEN_DASHBOARD = 0, UI_STARTUP_SCREEN_AUDIO = 1, UI_STARTUP_SCREEN_MUSIC = 2,
+    UI_STARTUP_SCREEN_COUNT = 3,
 };
 
 typedef struct
@@ -283,12 +289,14 @@ enum
 /** Currently shown screen, UI_SCREEN_* (for tests). */
 uint32_t Ui_CurrentScreen(void);
 
-/** Tabs of the main screen (rail), for Ui_CurrentAppTab. */
+/** Tabs of the main screen, for Ui_CurrentAppTab; the same values as
+ *  UI_STARTUP_SCREEN_*. The rail shows them as Dashboard, Music, Audio. */
 enum
 {
     UI_APP_TAB_DASHBOARD = 0,
     UI_APP_TAB_AUDIO = 1,
-    UI_APP_TAB_COUNT = 2,
+    UI_APP_TAB_MUSIC = 2,
+    UI_APP_TAB_COUNT = 3,
 };
 
 /** Tab shown on the main screen, UI_APP_TAB_* (for tests). */
@@ -378,6 +386,49 @@ void Ui_ClosePrompt(uint8_t id);
 
 /** The shown prompt's id, or UI_NO_PROMPT (for tests). */
 uint16_t Ui_PromptShown(void);
+
+/* ----------------------------------------------------------- now playing */
+
+#define UI_MEDIA_BYTES 512U                           /**< = PROTO_MEDIA_MAX_BYTES */
+#define UI_ART_SIZE    120U                           /**< = PROTO_ART_SIZE */
+#define UI_ART_BYTES   (UI_ART_SIZE * UI_ART_SIZE * 2U) /**< RGB565, = PROTO_ART_BYTES */
+
+/** Playback status; values match PROTO_MEDIA_STATUS_*. */
+enum
+{
+    UI_MEDIA_NONE = 0,    /**< no media session */
+    UI_MEDIA_STOPPED = 1,
+    UI_MEDIA_PLAYING = 2,
+    UI_MEDIA_PAUSED = 3,
+};
+
+/** Enabled controls; values match PROTO_MEDIA_CAN_*. */
+#define UI_MEDIA_CAN_PREVIOUS   0x01U
+#define UI_MEDIA_CAN_PLAY_PAUSE 0x02U
+#define UI_MEDIA_CAN_NEXT       0x04U
+
+/** The buffer the shown cover is kept in (UI_ART_BYTES); without one no
+ *  cover is shown. The firmware passes SDRAM. */
+void Ui_SetMediaArtBuffer(uint8_t *buffer);
+
+/** The media record (protocol.md "Media record": title ␟ artist ␟ album ␟
+ *  app); cut to UI_MEDIA_BYTES. */
+void Ui_SetMedia(const char *text);
+
+/**
+ * @brief  Playback state. While UI_MEDIA_PLAYING the shown position counts
+ *         on by itself (up to @p duration_s when it is not 0).
+ */
+void Ui_SetMediaState(uint8_t status, uint8_t controls, uint32_t position_s, uint32_t duration_s);
+
+/** The cover (UI_ART_BYTES of RGB565, copied), or NULL: none. */
+void Ui_SetMediaArt(const uint8_t *pixels);
+
+/** UI_MEDIA_* shown (for tests). */
+uint8_t Ui_MediaStatus(void);
+
+/** Position shown on the Music tab in seconds (for tests). */
+uint32_t Ui_MediaPosition(void);
 
 /** LVGL memory in use and its peak, in bytes (for tests and the log). */
 void Ui_MemoryUse(uint32_t *used, uint32_t *peak);

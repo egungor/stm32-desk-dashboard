@@ -334,35 +334,46 @@ static void render_main(void)
     }
 }
 
-static void render_audio(void)
+/* One volume control: the Audio tab's or the Dashboard strip's. */
+static void render_volume(lv_obj_t *slider, lv_obj_t *label, lv_obj_t *mute_btn, lv_obj_t *mute_icon)
 {
     const bool known = (g_ui.volume != UI_VOLUME_UNKNOWN);
     const bool muted = (g_ui.muted == 1U);
     const uint32_t fill = muted ? g_ui.pal.muted : g_ui.pal.accent;
 
-    lv_obj_set_state(g_ui.slider, LV_STATE_DISABLED, !known);
-    if (known && !lv_obj_has_state(g_ui.slider, LV_STATE_PRESSED))
+    if ((slider == NULL) || (label == NULL) || (mute_btn == NULL) || (mute_icon == NULL))
     {
-        lv_slider_set_value(g_ui.slider, g_ui.volume, LV_ANIM_OFF);
+        return;
+    }
+    lv_obj_set_state(slider, LV_STATE_DISABLED, !known);
+    if (known && !lv_obj_has_state(slider, LV_STATE_PRESSED))
+    {
+        lv_slider_set_value(slider, g_ui.volume, LV_ANIM_OFF);
     }
     if (known)
     {
-        lv_label_set_text_fmt(g_ui.volume_label, "%u%%", (unsigned)lv_slider_get_value(g_ui.slider));
+        lv_label_set_text_fmt(label, "%u%%", (unsigned)lv_slider_get_value(slider));
     }
     else
     {
-        lv_label_set_text_static(g_ui.volume_label, "--");
+        lv_label_set_text_static(label, "--");
     }
     /* Muted: grey fill. Unknown: empty track, no knob. */
-    lv_obj_set_style_bg_color(g_ui.slider, ui_color(fill), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(g_ui.slider, ui_color(fill), LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(g_ui.slider, known ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(g_ui.slider, known ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(slider, ui_color(fill), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider, ui_color(fill), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(slider, known ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(slider, known ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_KNOB);
 
-    lv_obj_set_state(g_ui.mute_btn, LV_STATE_DISABLED, g_ui.muted == UI_VOLUME_UNKNOWN);
-    lv_label_set_text_static(g_ui.mute_icon, muted ? SYM_MUTED : SYM_VOLUME);
-    lv_obj_set_style_bg_color(g_ui.mute_btn, ui_color(muted ? g_ui.pal.accent : g_ui.pal.btn), 0);
-    lv_obj_set_style_text_color(g_ui.mute_icon, ui_color(muted ? g_ui.pal.on_acc : g_ui.pal.text), 0);
+    lv_obj_set_state(mute_btn, LV_STATE_DISABLED, g_ui.muted == UI_VOLUME_UNKNOWN);
+    lv_label_set_text_static(mute_icon, muted ? SYM_MUTED : SYM_VOLUME);
+    lv_obj_set_style_bg_color(mute_btn, ui_color(muted ? g_ui.pal.accent : g_ui.pal.btn), 0);
+    lv_obj_set_style_text_color(mute_icon, ui_color(muted ? g_ui.pal.on_acc : g_ui.pal.text), 0);
+}
+
+static void render_audio(void)
+{
+    render_volume(g_ui.slider, g_ui.volume_label, g_ui.mute_btn, g_ui.mute_icon);
+    render_volume(g_ui.dash_slider, g_ui.dash_volume_label, g_ui.dash_mute_btn, g_ui.dash_mute_icon);
 }
 
 /* ---------------------------------------------------------------- events */
@@ -370,13 +381,15 @@ static void render_audio(void)
 void ui_on_slider_event(lv_event_t *e)
 {
     const lv_event_code_t code = lv_event_get_code(e);
-    const uint8_t value = (uint8_t)lv_slider_get_value(g_ui.slider);
+    lv_obj_t *const slider = lv_event_get_target_obj(e);  /* the Audio tab's or the Dashboard's */
+    const uint8_t value = (uint8_t)lv_slider_get_value(slider);
 
     if ((code != LV_EVENT_VALUE_CHANGED) && (code != LV_EVENT_RELEASED))
     {
         return;
     }
-    lv_label_set_text_fmt(g_ui.volume_label, "%u%%", (unsigned)value);
+    lv_label_set_text_fmt((slider == g_ui.dash_slider) ? g_ui.dash_volume_label : g_ui.volume_label, "%u%%",
+                          (unsigned)value);
     /* The slider's value is the volume now. The caller may not report it
      * back (the host confirms the value already shown), and render_audio,
      * e.g. on a mute change, must not move the knob back to the volume from
@@ -394,6 +407,11 @@ void ui_on_slider_event(lv_event_t *e)
     if (g_ui.on_volume != NULL)
     {
         g_ui.on_volume(value, code == LV_EVENT_RELEASED, g_ui.audio_user);
+    }
+    /* The other control follows the one dragged. */
+    if (g_ui.volume != UI_VOLUME_UNKNOWN)
+    {
+        render_audio();
     }
 }
 
@@ -1033,6 +1051,7 @@ static void on_clock_timer(lv_timer_t *timer)
 {
     LV_UNUSED(timer);
     ui_dash_clock_tick();
+    ui_media_tick();  /* the Music tab's position, once a second */
 }
 
 /* LVGL counts the time since the last touch (lv_display_get_inactive_time). */

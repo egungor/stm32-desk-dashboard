@@ -27,9 +27,10 @@ beyond what the current step needs.
 ## Current milestone
 
 Dashboard v1, the owner's requests before v1.0.0 (`docs/roadmap.md`,
-"Requests of 2026-10-21"): media 1 (#30, ADR-008, protocol v4), then
-the host (#31) and the board (#32) for now playing, the cover and the
-Music tab; then the notification spike (#33) and notifications (#34).
+"Requests of 2026-10-21"): media 1 (#30, ADR-008, protocol v4) and the
+host (#31) are done; the board (#32: Music tab, play / pause by state,
+volume on the Dashboard strip) is in review; then the notification
+spike (#33) and notifications (#34).
 Step 12 (#28): release preparation done, **no `v1.0.0` tag** yet. Done: steps 1–11 (Claude Code approvals: #26,
 `host/Hook/ApprovalService`, `Platform/Windows/WinHookPipe`, the prompt
 in `ui_dash.c`) and the test releases `v0.9.0-beta.1` (#22) and

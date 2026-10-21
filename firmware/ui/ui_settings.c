@@ -50,7 +50,12 @@ static const char *s_theme_map[3];
 static const char *s_grid_map[5];
 static const char *s_startup_map[4];
 static const char *s_timeout_map[5];
-static const char *s_startup_screen_map[3];
+static const char *s_startup_screen_map[UI_STARTUP_SCREEN_COUNT + 1U];
+/* The startup screen segment in the rail's order: Dashboard, Music, Audio
+ * (button index -> UI_STARTUP_SCREEN_*). */
+static const uint8_t k_startup_screens[UI_STARTUP_SCREEN_COUNT] = { UI_STARTUP_SCREEN_DASHBOARD,
+                                                                    UI_STARTUP_SCREEN_MUSIC,
+                                                                    UI_STARTUP_SCREEN_AUDIO };
 static const char *const k_language_map[] = { "T\xC3\xBC" "rk\xC3\xA7" "e", "English", "" };
 
 /* Styles shared by the rows and controls (one copy instead of a local
@@ -171,7 +176,7 @@ static void on_segment(lv_event_t *e)
         s.screen_timeout = (idx < sizeof(k_timeouts)) ? k_timeouts[idx] : 0U;
         break;
     case FIELD_STARTUP_SCREEN:
-        s.startup_screen = (uint8_t)idx;
+        s.startup_screen = (idx < UI_STARTUP_SCREEN_COUNT) ? k_startup_screens[idx] : UI_STARTUP_SCREEN_DASHBOARD;
         break;
     default:
         s.language = (uint8_t)idx;
@@ -426,8 +431,9 @@ void ui_settings_build(void)
     s_timeout_map[3] = ui_text(TXT_TIMEOUT_15);
     s_timeout_map[4] = "";
     s_startup_screen_map[0] = ui_text(TXT_DASH_TITLE);
-    s_startup_screen_map[1] = ui_text(TXT_SCREEN_AUDIO);
-    s_startup_screen_map[2] = "";
+    s_startup_screen_map[1] = ui_text(TXT_SCREEN_MUSIC);
+    s_startup_screen_map[2] = ui_text(TXT_SCREEN_AUDIO);
+    s_startup_screen_map[3] = "";
 
     init_styles();
     g_ui.settings_screen = ui_make_screen();
@@ -466,7 +472,7 @@ void ui_settings_build(void)
     g_ui.set_flip_switch = make_switch(row, on_flip_switch);
 
     row = make_row(list, TXT_SET_STARTUP_SCREEN);
-    g_ui.set_startup_screen = make_segment(row, s_startup_screen_map, 230, FIELD_STARTUP_SCREEN);
+    g_ui.set_startup_screen = make_segment(row, s_startup_screen_map, 260, FIELD_STARTUP_SCREEN);
 
     make_section(list, TXT_SECTION_AUDIO);
 
@@ -539,7 +545,13 @@ void ui_settings_render(void)
     check_segment(g_ui.set_startup, s->startup_tab, 3U);
     check_segment(g_ui.set_timeout, timeout, sizeof(k_timeouts)); /* another value: none marked */
     check_segment(g_ui.set_language, s->language, UI_LANGUAGE_COUNT);
-    check_segment(g_ui.set_startup_screen, s->startup_screen, UI_STARTUP_SCREEN_COUNT);
+    for (uint32_t i = 0U; i < UI_STARTUP_SCREEN_COUNT; i++)
+    {
+        if (k_startup_screens[i] == s->startup_screen)
+        {
+            check_segment(g_ui.set_startup_screen, i, UI_STARTUP_SCREEN_COUNT);
+        }
+    }
 
     for (uint32_t a = 0U; a < UI_ACCENT_COUNT; a++)
     {

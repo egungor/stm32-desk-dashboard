@@ -76,6 +76,9 @@ typedef enum
     TXT_MONTH_10,
     TXT_MONTH_11,
     TXT_MONTH_12,
+    TXT_SCREEN_MUSIC,
+    TXT_NOTHING_PLAYING,
+    TXT_MEDIA_PAUSED,
     TXT_COUNT
 } UiTextId;
 

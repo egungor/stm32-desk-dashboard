@@ -117,8 +117,10 @@ static void run_ms(uint32_t ms)
  * content starts right of it. */
 #define RAIL_DASH_X  28
 #define RAIL_DASH_Y  30
+#define RAIL_MUSIC_X 28
+#define RAIL_MUSIC_Y 82
 #define RAIL_AUDIO_X 28
-#define RAIL_AUDIO_Y 82
+#define RAIL_AUDIO_Y 134
 #define RAIL_COG_X   28
 #define RAIL_COG_Y   208
 /* Layout A 2x2 in the Audio tab: the top-left card, the sub-tabs, the
@@ -544,7 +546,10 @@ static void run_settings_page_script(const UiDevice *devices, size_t count)
     snapshot("42-settings-middle");
     tap_setting(444, SET_FLIP_Y, "the flip switch reports the settings");
     check(Ui_Settings()->flipped == 1U, "the flip switch asks for the flipped display");
-    tap_setting(296, SET_FLIP_Y + 48, "the startup screen control reports the settings");
+    /* Startup screen: Dashboard, Music, Audio (the rail's order). */
+    tap_setting(340, SET_FLIP_Y + 48, "the startup screen control reports the settings");
+    check(Ui_Settings()->startup_screen == UI_STARTUP_SCREEN_MUSIC, "\"M\xC3\xBCzik\" sets the Music tab as startup screen");
+    tap_setting(250, SET_FLIP_Y + 48, "the startup screen control reports the settings");
     check(Ui_Settings()->startup_screen == UI_STARTUP_SCREEN_DASHBOARD,
           "\"Dashboard\" sets the Dashboard tab as startup screen");
 
@@ -883,8 +888,20 @@ static void run_layouts_script(void)
 }
 
 /* Dashboard tab (ADR-006, #14): cards from the host, the generic detail,
- * the media strip and the clock. Cards are 200 x 92 at x 64 / 272 and
- * y 36 / 136; the media buttons at x 172, 268, 364, y 250. */
+ * the bottom strip and the clock. Cards are 200 x 92 at x 64 / 272 and
+ * y 36 / 136; the media buttons at x 86, 142, 198, the mute button at x
+ * 258 and the volume slider from about x 300 to 420, y 250 (#32). */
+#define DASH_STRIP_Y 250
+#define DASH_PREV_X  86
+#define DASH_PLAY_X  142
+#define DASH_NEXT_X  198
+#define DASH_MUTE_X  258
+/* Music tab (#32): controls at x 166, 268, 370, y 220. */
+#define MUSIC_CTRL_Y 220
+#define MUSIC_PREV_X 166
+#define MUSIC_PLAY_X 268
+#define MUSIC_NEXT_X 370
+
 static struct
 {
     int     open_calls;
@@ -1084,13 +1101,13 @@ static void run_dashboard_script(void)
     snapshot("85-detail-failed");
     run_ms(UI_NOTICE_MS + 100U);
 
-    /* Media strip. */
-    tap(172, 250);
-    check((s_dash.media_calls == 1) && (s_dash.media == UI_MEDIA_PREVIOUS), "<< sends previous track");
-    tap(268, 250);
-    check((s_dash.media_calls == 2) && (s_dash.media == UI_MEDIA_PLAY_PAUSE), "|| sends play/pause");
-    tap(364, 250);
-    check((s_dash.media_calls == 3) && (s_dash.media == UI_MEDIA_NEXT), "> > sends next track");
+    /* Media controls on the bottom strip. */
+    tap(DASH_PREV_X, DASH_STRIP_Y);
+    check((s_dash.media_calls == 1) && (s_dash.media == UI_MEDIA_PREVIOUS), "|< sends previous track");
+    tap(DASH_PLAY_X, DASH_STRIP_Y);
+    check((s_dash.media_calls == 2) && (s_dash.media == UI_MEDIA_PLAY_PAUSE), "play sends play/pause");
+    tap(DASH_NEXT_X, DASH_STRIP_Y);
+    check((s_dash.media_calls == 3) && (s_dash.media == UI_MEDIA_NEXT), ">| sends next track");
 
     /* Claude Code prompt (ADR-007, #26). */
     run_prompt_script(&s);
@@ -1162,6 +1179,119 @@ static void run_prompt_script(UiSettings *s)
     run_ms(50U);
     s->screen_timeout = 0U;
     Ui_ApplySettings(s);
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
+}
+
+/* Now playing (ADR-008, #32): the Dashboard's bottom strip with the volume
+ * and the play / pause state, and the Music tab. */
+static uint8_t s_art_shown[UI_ART_BYTES];
+static uint8_t s_art_in[UI_ART_BYTES];
+
+static void run_music_script(void)
+{
+    int calls;
+
+    Ui_SetMediaArtBuffer(s_art_shown);
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
+
+    /* The strip's volume is the Audio tab's: either moves the other. */
+    Ui_SetVolume(45U);
+    Ui_SetMuted(0U);
+    run_ms(50U);
+    calls = s_audio.calls;
+    drag(320, 400, DASH_STRIP_Y);
+    check(s_audio.calls > calls, "the Dashboard's slider sets the volume");
+    check((Ui_ShownVolume() != UI_VOLUME_UNKNOWN) && (Ui_ShownVolume() > 45U),
+          "the Audio tab's slider follows the Dashboard's");
+    Ui_SetVolume(30U);
+    run_ms(50U);
+    calls = s_audio.mute_calls;
+    tap(DASH_MUTE_X, DASH_STRIP_Y);
+    check((s_audio.mute_calls == calls + 1) && s_audio.mute_wanted, "the Dashboard's speaker button mutes");
+    Ui_SetMuted(1U);
+    run_ms(50U);
+    snapshot("90-dashboard-strip-muted");
+    Ui_SetMuted(0U);
+
+    /* Nothing plays: the tab says so; the controls still work (media keys). */
+    tap(RAIL_MUSIC_X, RAIL_MUSIC_Y);
+    run_ms(50U);
+    check(Ui_CurrentAppTab() == UI_APP_TAB_MUSIC, "the rail's music note shows the Music tab");
+    check(Ui_MediaStatus() == UI_MEDIA_NONE, "nothing plays before the host says so");
+    snapshot("91-music-none");
+    calls = s_dash.media_calls;
+    tap(MUSIC_PLAY_X, MUSIC_CTRL_Y);
+    check((s_dash.media_calls == calls + 1) && (s_dash.media == UI_MEDIA_PLAY_PAUSE),
+          "play works without a media session");
+
+    /* Playing, with a cover (a colour gradient). */
+    for (uint32_t y = 0U; y < UI_ART_SIZE; y++)
+    {
+        for (uint32_t x = 0U; x < UI_ART_SIZE; x++)
+        {
+            const uint32_t v = ((x * 31U / (UI_ART_SIZE - 1U)) << 11) | ((y * 63U / (UI_ART_SIZE - 1U)) << 5) | 12U;
+            const uint32_t i = ((y * UI_ART_SIZE) + x) * 2U;
+
+            s_art_in[i] = (uint8_t)(v & 0xFFU);
+            s_art_in[i + 1U] = (uint8_t)(v >> 8);
+        }
+    }
+    Ui_SetMedia("Bohemian Rhapsody" F "Queen" F "A Night at the Opera" F "Spotify");
+    Ui_SetMediaState(UI_MEDIA_PLAYING, UI_MEDIA_CAN_PREVIOUS | UI_MEDIA_CAN_PLAY_PAUSE | UI_MEDIA_CAN_NEXT, 83U, 354U);
+    Ui_SetMediaArt(s_art_in);
+    run_ms(50U);
+    check(Ui_MediaStatus() == UI_MEDIA_PLAYING, "the state from the host is shown");
+    check(memcmp(s_art_shown, s_art_in, UI_ART_BYTES) == 0, "the cover is copied into the UI's buffer");
+    snapshot("92-music-playing");
+    run_ms(10000U);
+    check((Ui_MediaPosition() >= 92U) && (Ui_MediaPosition() <= 94U), "the position counts on while playing");
+    snapshot("92-music-playing-later");
+    tap(MUSIC_PREV_X, MUSIC_CTRL_Y);
+    check(s_dash.media == UI_MEDIA_PREVIOUS, "|< on the Music tab sends previous track");
+    tap(MUSIC_NEXT_X, MUSIC_CTRL_Y);
+    check(s_dash.media == UI_MEDIA_NEXT, ">| on the Music tab sends next track");
+
+    /* Paused, long Turkish texts, no cover, no duration, only play/pause. */
+    Ui_SetMedia("\xC3\x87ok uzun bir \xC5\x9F" "ark\xC4\xB1 ad\xC4\xB1: G\xC3\xBCl\xC3\xBC Soldurmam - "
+                "Canl\xC4\xB1 Kay\xC4\xB1t, Harbiye A\xC3\xA7\xC4\xB1khava 1998" F "Sezen Aksu" F "" F "Chrome");
+    Ui_SetMediaState(UI_MEDIA_PAUSED, UI_MEDIA_CAN_PLAY_PAUSE, 120U, 0U);
+    Ui_SetMediaArt(NULL);
+    run_ms(5000U);
+    check(Ui_MediaPosition() == 120U, "a paused position does not count on");
+    snapshot("93-music-paused");
+    calls = s_dash.media_calls;
+    tap(MUSIC_NEXT_X, MUSIC_CTRL_Y);
+    check(s_dash.media_calls == calls, "a control the session does not take is disabled");
+
+    /* Counting stops at the end of the track. */
+    Ui_SetMediaState(UI_MEDIA_PLAYING, UI_MEDIA_CAN_PLAY_PAUSE, 350U, 354U);
+    run_ms(10000U);
+    check(Ui_MediaPosition() == 354U, "the position stops at the duration");
+
+    /* The Dashboard's middle button shows pause while playing. */
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
+    snapshot("94-dashboard-playing");
+
+    /* A rebuild (light theme) keeps the state and the cover. */
+    {
+        UiSettings light = *Ui_Settings();
+
+        light.theme = UI_THEME_LIGHT;
+        Ui_SetMediaArt(s_art_in);
+        Ui_ApplySettings(&light);
+        run_ms(50U);
+        tap(RAIL_MUSIC_X, RAIL_MUSIC_Y);
+        run_ms(50U);
+        check(Ui_MediaStatus() == UI_MEDIA_PLAYING, "a rebuild keeps the media state");
+        snapshot("95-music-light");
+        light.theme = UI_THEME_DARK;
+        Ui_ApplySettings(&light);
+        run_ms(50U);
+    }
+    report_memory("music-end");
     tap(RAIL_DASH_X, RAIL_DASH_Y);
     run_ms(50U);
 }
@@ -1330,6 +1460,7 @@ static void run_script(void)
     run_edit_script(devices, sizeof(devices) / sizeof(devices[0]));
     run_layouts_script();
     run_dashboard_script();
+    run_music_script();
 }
 
 int main(int argc, char **argv)

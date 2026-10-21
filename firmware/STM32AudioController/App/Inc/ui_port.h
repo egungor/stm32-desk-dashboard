@@ -33,6 +33,12 @@ extern "C" {
 #define UI_PORT_FB2_ADDR 0xC0080000UL
 #define UI_PORT_FB3_ADDR 0xC00C0000UL
 
+/** Covers of the Music tab (ADR-008), after the framebuffers: the one being
+ *  received (dash_client.c) and the one shown (ui_music.c), 28 800 bytes
+ *  each (PROTO_ART_BYTES), 32 KB apart. */
+#define UI_PORT_ART_RX_ADDR   0xC0100000UL
+#define UI_PORT_ART_SHOW_ADDR 0xC0108000UL
+
 /**
  * @brief  Initialise LVGL, the display and (if @p touch_ok) the pointer
  *         input device.

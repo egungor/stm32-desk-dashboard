@@ -1,6 +1,6 @@
 /**
  * @file    dash_client.c
- * @brief   STM32 side of the dashboard commands of protocol v3 (see
+ * @brief   STM32 side of the dashboard commands of protocol v4 (see
  *          dash_client.h).
  */
 #include "dash_client.h"
@@ -25,6 +25,15 @@ static void send_get_cards(DashClient *dash)
 
     memset(&msg, 0, sizeof(msg));
     msg.command = PROTO_CMD_GET_CARDS;
+    (void)send_message(dash, &msg);
+}
+
+static void send_get_media(DashClient *dash)
+{
+    ProtoMessage msg;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.command = PROTO_CMD_GET_MEDIA;
     (void)send_message(dash, &msg);
 }
 
@@ -142,6 +151,78 @@ static void on_prompt_close(DashClient *dash, uint8_t id)
     }
 }
 
+static void on_media_part(DashClient *dash, const ProtoRecordPart *part, uint32_t now_ms)
+{
+    if (Proto_AssemblerAdd(&dash->media_asm, part) == PROTO_ASM_COMPLETE)
+    {
+        if (dash->cb.show_media != NULL)
+        {
+            dash->cb.show_media((const char *)dash->media_buf, dash->cb.ctx);
+        }
+    }
+    else
+    {
+        dash->media_part_ms = now_ms;
+    }
+}
+
+static void show_art(DashClient *dash, uint8_t art_id, const uint8_t *pixels)
+{
+    dash->art_shown = art_id;
+    if (dash->cb.show_art != NULL)
+    {
+        dash->cb.show_art(pixels, dash->cb.ctx);
+    }
+}
+
+static void on_media_state(DashClient *dash, const ProtoMediaState *state, uint32_t now_ms)
+{
+    if (dash->cb.media_state != NULL)
+    {
+        dash->cb.media_state(state, dash->cb.ctx);
+    }
+    if (state->art_id == PROTO_NO_ART)
+    {
+        Proto_ArtAssemblerStart(&dash->art_asm, PROTO_NO_ART);
+        if (dash->art_shown != PROTO_NO_ART)
+        {
+            show_art(dash, PROTO_NO_ART, NULL);
+        }
+    }
+    else if (state->art_id == dash->art_shown)
+    {
+        Proto_ArtAssemblerStart(&dash->art_asm, PROTO_NO_ART);  /* shown already: no need for its parts */
+    }
+    else if (dash->art_asm.buffer != NULL)
+    {
+        if (dash->art_asm.art_id != state->art_id)
+        {
+            dash->art_part_ms = now_ms;  /* its parts follow */
+        }
+        Proto_ArtAssemblerStart(&dash->art_asm, state->art_id);
+    }
+    else
+    {
+        /* No buffer: covers are not shown. */
+    }
+}
+
+static void on_art_part(DashClient *dash, const ProtoArtPart *part, uint32_t now_ms)
+{
+    switch (Proto_ArtAssemblerAdd(&dash->art_asm, part))
+    {
+    case PROTO_ASM_COMPLETE:
+        show_art(dash, part->art_id, dash->art_asm.buffer);
+        break;
+    case PROTO_ASM_PARTIAL:
+        dash->art_part_ms = now_ms;
+        break;
+    default:
+        dash->frames_ignored++;  /* another cover, or one shown already */
+        break;
+    }
+}
+
 static void on_error(DashClient *dash, const ProtoError *error)
 {
     if ((error->ref_command == PROTO_CMD_OPEN_DETAIL) && dash->detail_waiting)
@@ -181,8 +262,16 @@ void Dash_Init(DashClient *dash, const DashCallbacks *callbacks)
     Proto_AssemblerInit(&dash->card_asm, dash->card_buf, PROTO_CARD_MAX_BYTES);
     Proto_AssemblerInit(&dash->detail_asm, dash->detail_buf, PROTO_DETAIL_MAX_BYTES);
     Proto_AssemblerInit(&dash->prompt_asm, dash->prompt_buf, PROTO_PROMPT_MAX_BYTES);
+    Proto_AssemblerInit(&dash->media_asm, dash->media_buf, PROTO_MEDIA_MAX_BYTES);
+    Proto_ArtAssemblerInit(&dash->art_asm, NULL);
+    dash->art_shown = PROTO_NO_ART;
     dash->detail_slot = DASH_NO_SLOT;
     dash->prompt_shown = DASH_NO_PROMPT;
+}
+
+void Dash_SetArtBuffer(DashClient *dash, uint8_t *buffer)
+{
+    Proto_ArtAssemblerInit(&dash->art_asm, buffer);
 }
 
 void Dash_OnConnected(DashClient *dash, uint32_t now_ms)
@@ -190,7 +279,10 @@ void Dash_OnConnected(DashClient *dash, uint32_t now_ms)
     (void)now_ms;
     dash->connected = true;
     Proto_AssemblerReset(&dash->card_asm);
+    Proto_AssemblerReset(&dash->media_asm);
+    Proto_ArtAssemblerStart(&dash->art_asm, PROTO_NO_ART);
     send_get_cards(dash);
+    send_get_media(dash);
 }
 
 void Dash_OnDisconnected(DashClient *dash)
@@ -202,6 +294,15 @@ void Dash_OnDisconnected(DashClient *dash)
     dash->detail_waiting = false;
     dash->detail_slot = DASH_NO_SLOT;
     close_prompt(dash);  /* nobody could receive its answer */
+
+    /* Nothing is known to play any more. */
+    Proto_AssemblerReset(&dash->media_asm);
+    {
+        ProtoMediaState none;
+
+        memset(&none, 0, sizeof(none));
+        on_media_state(dash, &none, 0U);
+    }
 }
 
 void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
@@ -232,6 +333,15 @@ void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
     case PROTO_CMD_PROMPT_CLOSE:
         on_prompt_close(dash, msg->u.prompt_id);
         break;
+    case PROTO_CMD_MEDIA_PART:
+        on_media_part(dash, &msg->u.part, now_ms);
+        break;
+    case PROTO_CMD_MEDIA_STATE:
+        on_media_state(dash, &msg->u.media, now_ms);
+        break;
+    case PROTO_CMD_ART_PART:
+        on_art_part(dash, &msg->u.art, now_ms);
+        break;
     case PROTO_CMD_ERROR:
         on_error(dash, &msg->u.error);
         break;
@@ -253,6 +363,15 @@ void Dash_Poll(DashClient *dash, uint32_t now_ms)
         /* A card part was lost: ask for all cards again. */
         Proto_AssemblerReset(&dash->card_asm);
         send_get_cards(dash);
+    }
+    if (((dash->media_asm.active != 0U) && ((now_ms - dash->media_part_ms) >= DASH_RETRY_MS)) ||
+        ((dash->art_asm.art_id != PROTO_NO_ART) && ((now_ms - dash->art_part_ms) >= DASH_RETRY_MS)))
+    {
+        /* A media part or cover part was lost: ask for all of it again. The
+         * cover parts collected so far are kept (same art_id). */
+        Proto_AssemblerReset(&dash->media_asm);
+        dash->art_part_ms = now_ms;
+        send_get_media(dash);
     }
     if ((dash->prompt_asm.active != 0U) && ((now_ms - dash->prompt_part_ms) >= DASH_RETRY_MS))
     {

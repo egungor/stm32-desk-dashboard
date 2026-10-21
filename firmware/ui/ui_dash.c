@@ -1,7 +1,8 @@
 /**
  * @file    ui_dash.c
- * @brief   Dashboard tab (ADR-006, #14): clock strip, four cards, media
- *          strip, and the generic detail view.
+ * @brief   Dashboard tab (ADR-006, #14): clock strip, four cards, bottom
+ *          strip (media controls and volume, #32), and the generic detail
+ *          view.
  *
  *     ┌──────────────────────────────────────────┐
  *     │ 14:32  Çarşamba 21 Ekim                  │  clock strip (36 px)
@@ -11,7 +12,7 @@
  *     │ └─────────────────┘ └─────────────────┘  │
  *     │ ┌ card 2 ─────────┐ ┌ card 3 ─────────┐  │
  *     │ └─────────────────┘ └─────────────────┘  │
- *     │        [ << ]    [ || ]    [ >> ]        │  media strip (44 px)
+ *     │ [|<] [ > ] [>|]      (vol) ━━━━●──── 45% │  bottom strip (44 px)
  *     └──────────────────────────────────────────┘
  *
  * The board knows nothing about weather or menus: a card and a detail are
@@ -35,7 +36,8 @@
 
 #define STRIP_H     36
 #define MEDIA_H     44
-#define MEDIA_BTN_W 72
+#define MEDIA_BTN_W 44    /**< previous, next */
+#define PLAY_BTN_W  56    /**< play / pause, in the accent colour */
 #define LABEL_W     112   /**< width of a detail row's label */
 #define MAX_LINES   48U   /**< lines of a detail that are drawn */
 #define MAX_BUTTONS 3U
@@ -521,16 +523,6 @@ static void on_card(lv_event_t *e)
     }
 }
 
-static void on_media(lv_event_t *e)
-{
-    const uint8_t action = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
-
-    if (g_ui.dash.media != NULL)
-    {
-        g_ui.dash.media(action, g_ui.dash_user);
-    }
-}
-
 /* ----------------------------------------------------------------- build */
 
 static void build_clock_strip(lv_obj_t *parent)
@@ -576,22 +568,50 @@ static void build_cards(lv_obj_t *parent)
     }
 }
 
+/* Bottom strip: media controls on the left (the middle one shows pause
+ * while something plays, play otherwise; ui_media_render), the volume of
+ * the Windows default output on the right (the Audio tab's, ui.c). */
 static void build_media_strip(lv_obj_t *parent)
 {
-    static const char *const symbols[3] = { SYM_PREV SYM_PREV, "| |", SYM_NEXT SYM_NEXT };
+    static const char *const symbols[3] = { SYM_BACKWARD, SYM_PLAY, SYM_FORWARD };
     lv_obj_t *strip = ui_make_box(parent);
 
     lv_obj_set_size(strip, LV_PCT(100), MEDIA_H);
     lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_pad_column(strip, 24, 0);
+    lv_obj_set_style_pad_hor(strip, PAD, 0);
+    lv_obj_set_style_pad_column(strip, 6, 0);
     lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     for (uint32_t i = 0U; i < 3U; i++)
     {
-        lv_obj_t *btn = ui_make_small_button(strip, MEDIA_BTN_W, MEDIA_H - 10, symbols[i], NULL);
+        lv_obj_t *label = NULL;
+        lv_obj_t *btn = ui_make_small_button(strip, (i == 1U) ? PLAY_BTN_W : MEDIA_BTN_W, MEDIA_H - 10, symbols[i],
+                                             &label);
 
-        lv_obj_add_event_cb(btn, on_media, LV_EVENT_CLICKED, (void *)(uintptr_t)(UI_MEDIA_PREVIOUS + i));
+        lv_obj_add_event_cb(btn, ui_on_media_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)(UI_MEDIA_PREVIOUS + i));
+        if (i == 1U)
+        {
+            lv_obj_set_style_bg_color(btn, ui_color(g_ui.pal.accent), 0);
+            lv_obj_set_style_text_color(label, ui_color(g_ui.pal.on_acc), 0);
+            g_ui.dash_play_label = label;
+        }
     }
+
+    /* Volume: mute button, slider, percentage. */
+    g_ui.dash_mute_btn = ui_make_small_button(strip, 44, MEDIA_H - 10, SYM_VOLUME, &g_ui.dash_mute_icon);
+    lv_obj_set_style_margin_left(g_ui.dash_mute_btn, 16, 0);
+    lv_obj_set_style_margin_right(g_ui.dash_mute_btn, VOLUME_GAP - 6, 0);  /* 6: the column gap */
+    lv_obj_add_event_cb(g_ui.dash_mute_btn, ui_on_mute_clicked, LV_EVENT_CLICKED, NULL);
+
+    g_ui.dash_slider = lv_slider_create(strip);
+    lv_obj_set_flex_grow(g_ui.dash_slider, 1);
+    lv_obj_set_height(g_ui.dash_slider, 8);
+    ui_style_volume_slider(g_ui.dash_slider);
+
+    g_ui.dash_volume_label = ui_make_label(strip, &ui_font_14, g_ui.pal.text, "--");
+    lv_obj_set_width(g_ui.dash_volume_label, 40);
+    lv_obj_set_style_margin_left(g_ui.dash_volume_label, 6, 0);
+    lv_obj_set_style_text_align(g_ui.dash_volume_label, LV_TEXT_ALIGN_RIGHT, 0);
 }
 
 void ui_dash_build(void)

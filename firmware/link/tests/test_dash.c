@@ -45,6 +45,12 @@ static struct
     char    prompt_text[PROTO_PROMPT_MAX_BYTES + 1U];
     int     close_calls;
     uint8_t close_id;
+    int     media_calls;
+    char    media_text[PROTO_MEDIA_MAX_BYTES + 1U];
+    int     state_calls;
+    ProtoMediaState state;
+    int     art_calls;
+    const uint8_t *art;
 } g;
 
 static bool fake_send(const uint8_t frame[PROTO_FRAME_SIZE], void *ctx)
@@ -108,12 +114,35 @@ static void fake_close(uint8_t id, void *ctx)
     g.close_id = id;
 }
 
+static void fake_media(const char *text, void *ctx)
+{
+    (void)ctx;
+    g.media_calls++;
+    (void)snprintf(g.media_text, sizeof(g.media_text), "%s", text);
+}
+
+static void fake_state(const ProtoMediaState *state, void *ctx)
+{
+    (void)ctx;
+    g.state_calls++;
+    g.state = *state;
+}
+
+static void fake_art(const uint8_t *pixels, void *ctx)
+{
+    (void)ctx;
+    g.art_calls++;
+    g.art = pixels;
+}
+
 static DashClient s_dash;
+static uint8_t s_art_buf[PROTO_ART_BYTES];
 
 static void reset(void)
 {
-    static const DashCallbacks cb = { fake_send, fake_card,   fake_detail, fake_notice,
-                                      fake_time, fake_prompt, fake_close,  NULL };
+    static const DashCallbacks cb = { fake_send,  fake_card,  fake_detail, fake_notice, fake_time,
+                                      fake_prompt, fake_close, NULL,        fake_media,  fake_state,
+                                      fake_art };
 
     memset(&g, 0, sizeof(g));
     Dash_Init(&s_dash, &cb);
@@ -175,7 +204,7 @@ static void test_shared_sequence(void)
     reset();
     Dash_SetSequenceCounter(&s_dash, &shared);
     Dash_OnConnected(&s_dash, 0U);
-    CHECK(g.sent_count == 1 && g.sent[0].sequence == 40U && shared == 41U);
+    CHECK(g.sent_count == 2 && g.sent[0].sequence == 40U && g.sent[1].sequence == 41U && shared == 42U);
     CHECK(Dash_Action(&s_dash, PROTO_ACTION_MEDIA, 0U, PROTO_MEDIA_NEXT));
     CHECK(g.sent[1].sequence == 41U && shared == 42U);
 }
@@ -186,7 +215,7 @@ static void test_connect_asks_for_cards(void)
     CHECK(!Dash_OpenDetail(&s_dash, 0U, 0, 0U)); /* not connected */
     CHECK(!Dash_Action(&s_dash, PROTO_ACTION_MEDIA, 0U, PROTO_MEDIA_NEXT));
     Dash_OnConnected(&s_dash, 10U);
-    CHECK(g.sent_count == 1 && g.sent[0].command == PROTO_CMD_GET_CARDS);
+    CHECK(g.sent_count == 2 && g.sent[0].command == PROTO_CMD_GET_CARDS && g.sent[1].command == PROTO_CMD_GET_MEDIA);
 }
 
 static void test_cards(void)
@@ -387,6 +416,129 @@ static void test_prompt(void)
     CHECK(!Dash_AnswerPrompt(&s_dash, 8U, 1U));
 }
 
+/* ----------------------------------------------------------- now playing */
+
+static void feed_state(uint8_t status, uint8_t art_id, uint32_t now)
+{
+    ProtoMessage msg;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.command = PROTO_CMD_MEDIA_STATE;
+    msg.u.media.status = status;
+    msg.u.media.controls = PROTO_MEDIA_CONTROLS_MASK;
+    msg.u.media.art_id = art_id;
+    msg.u.media.position = 5U;
+    msg.u.media.duration = 100U;
+    Dash_OnMessage(&s_dash, &msg, now);
+}
+
+/* Parts @p from .. @p to - 1 of a cover filled with @p seed. */
+static void feed_art(uint8_t art_id, uint8_t seed, uint16_t from, uint16_t to, uint32_t now)
+{
+    static uint8_t art[PROTO_ART_BYTES];
+
+    memset(art, seed, sizeof(art));
+    for (uint16_t i = from; i < to; i++)
+    {
+        ProtoMessage msg;
+
+        memset(&msg, 0, sizeof(msg));
+        msg.command = PROTO_CMD_ART_PART;
+        CHECK(Proto_ArtPart(art, art_id, i, &msg.u.art) == 1);
+        Dash_OnMessage(&s_dash, &msg, now);
+    }
+}
+
+static int sent(uint8_t command)
+{
+    int n = 0;
+
+    for (int i = 0; i < g.sent_count; i++)
+    {
+        n += (g.sent[i].command == command) ? 1 : 0;
+    }
+    return n;
+}
+
+static void test_media(void)
+{
+    reset();
+    Dash_SetArtBuffer(&s_dash, s_art_buf);
+    Dash_OnConnected(&s_dash, 0U);
+    g.sent_count = 0;
+
+    /* The record, then the state. */
+    feed_record(PROTO_CMD_MEDIA_PART, "Song\x1F" "Artist\x1F" "Album\x1F" "Spotify", 0U, 1U, 10U, -1);
+    CHECK(g.media_calls == 1 && strcmp(g.media_text, "Song\x1F" "Artist\x1F" "Album\x1F" "Spotify") == 0);
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, 4U, 20U);
+    CHECK(g.state_calls == 1 && g.state.status == PROTO_MEDIA_STATUS_PLAYING && g.state.art_id == 4U);
+    CHECK(g.state.position == 5U && g.state.duration == 100U);
+    CHECK(g.art_calls == 0);
+
+    /* The cover, complete only with the last part; out of order is fine. */
+    feed_art(4U, 0x5AU, 100U, PROTO_ART_PARTS, 30U);
+    CHECK(g.art_calls == 0);
+    feed_art(4U, 0x5AU, 0U, 100U, 40U);
+    CHECK(g.art_calls == 1 && g.art == s_art_buf && s_art_buf[0] == 0x5AU && s_art_buf[PROTO_ART_BYTES - 1U] == 0x5AU);
+
+    /* The same cover named again: not collected again. */
+    feed_state(PROTO_MEDIA_STATUS_PAUSED, 4U, 50U);
+    feed_art(4U, 0x11U, 0U, PROTO_ART_PARTS, 60U);
+    CHECK(g.art_calls == 1 && s_art_buf[0] == 0x5AU);
+    Dash_Poll(&s_dash, 5000U);
+    CHECK(sent(PROTO_CMD_GET_MEDIA) == 0);
+
+    /* Parts of another cover than the one named are dropped. */
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, 5U, 6000U);
+    feed_art(6U, 0x22U, 0U, PROTO_ART_PARTS, 6010U);
+    CHECK(g.art_calls == 1);
+
+    /* Cover 5 stops halfway: GET_MEDIA after DASH_RETRY_MS, once. */
+    feed_art(5U, 0x33U, 0U, 200U, 6020U);
+    Dash_Poll(&s_dash, 6020U + DASH_RETRY_MS - 1U);
+    CHECK(sent(PROTO_CMD_GET_MEDIA) == 0);
+    Dash_Poll(&s_dash, 6020U + DASH_RETRY_MS);
+    CHECK(sent(PROTO_CMD_GET_MEDIA) == 1);
+    Dash_Poll(&s_dash, 6020U + DASH_RETRY_MS + 10U);
+    CHECK(sent(PROTO_CMD_GET_MEDIA) == 1);
+    /* The answer resends from part 0; the parts kept make it complete. */
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, 5U, 7100U);
+    feed_art(5U, 0x33U, 0U, PROTO_ART_PARTS, 7110U);
+    CHECK(g.art_calls == 2 && s_art_buf[0] == 0x33U);
+
+    /* A state without a cover: show_art(NULL). */
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, PROTO_NO_ART, 8000U);
+    CHECK(g.art_calls == 3 && g.art == NULL);
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, PROTO_NO_ART, 8100U);
+    CHECK(g.art_calls == 3); /* not again */
+
+    /* A lost media part: GET_MEDIA. */
+    g.sent_count = 0;
+    feed_record(PROTO_CMD_MEDIA_PART,
+                "A long title that needs more than one part of fifty three bytes\x1F" "Artist\x1F\x1F" "App",
+                0U, 2U, 9000U, 0);
+    CHECK(g.media_calls == 1);
+    Dash_Poll(&s_dash, 9000U + DASH_RETRY_MS);
+    CHECK(sent(PROTO_CMD_GET_MEDIA) == 1);
+
+    /* Disconnect: status none, no cover. */
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, 7U, 10000U);
+    feed_art(7U, 0x44U, 0U, PROTO_ART_PARTS, 10010U);
+    CHECK(g.art_calls == 4 && g.art == s_art_buf);
+    Dash_OnDisconnected(&s_dash);
+    CHECK(g.state.status == PROTO_MEDIA_STATUS_NONE && g.art_calls == 5 && g.art == NULL);
+
+    /* Without a buffer, covers are ignored. */
+    reset();
+    Dash_OnConnected(&s_dash, 0U);
+    feed_state(PROTO_MEDIA_STATUS_PLAYING, 3U, 10U);
+    feed_art(3U, 0x55U, 0U, PROTO_ART_PARTS, 20U);
+    CHECK(g.art_calls == 0 && g.state_calls == 1);
+    g.sent_count = 0;
+    Dash_Poll(&s_dash, 5000U);
+    CHECK(sent(PROTO_CMD_GET_MEDIA) == 0);
+}
+
 int main(void)
 {
     test_owns();
@@ -398,6 +550,7 @@ int main(void)
     test_detail_failures();
     test_action_and_time();
     test_prompt();
+    test_media();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;
