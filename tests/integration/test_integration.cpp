@@ -1,7 +1,8 @@
 // Firmware <-> host loopback test (M5).
 //
 // The STM32 protocol client (firmware/link/link_client.c) and the host
-// HostController run against each other over a simulated USB link, with a
+// side as HostService wires it (HostController and DashController behind a
+// FrameRouter, one SequencedSink) run against each other over a simulated USB link, with a
 // fake Windows audio system. Time is simulated in 1 ms steps:
 //
 // - USB: one 64-byte report per direction every kUsbIntervalMs (interrupt
@@ -26,8 +27,11 @@
 #include <string>
 #include <vector>
 
+#include "DashController.h"
 #include "DeviceRegistry.h"
+#include "FrameRouter.h"
 #include "HostController.h"
+#include "SequencedSink.h"
 #include "link_client.h"
 
 using namespace stm32_audio::host;
@@ -148,6 +152,7 @@ struct WireStats {
     std::vector<std::uint8_t> toDevice;
     std::vector<std::uint8_t> errorCodesToHost;
     std::vector<std::uint8_t> errorCodesToDevice;
+    std::vector<std::uint8_t> sequencesToDevice;
     unsigned firmwareRxDropped = 0;
 
     unsigned count(const std::vector<std::uint8_t>& v, std::uint8_t cmd) const
@@ -166,7 +171,10 @@ public:
     FirmwareScreen screen;
     WireStats wire;
     LinkClient link{};
+    SequencedSink hostSink{*this};  // HostService: one sequence for both controllers
     std::optional<HostController> host;
+    std::optional<DashController> dash;
+    std::optional<FrameRouter> router;
     std::uint32_t now;
 
     // Start close to the 32-bit wrap: the firmware's tick wraps too.
@@ -203,6 +211,7 @@ public:
             hostOpen_ = false;
             if (host) {
                 host->onDisconnected();  // HidDisconnected
+                dash->onDisconnected();
             }
         }
     }
@@ -210,13 +219,17 @@ public:
     // dashboard-host started / stopped while the board stays plugged in.
     void startHost()
     {
-        host.emplace(audio, *this);
+        host.emplace(audio, hostSink);
+        dash.emplace(hostSink, [this] { return 1792593125U + now / 1000U; });
+        router.emplace(*host, *dash, hostSink);
         hostRunning_ = true;
         hostOpenAt_ = now + kHostOpenDelayMs;
     }
 
     void stopHost()
     {
+        router.reset();
+        dash.reset();
         host.reset();
         hostRunning_ = false;
         hostOpen_ = false;
@@ -342,7 +355,17 @@ public:
         return screen.active == (def ? *def : UI_NO_DEVICE);
     }
 
-    // IFrameSink: HostController -> WinHidLink::sendFrame.
+    // The board sends a raw frame (a dashboard request the link client of
+    // this step does not make itself).
+    void boardSends(const ProtoMessage& msg)
+    {
+        Frame f{};
+        if (Proto_Encode(&msg, f.data()) == PROTO_OK && cable_) {
+            firmwareTx_.push_back(f);
+        }
+    }
+
+    // IFrameSink: SequencedSink -> WinHidLink::sendFrame.
     bool sendFrame(const Frame& frame) override
     {
         if (!hostOpen_) {
@@ -431,6 +454,7 @@ private:
         if (cable_ && hostRunning_ && !hostOpen_ && reached(now, hostOpenAt_)) {
             hostOpen_ = true;
             host->onConnected();
+            dash->onConnected();
         }
 
         // Core Audio's notification for a change made through the API
@@ -446,6 +470,7 @@ private:
                 const Frame f = hostOut_.front();
                 hostOut_.pop_front();
                 note(f, wire.toDevice, wire.errorCodesToDevice);
+                wire.sequencesToDevice.push_back(f[3]);
                 if (firmwareRx_.size() < kFirmwareRxDepth) {
                     firmwareRx_.push_back(f);
                 } else {
@@ -457,7 +482,7 @@ private:
                 firmwareTx_.pop_front();
                 if (hostOpen_) {  // no handle open: Windows discards the report
                     note(f, wire.toHost, wire.errorCodesToHost);
-                    host->onFrame(f);
+                    router->onFrame(f);
                 }
             }
         }
@@ -1142,6 +1167,59 @@ void testSettingsRoundTrip()
     CHECK(r.screen.notices[LINK_NOTICE_EDIT_FAILED] == 0);
 }
 
+// Protocol v3 (ADR-006, #12): the dashboard side answers next to the audio
+// side; the board's link client ignores what it does not use yet, and the
+// host numbers every frame from one counter.
+void testDashboardNextToAudio()
+{
+    g_scenario = "dashboard next to audio";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    r.plugIn();
+    r.run(3000);
+    CHECK(r.inSync());
+    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_TIME) == 1U);
+    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_CARD_CLEAR) == PROTO_MAX_CARDS);
+    CHECK(r.wire.errorCodesToHost.empty());  // the board drops them without complaint
+
+    // A card set on the host reaches the board while the audio list stays.
+    r.dash->setCard(0, recordLine({"0", "Hava", ""}) + "\n14 C");
+    ProtoMessage get{};
+    get.command = PROTO_CMD_GET_CARDS;
+    r.boardSends(get);
+    r.run(500);
+    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_CARD_PART) == 2U);  // on change, then on GET_CARDS
+    CHECK(r.wire.count(r.wire.toDevice, PROTO_CMD_TIME) == 2U);
+    CHECK(r.inSync());
+
+    // OPEN_DETAIL without a detail handler: ERROR OPERATION_FAILED.
+    ProtoMessage open{};
+    open.command = PROTO_CMD_OPEN_DETAIL;
+    open.u.open_detail.slot = 0;
+    r.boardSends(open);
+    r.run(200);
+    CHECK(r.wire.errorCodesToDevice.size() == 1U &&
+          r.wire.errorCodesToDevice.back() == PROTO_ERROR_OPERATION_FAILED);
+
+    // Audio still works through the router.
+    const std::optional<std::uint8_t> speakers = r.shownIdOf("Hoparl\xC3\xB6r");
+    CHECK(speakers.has_value());
+    if (speakers) {
+        r.tap(*speakers);
+    }
+    r.run(500);
+    CHECK(r.audio.defaultId == "{spk}");
+    CHECK(r.inSync());
+
+    // One counter for both controllers: 0, 1, 2, ... with no gap.
+    bool consecutive = true;
+    for (std::size_t i = 0; i < r.wire.sequencesToDevice.size(); ++i) {
+        consecutive = consecutive && (r.wire.sequencesToDevice[i] == static_cast<std::uint8_t>(i));
+    }
+    CHECK(consecutive);
+}
+
 int main()
 {
     testConnect();
@@ -1163,6 +1241,7 @@ int main()
     testEditsFromBoard();
     testEditCrossesWindowsChange();
     testSettingsRoundTrip();
+    testDashboardNextToAudio();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();
