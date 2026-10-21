@@ -113,6 +113,26 @@ static void run_ms(uint32_t ms)
     }
 }
 
+/* Application screen (ADR-005): the rail is 56 px wide; the Audio tab's
+ * content starts right of it. */
+#define RAIL_DASH_X  28
+#define RAIL_DASH_Y  30
+#define RAIL_AUDIO_X 28
+#define RAIL_AUDIO_Y 82
+#define RAIL_COG_X   28
+#define RAIL_COG_Y   208
+/* Layout A 2x2 in the Audio tab: the top-left card, the sub-tabs, the
+ * pencil, and the bottom strip (mute 64..116, the slider 136..272 while
+ * the pager is shown). */
+#define CARD0_X      162
+#define CARD0_Y      85
+#define TAB_ALL_X    122
+#define TAB_FAV_X    238
+#define PENCIL_X     454
+#define MUTE_X       90
+#define MUTE_EDGE_X  115
+#define SLIDER_X(p)  (136 + (((p) * 136) / 100)) /* p: percent of the track */
+
 static void tap(int32_t x, int32_t y)
 {
     s_touch.x = x;
@@ -382,26 +402,30 @@ static void run_settings_script(const UiDevice *base, size_t count)
     snapshot("20-favorites-marked");
     report_memory("start");
 
-    /* The first settings choose the startup tab: "last used" = favorites. */
+    /* The first settings choose the startup screen (Audio) and the startup
+     * tab: "last used" = favorites. */
     s.startup_tab = UI_STARTUP_LAST;
     s.last_tab = UI_TAB_FAVORITES;
+    s.startup_screen = UI_STARTUP_SCREEN_AUDIO;
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
     Ui_ApplySettings(&s);
+    check(Ui_CurrentAppTab() == UI_APP_TAB_AUDIO, "startup screen \"Audio\" shows the Audio tab");
     check(Ui_CurrentTab() == UI_TAB_FAVORITES, "startup tab \"last used\" opens the favorites tab");
     run_ms(50U);
     snapshot("21-tab-favorites");
 
     /* Tapping "All" switches back and reports last_tab. */
-    tap(66, 18);
+    tap(TAB_ALL_X, 18);
     check(Ui_CurrentTab() == UI_TAB_ALL, "tapping the first tab shows all devices");
     check((s_settings.calls == 1) && (s_settings.last.last_tab == UI_TAB_ALL),
           "a tab change reports the settings with last_tab");
-    tap(182, 18);
+    tap(TAB_FAV_X, 18);
     check(Ui_CurrentTab() == UI_TAB_FAVORITES, "tapping the second tab shows the favorites");
     check((s_settings.calls == 2) && (s_settings.last.last_tab == UI_TAB_FAVORITES), "last_tab follows the tab");
     /* The first favorite is device 0 (top left). */
-    tap(120, 85);
+    tap(CARD0_X, CARD0_Y);
     check(s_select.last_id == 0U, "a tap in the favorites tab selects the shown device");
-    tap(66, 18);
+    tap(TAB_ALL_X, 18);
 
     s = *Ui_Settings();
     s.theme = UI_THEME_LIGHT;
@@ -467,6 +491,9 @@ static void run_settings_script(const UiDevice *base, size_t count)
     }
 }
 
+/* Flip row after the short drag in run_settings_page_script. */
+#define SET_FLIP_Y 137
+
 /* Tap at (x, y) and check that it reported the settings exactly once. */
 static void tap_setting(int32_t x, int32_t y, const char *what)
 {
@@ -478,52 +505,62 @@ static void tap_setting(int32_t x, int32_t y, const char *what)
     check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the settings page stays open after a change");
 }
 
-/* Settings page (#60). Rows are 48 px high under the 36 px bar; the
- * controls sit at the right edge. */
+/* Settings page (#60; sections since ADR-005). Rows are 48 px high under
+ * the 36 px bar; the controls sit at the right edge. */
 static void run_settings_page_script(const UiDevice *devices, size_t count)
 {
     uint32_t base;
     uint32_t used;
     int calls;
 
-    tap(414, 18); /* cog button */
+    tap(RAIL_COG_X, RAIL_COG_Y); /* cog on the rail */
     check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the cog button opens the settings page");
     run_ms(50U);
     snapshot("40-settings");
     report_memory("40-settings");
 
-    /* Rows from the top: layout 60, theme 108, colour 156, grid 204,
-     * startup tab 252. */
-    tap_setting(425, 108, "the theme control reports the settings");
+    /* GENEL from the top: theme 90, colour 138, language 186, screen
+     * timeout 234. */
+    tap_setting(425, 90, "the theme control reports the settings");
     check(Ui_Settings()->theme == UI_THEME_LIGHT, "\"Light\" sets the light theme");
-    tap_setting(307, 156, "the colour swatches report the settings");
+    tap_setting(307, 138, "the colour swatches report the settings");
     check(Ui_Settings()->accent == UI_ACCENT_BLUE, "the second swatch sets the blue accent");
     snapshot("41-settings-light-blue");
     report_memory("41-settings-light-blue");
-    tap_setting(312, 204, "the grid control reports the settings");
-    check(Ui_Settings()->grid == UI_GRID_3X2, "\"3x2\" sets the 3x2 grid");
-    tap_setting(422, 252, "the startup tab control reports the settings");
-    check(Ui_Settings()->startup_tab == UI_STARTUP_FAVORITES, "\"Favorites\" sets the startup tab");
-
-    /* Scroll to the end of the list; a drag that starts on a control
-     * scrolls and changes nothing. Rows from the bottom then: startup tab
-     * 47, screen timeout 95, volume limit 143, flip 191, language 239. */
-    calls = s_settings.calls;
-    drag_v(240, 250, 40);
-    check((s_settings.calls == calls) && (Ui_Settings()->startup_tab == UI_STARTUP_FAVORITES),
-          "scrolling over a control does not change it");
-    drag_v(240, 250, 40);
-    snapshot("42-settings-bottom");
-    tap_setting(363, 95, "the screen timeout control reports the settings");
+    tap_setting(363, 234, "the screen timeout control reports the settings");
     check(Ui_Settings()->screen_timeout == 5U, "\"5 min\" sets a 5 minute screen timeout");
 
     /* Tapping the option that is already chosen reports nothing. */
     calls = s_settings.calls;
-    tap(363, 95);
+    tap(363, 234);
     check(s_settings.calls == calls, "the chosen option again reports nothing");
 
-    tap_setting(444, 144, "the volume limit switch reports the settings");
+    /* A short drag down the page; one that starts on a control scrolls
+     * and changes nothing. Then: flip FLIP_Y, startup screen FLIP_Y + 48. */
+    calls = s_settings.calls;
+    drag_v(240, 250, 150);
+    check((s_settings.calls == calls) && (Ui_Settings()->screen_timeout == 5U),
+          "scrolling over a control does not change it");
+    snapshot("42-settings-middle");
+    tap_setting(444, SET_FLIP_Y, "the flip switch reports the settings");
+    check(Ui_Settings()->flipped == 1U, "the flip switch asks for the flipped display");
+    tap_setting(296, SET_FLIP_Y + 48, "the startup screen control reports the settings");
+    check(Ui_Settings()->startup_screen == UI_STARTUP_SCREEN_DASHBOARD,
+          "\"Dashboard\" sets the Dashboard tab as startup screen");
+
+    /* SES at the end of the list: layout 95, grid 143, startup tab 190,
+     * volume limit 239. */
+    drag_v(240, 250, 40);
+    drag_v(240, 250, 40);
+    snapshot("42-settings-bottom");
+    tap_setting(312, 143, "the grid control reports the settings");
+    check(Ui_Settings()->grid == UI_GRID_3X2, "\"3x2\" sets the 3x2 grid");
+    tap_setting(422, 190, "the startup tab control reports the settings");
+    check(Ui_Settings()->startup_tab == UI_STARTUP_FAVORITES, "\"Favorites\" sets the startup tab");
+
+    tap_setting(444, 239, "the volume limit switch reports the settings");
     check(Ui_Settings()->volume_limit_on == 1U, "the volume limit switch turns the limit on");
+    drag_v(240, 250, 40);
     run_ms(50U);
     snapshot("43-settings-limit");
 
@@ -535,12 +572,11 @@ static void run_settings_page_script(const UiDevice *devices, size_t count)
           "the volume limit moved up in steps of 5");
     snapshot("44-settings-limit-moved");
 
-    /* End of the list: flip and language rows. */
-    drag_v(240, 250, 40);
-    drag_v(240, 250, 40);
-    tap_setting(444, 191, "the flip switch reports the settings");
-    check(Ui_Settings()->flipped == 1U, "the flip switch asks for the flipped display");
-    tap_setting(419, 239, "the language control reports the settings");
+    /* Back to the top: the language row. */
+    drag_v(240, 40, 250);
+    drag_v(240, 40, 250);
+    drag_v(240, 40, 250);
+    tap_setting(419, 186, "the language control reports the settings");
     check(Ui_Settings()->language == UI_LANGUAGE_ENGLISH, "\"English\" sets the English UI");
     snapshot("45-settings-english");
     report_memory("45-settings-english");
@@ -567,7 +603,7 @@ static void run_settings_page_script(const UiDevice *devices, size_t count)
     Ui_MemoryUse(&base, NULL);
     for (uint32_t i = 0U; i < 10U; i++)
     {
-        tap(414, 18);
+        tap(RAIL_COG_X, RAIL_COG_Y);
         tap(60, 18);
     }
     run_ms(50U);
@@ -576,7 +612,7 @@ static void run_settings_page_script(const UiDevice *devices, size_t count)
     check(used <= base + 512U, "opening the settings page does not leak memory");
 
     /* The waiting screen closes the page. */
-    tap(414, 18);
+    tap(RAIL_COG_X, RAIL_COG_Y);
     Ui_ShowWaiting();
     run_ms(50U);
     check(Ui_CurrentScreen() == UI_SCREEN_WAITING, "the waiting screen replaces the settings page");
@@ -610,10 +646,10 @@ static void run_screen_timeout_script(const UiDevice *devices, size_t count)
 
     /* The waking touch does not select the device under it. */
     selects = s_select.calls;
-    tap(120, 85);
+    tap(CARD0_X, CARD0_Y);
     check(Ui_ScreenOn() && (s_backlight.calls == 2) && s_backlight.on, "a touch wakes the screen");
     check(s_select.calls == selects, "the waking touch does not reach the controls");
-    tap(120, 85);
+    tap(CARD0_X, CARD0_Y);
     check(s_select.calls == selects + 1, "the next touch works normally");
     snapshot("51-screen-woken");
 
@@ -663,7 +699,7 @@ static void run_edit_script(const UiDevice *devices, size_t count)
     snapshot("60-main-pencil");
     Ui_MemoryUse(&base, NULL);
 
-    tap(370, 18); /* pencil */
+    tap(PENCIL_X, 18); /* pencil */
     check(Ui_CurrentScreen() == UI_SCREEN_EDIT, "the pencil button opens the edit mode");
     run_ms(50U);
     snapshot("61-edit");
@@ -739,7 +775,7 @@ static void run_edit_script(const UiDevice *devices, size_t count)
     /* Opening and closing does not leak. */
     for (uint32_t i = 0U; i < 5U; i++)
     {
-        tap(370, 18);
+        tap(PENCIL_X, 18);
         tap(174, 106);
         tap(KB_CLOSE_X, KB_CLOSE_Y);
         tap(440, 18);
@@ -771,16 +807,16 @@ static void run_layouts_script(void)
     apply_and_snapshot(&s, "70-list");
     check(Ui_CurrentScreen() == UI_SCREEN_MAIN, "the list layout shows the main screen");
 
-    /* B: rows from y 32, 42 px apart; rail buttons at x 30. */
+    /* B: rows from y 44, 44 px apart, under layout A's top bar. */
     selects = s_select.calls;
-    tap(200, 51 + 42); /* second row */
+    tap(200, 44 + 44 + 20); /* second row */
     check(s_select.calls == selects + 1, "a tap on a row selects its device");
-    tap(30, 82); /* favorites */
-    check(Ui_CurrentTab() == UI_TAB_FAVORITES, "the rail's star shows the favorites");
+    tap(TAB_FAV_X, 18); /* favorites */
+    check(Ui_CurrentTab() == UI_TAB_FAVORITES, "the top bar's star shows the favorites");
     run_ms(50U);
     snapshot("71-list-favorites");
-    tap(30, 30);
-    check(Ui_CurrentTab() == UI_TAB_ALL, "the rail's list button shows all devices");
+    tap(TAB_ALL_X, 18);
+    check(Ui_CurrentTab() == UI_TAB_ALL, "the top bar's first tab shows all devices");
 
     /* Vertical volume on the right. */
     volumes = s_audio.calls;
@@ -795,7 +831,7 @@ static void run_layouts_script(void)
     s.theme = UI_THEME_DARK;
     apply_and_snapshot(&s, "73-tiles");
     selects = s_select.calls;
-    tap(275, 80); /* first tile */
+    tap(300, 80); /* first tile */
     check((s_select.calls == selects + 1) && (s_select.last_id != 1U),
           "the first tile is not the active device and selects its own");
     Ui_SetActive(s_select.last_id);
@@ -806,17 +842,18 @@ static void run_layouts_script(void)
     apply_and_snapshot(&s, "75-tiles-light");
 
     /* The layout row on the settings page: back to cards. */
-    tap(455, 25); /* cog */
-    check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the cog of layout C opens the settings page");
-    tap_setting(277, 60, "the layout control reports the settings");
+    tap(RAIL_COG_X, RAIL_COG_Y); /* cog */
+    check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the rail's cog opens the settings page in layout C");
+    drag_v(240, 250, 40); /* SES: layout 131, grid 180 */
+    tap_setting(277, 131, "the layout control reports the settings");
     check(Ui_Settings()->layout == UI_LAYOUT_CARDS, "\"Kart\" sets the cards layout");
-    tap_setting(351, 60, "the layout control reports the settings again");
+    tap_setting(351, 131, "the layout control reports the settings again");
     check(Ui_Settings()->layout == UI_LAYOUT_LIST, "\"Liste\" sets the list layout");
     snapshot("76-settings-layout-list");
     {
         const int before = s_settings.calls;
 
-        tap(312, 204); /* "3x2", greyed out outside the cards layout */
+        tap(312, 180); /* "3x2", greyed out outside the cards layout */
         check((s_settings.calls == before) && (Ui_Settings()->grid == UI_GRID_2X2),
               "the grid row does nothing outside the cards layout");
     }
@@ -865,10 +902,18 @@ static void run_script(void)
     Ui_SetVolume(45U);
     Ui_SetMuted(0U);
     run_ms(50U);
+    /* Before any settings the application screen opens on the Dashboard
+     * tab (startup_screen 0). */
+    check((Ui_CurrentScreen() == UI_SCREEN_MAIN) && (Ui_CurrentAppTab() == UI_APP_TAB_DASHBOARD),
+          "the device list opens the main screen on the Dashboard tab");
+    snapshot("02-dashboard");
+    tap(RAIL_AUDIO_X, RAIL_AUDIO_Y);
+    check(Ui_CurrentAppTab() == UI_APP_TAB_AUDIO, "the rail's speaker shows the Audio tab");
+    run_ms(50U);
     snapshot("02-main");
 
     /* Tap "Hoparlörler" (top-left button). */
-    tap(120, 85);
+    tap(CARD0_X, CARD0_Y);
     check(s_select.calls == 1, "tap on a device calls the select callback once");
     check(s_select.last_id == 0U, "tap on the top-left device selects id 0");
     Ui_SetPending(0U);
@@ -880,7 +925,7 @@ static void run_script(void)
     snapshot("04-switched");
 
     /* Tapping the active device does nothing. */
-    tap(120, 85);
+    tap(CARD0_X, CARD0_Y);
     check(s_select.calls == 1, "tap on the active device does not call the callback");
 
     /* Next page button (bottom right). */
@@ -896,7 +941,7 @@ static void run_script(void)
 
     /* Drag the volume slider to the right; the host's report while the
      * finger is down does not move the knob. */
-    drag(140, 230, 252);
+    drag(SLIDER_X(30), SLIDER_X(78), 252);
     check(s_audio.calls > 2, "dragging the slider reports several values");
     check(s_audio.released == 1, "releasing the slider reports once with released");
     check(s_audio.last > 45U, "the slider moved up");
@@ -905,7 +950,7 @@ static void run_script(void)
     snapshot("08-volume");
 
     /* Mute: the tap asks; the host's MUTE_CHANGED changes the icon. */
-    tap(34, 252);
+    tap(MUTE_X, 252);
     check((s_audio.mute_calls == 1) && s_audio.mute_wanted, "mute button asks to mute");
     Ui_SetMuted(1U);
     run_ms(50U);
@@ -917,18 +962,18 @@ static void run_script(void)
     {
         const int volume_calls = s_audio.calls;
 
-        tap(59, 252);
+        tap(MUTE_EDGE_X, 252);
         check((s_audio.mute_calls == 2) && !s_audio.mute_wanted, "a tap on the mute button's edge asks to unmute");
         check(s_audio.calls == volume_calls, "a tap on the mute button's edge leaves the volume");
     }
 
     /* Moving the slider while muted asks to unmute, once until the host
      * reports the mute state. */
-    drag(150, 200, 252);
+    drag(SLIDER_X(36), SLIDER_X(62), 252);
     check((s_audio.mute_calls == 3) && !s_audio.mute_wanted, "moving the slider while muted asks to unmute once");
     Ui_SetMuted(0U);
     run_ms(50U);
-    drag(200, 180, 252);
+    drag(SLIDER_X(62), SLIDER_X(52), 252);
     check(s_audio.mute_calls == 3, "moving the slider while not muted leaves mute");
 
     /* The host confirms a dragged volume without reporting it again (the
@@ -937,7 +982,7 @@ static void run_script(void)
      * the drag. */
     Ui_SetVolume(30U);
     run_ms(50U);
-    drag(150, 260, 252);
+    drag(SLIDER_X(36), SLIDER_X(94), 252);
     {
         const uint8_t dragged = Ui_ShownVolume();
 
@@ -958,7 +1003,7 @@ static void run_script(void)
     {
         const int mute_calls = s_audio.mute_calls;
 
-        tap(34, 252);
+        tap(MUTE_X, 252);
         check(s_audio.mute_calls == mute_calls, "disabled mute button does nothing");
     }
     snapshot("10-no-volume");
@@ -967,12 +1012,10 @@ static void run_script(void)
     run_ms(50U);
     snapshot("11-empty");
 
-    /* Flip button, top right corner: a tap does nothing, a long press asks
-     * once, when the finger lifts. */
-    Ui_SetDevices(devices, sizeof(devices) / sizeof(devices[0]));
-    Ui_SetActive(1U);
-    Ui_SetVolume(45U);
-    Ui_SetMuted(0U);
+    /* Flip button, top right corner of the waiting screen (the main screen
+     * has none since ADR-005; the settings page has a switch): a tap does
+     * nothing, a long press asks once, when the finger lifts. */
+    Ui_ShowWaiting();
     run_ms(50U);
     tap(458, 18);
     check(s_flip_calls == 0, "a short tap on the flip button does nothing");
@@ -986,12 +1029,14 @@ static void run_script(void)
     run_ms(100U);
     check(s_flip_calls == 1, "a long press on the flip button asks to flip once");
     snapshot_as("13-flipped", true);
-
-    /* Same button on the waiting screen. */
-    Ui_ShowWaiting();
-    run_ms(50U);
     hold(458, 18, UI_FLIP_HOLD_MS + 100U);
-    check(s_flip_calls == 2, "the flip button works on the waiting screen");
+    check(s_flip_calls == 2, "the flip button works again");
+    Ui_SetDevices(devices, sizeof(devices) / sizeof(devices[0]));
+    Ui_SetActive(1U);
+    Ui_SetVolume(45U);
+    Ui_SetMuted(0U);
+    run_ms(50U);
+    check(Ui_CurrentAppTab() == UI_APP_TAB_AUDIO, "the shown tab is kept while the host was away");
 
     run_settings_script(devices, sizeof(devices) / sizeof(devices[0]));
     run_settings_page_script(devices, sizeof(devices) / sizeof(devices[0]));

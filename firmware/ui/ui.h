@@ -1,6 +1,6 @@
 /**
  * @file    ui.h
- * @brief   Touch UI of the audio controller (LVGL, hardware independent).
+ * @brief   Touch UI of the desk dashboard (LVGL, hardware independent).
  *
  * The module only depends on LVGL. It knows nothing about the LCD, the
  * touch controller, USB or Windows: the caller creates the LVGL display
@@ -10,17 +10,22 @@
  *
  * Screens:
  *   - waiting: no host connected;
- *   - main: two tabs, all devices and favorites, in one of three layouts
- *     (UiSettings.layout): A cards in a 2x2, 3x2 or 3x3 grid or as a list
- *     (UiSettings.grid); B a list with a tab rail and vertical volume; C
- *     the active device in a large panel and the others as tiles. The
- *     active device is marked by colour and text; page buttons when there
- *     are more devices than fit on one page;
- *   - settings: opened with the cog button in the main screen's top bar;
- *     theme, accent colour, grid, startup tab, screen timeout, startup
- *     volume limit, flip and language. A change is applied at once and
- *     reported with the whole record (UiSettingsCallback);
- *   - edit mode: opened with the pencil button in the main screen's top
+ *   - main (the application screen, ADR-005): a rail on the left (56 px)
+ *     with the Dashboard and Audio tabs, the settings button and the
+ *     connection mark; the shown tab fills the remaining 424 x 272;
+ *   - Dashboard tab: a placeholder until the dashboard cards exist;
+ *   - Audio tab: two sub-tabs, all devices and favorites, in one of three
+ *     layouts (UiSettings.layout): A cards in a 2x2, 3x2 or 3x3 grid or as
+ *     a list (UiSettings.grid); B a list with vertical volume; C the active
+ *     device in a large panel and the others as tiles. The active device
+ *     is marked by colour and text; page buttons when there are more
+ *     devices than fit on one page;
+ *   - settings: opened with the cog button on the rail; general (theme,
+ *     accent colour, language, screen timeout, flip, startup screen) and
+ *     audio (layout, grid, startup tab, volume limit) settings. A change is
+ *     applied at once and reported with the whole record
+ *     (UiSettingsCallback);
+ *   - edit mode: opened with the pencil button in the Audio tab's top
  *     bar; every device as a card with buttons to move it one place left
  *     or right, mark it as favorite, and give it an alias on an on-screen
  *     keyboard (Turkish layout). Edits go out through UiEditHandlers;
@@ -28,8 +33,9 @@
  *   - screen timeout: after settings.screen_timeout minutes without a touch
  *     the screen goes black and the backlight handler is told to switch
  *     the backlight off; the next touch only wakes it;
- *   - flip button (top right corner of both screens): held for
- *     UI_FLIP_HOLD_MS, it asks to turn the image by 180° when released.
+ *   - flip button (top right corner of the waiting screen; on the
+ *     settings page as a switch): held for UI_FLIP_HOLD_MS, it asks to
+ *     turn the image by 180° when released.
  *
  * Appearance (theme, accent colour, language, grid) follows UiSettings
  * (Ui_ApplySettings); a change of these rebuilds the screens.
@@ -270,6 +276,17 @@ enum
 
 /** Currently shown screen, UI_SCREEN_* (for tests). */
 uint32_t Ui_CurrentScreen(void);
+
+/** Tabs of the main screen (rail), for Ui_CurrentAppTab. */
+enum
+{
+    UI_APP_TAB_DASHBOARD = 0,
+    UI_APP_TAB_AUDIO = 1,
+    UI_APP_TAB_COUNT = 2,
+};
+
+/** Tab shown on the main screen, UI_APP_TAB_* (for tests). */
+uint32_t Ui_CurrentAppTab(void);
 
 /** LVGL memory in use and its peak, in bytes (for tests and the log). */
 void Ui_MemoryUse(uint32_t *used, uint32_t *peak);

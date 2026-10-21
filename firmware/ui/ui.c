@@ -1,6 +1,9 @@
 /**
  * @file    ui.c
- * @brief   Touch UI of the audio controller (LVGL, hardware independent).
+ * @brief   Touch UI of the desk dashboard (LVGL, hardware independent):
+ *          waiting screen, the Audio tab's content (layout A; B and C in
+ *          ui_layouts.c), notices, screen timeout and the API. The
+ *          application screen with its rail is in ui_shell.c.
  *
  * Screens are built from g_ui.settings (theme, accent, language, grid) and
  * rebuilt when one of these changes; everything else updates the objects
@@ -247,9 +250,9 @@ static void render_tabs(void)
     {
         const bool on = (g_ui.tab == t);
 
-        if (g_ui.card_kind == CARD_LIST || g_ui.card_kind == CARD_TILE)
+        if (g_ui.card_kind == CARD_TILE)
         {
-            /* B rail buttons and C pills: the chosen tab filled with the accent. */
+            /* C pills: the chosen tab filled with the accent. */
             lv_obj_set_style_bg_color(g_ui.tab_btns[t], ui_color(on ? g_ui.pal.accent : g_ui.pal.btn), 0);
             lv_obj_set_style_bg_opa(g_ui.tab_btns[t], (on || (g_ui.card_kind == CARD_TILE)) ? LV_OPA_COVER : LV_OPA_TRANSP,
                                     0);
@@ -568,18 +571,17 @@ void ui_on_edit_clicked(lv_event_t *e)
     ui_show_edit();
 }
 
-/* Top bar: the two tabs on the left; the connection mark, the settings
- * button and the flip button on the right. */
-static void build_top_bar(lv_obj_t *scr)
+/* The Audio tab's top bar: the two sub-tabs on the left, the edit mode
+ * button on the right (hidden without edit handlers). Settings and the
+ * connection mark are on the rail (ui_shell.c). */
+void ui_build_tab_bar(lv_obj_t *parent, int32_t width)
 {
     static const char *const tab_symbols[2] = { SYM_GRID, SYM_STAR };
     static const UiTextId tab_texts[2] = { TXT_TAB_ALL, TXT_TAB_FAV };
-    lv_obj_t *bar = ui_make_box(scr);
-    lv_obj_t *plug;
-    lv_obj_t *cog;
+    lv_obj_t *bar = ui_make_box(parent);
     lv_obj_t *pen;
 
-    lv_obj_set_size(bar, LV_PCT(100), BAR_H);
+    lv_obj_set_size(bar, width, BAR_H);
     lv_obj_set_style_bg_color(bar, ui_color(g_ui.pal.bar), 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
     lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
@@ -603,19 +605,9 @@ static void build_top_bar(lv_obj_t *scr)
         lv_obj_center(g_ui.tab_labels[t]);
     }
 
-    /* Settings button left of the flip button (which lies over the bar). */
-    cog = ui_make_box(bar);
-    lv_obj_set_size(cog, FLIP_W, BAR_H);
-    lv_obj_align(cog, LV_ALIGN_RIGHT_MID, -FLIP_W, 0);
-    lv_obj_add_flag(cog, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(cog, ui_on_settings_clicked, LV_EVENT_CLICKED, NULL);
-    lv_obj_center(ui_make_label(cog, &ui_font_16, g_ui.pal.muted, SYM_COG));
-
-    /* Edit mode button left of the settings button; hidden without edit
-     * handlers (Ui_SetEditHandlers). */
     pen = ui_make_box(bar);
     lv_obj_set_size(pen, FLIP_W, BAR_H);
-    lv_obj_align(pen, LV_ALIGN_RIGHT_MID, -(2 * FLIP_W), 0);
+    lv_obj_align(pen, LV_ALIGN_RIGHT_MID, -4, 0);
     lv_obj_add_flag(pen, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(pen, ui_on_edit_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_center(ui_make_label(pen, &ui_font_16, g_ui.pal.muted, SYM_PENCIL));
@@ -624,9 +616,6 @@ static void build_top_bar(lv_obj_t *scr)
         lv_obj_add_flag(pen, LV_OBJ_FLAG_HIDDEN);
     }
     g_ui.edit_btn = pen;
-
-    plug = ui_make_label(bar, &ui_font_16, g_ui.pal.link, SYM_PLUG);
-    lv_obj_align(plug, LV_ALIGN_RIGHT_MID, -((3 * FLIP_W) + 4), 0);
 }
 
 static void build_device_button(lv_obj_t *parent, uint32_t slot, const GridShape *shape, CardKind kind)
@@ -647,9 +636,11 @@ static void build_device_button(lv_obj_t *parent, uint32_t slot, const GridShape
         lv_obj_set_grid_cell(b->btn, LV_GRID_ALIGN_STRETCH, (int32_t)(slot % shape->cols), 1,
                              LV_GRID_ALIGN_STRETCH, (int32_t)(slot / shape->cols), 1);
     }
-    lv_obj_set_style_pad_hor(b->btn, (kind == CARD_SMALL) ? 8 : 10, 0);
+    /* Narrow paddings: the Audio tab is 424 px wide (ADR-005), so a 2x2
+     * card has 200 px and a 3x2 card 130 px for icon and name. */
+    lv_obj_set_style_pad_hor(b->btn, ((kind == CARD_SMALL) || (kind == CARD_MEDIUM)) ? 6 : 8, 0);
     lv_obj_set_style_pad_ver(b->btn, (kind == CARD_ROW) ? 0 : 6, 0);
-    lv_obj_set_style_pad_column(b->btn, (kind == CARD_LARGE) ? 12 : 8, 0);
+    lv_obj_set_style_pad_column(b->btn, (kind == CARD_MEDIUM) ? 6 : 8, 0);
     lv_obj_set_flex_flow(b->btn, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(b->btn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_add_event_cb(b->btn, ui_on_device_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)slot);
@@ -658,11 +649,11 @@ static void build_device_button(lv_obj_t *parent, uint32_t slot, const GridShape
     {
     case CARD_LARGE:
         b->icon = ui_make_label(b->btn, &ui_icons_40, g_ui.pal.muted, "");
-        lv_obj_set_width(b->icon, 48);
+        lv_obj_set_width(b->icon, 44);
         break;
     case CARD_MEDIUM:
         b->icon = ui_make_label(b->btn, &ui_font_22, g_ui.pal.muted, "");
-        lv_obj_set_width(b->icon, 28);
+        lv_obj_set_width(b->icon, 24);
         break;
     default:
         b->icon = ui_make_label(b->btn, &ui_font_16, g_ui.pal.muted, "");
@@ -773,8 +764,8 @@ static void build_bottom_strip(lv_obj_t *scr)
     lv_obj_add_event_cb(g_ui.next_btn, ui_on_page_clicked, LV_EVENT_CLICKED, (void *)g_ui.next_btn);
 }
 
-/* Layout A: cards in a grid (or rows), tabs in the top bar, volume and
- * pages in the bottom strip. */
+/* Layout A in the Audio tab: cards in a grid (or rows), sub-tabs in the
+ * top bar, volume and pages in the bottom strip. */
 static void build_cards_main(void)
 {
     static int32_t cols[4];
@@ -796,11 +787,9 @@ static void build_cards_main(void)
     }
     rows[shape->rows] = LV_GRID_TEMPLATE_LAST;
 
-    g_ui.main_screen = ui_make_screen();
-    build_top_bar(g_ui.main_screen);
-    build_flip_button(g_ui.main_screen, 1U);
+    ui_build_tab_bar(g_ui.audio_tab, UI_CONTENT_W);
 
-    grid = ui_make_box(g_ui.main_screen);
+    grid = ui_make_box(g_ui.audio_tab);
     lv_obj_set_pos(grid, 0, BAR_H);
     lv_obj_set_size(grid, LV_PCT(100), UI_HEIGHT - BAR_H - BOTTOM_H);
     lv_obj_set_style_pad_all(grid, PAD, 0);
@@ -811,10 +800,10 @@ static void build_cards_main(void)
         build_device_button(grid, slot, shape, kind);
     }
 
-    g_ui.empty_label = ui_make_label(g_ui.main_screen, &ui_font_22, g_ui.pal.muted, "");
+    g_ui.empty_label = ui_make_label(g_ui.audio_tab, &ui_font_22, g_ui.pal.muted, "");
     lv_obj_center(g_ui.empty_label);
 
-    build_bottom_strip(g_ui.main_screen);
+    build_bottom_strip(g_ui.audio_tab);
 }
 
 static void build_main_screen(void)
@@ -829,6 +818,7 @@ static void build_main_screen(void)
     g_ui.edit_btn = NULL;
     (void)memset(g_ui.buttons, 0, sizeof(g_ui.buttons));
 
+    ui_shell_build();
     switch (g_ui.settings.layout)
     {
     case UI_LAYOUT_LIST:
@@ -939,6 +929,7 @@ static void build_all(void)
         ui_keyboard_build();
     }
     build_notice();
+    ui_shell_show_tab(g_ui.app_tab);
 
     clamp_page();
     render_main();
@@ -1205,8 +1196,9 @@ void Ui_ApplySettings(const UiSettings *settings)
 
     if (!g_ui.settings_seen)
     {
-        /* The first settings after start choose the tab. */
+        /* The first settings after start choose the screen and the tab. */
         g_ui.settings_seen = true;
+        ui_shell_show_tab(settings->startup_screen);
         if (settings->startup_tab == UI_STARTUP_LAST)
         {
             g_ui.tab = settings->last_tab;

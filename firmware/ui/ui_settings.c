@@ -9,9 +9,13 @@
  * the next LVGL timer run (ui_request_rebuild), so the control that was
  * tapped is not deleted inside its own event.
  *
+ * Two sections (ADR-005): GENEL (theme, colour, language, screen timeout,
+ * flip, startup screen) and SES (layout, grid, startup tab, volume limit).
  * "Layout" chooses cards (A), list (B) or large tile (C); the grid row
- * applies to the cards layout and is greyed out with the others. screen_timeout is used by the UI's screen timeout (ui.c);
- * flipped and the volume limit are for the display port and the host.
+ * applies to the cards layout and is greyed out with the others.
+ * screen_timeout is used by the UI's screen timeout (ui.c); flipped and
+ * the volume limit are for the display port and the host; startup_screen
+ * chooses the tab shown at startup (ui_shell.c).
  */
 #include <string.h>
 
@@ -33,6 +37,7 @@ typedef enum
     FIELD_STARTUP,
     FIELD_TIMEOUT,
     FIELD_LANGUAGE,
+    FIELD_STARTUP_SCREEN,
 } SegField;
 
 /* Screen timeout choices in minutes (the record allows 0-60). */
@@ -45,6 +50,7 @@ static const char *s_theme_map[3];
 static const char *s_grid_map[5];
 static const char *s_startup_map[4];
 static const char *s_timeout_map[5];
+static const char *s_startup_screen_map[3];
 static const char *const k_language_map[] = { "T\xC3\xBC" "rk\xC3\xA7" "e", "English", "" };
 
 /* Styles shared by the rows and controls (one copy instead of a local
@@ -164,6 +170,9 @@ static void on_segment(lv_event_t *e)
     case FIELD_TIMEOUT:
         s.screen_timeout = (idx < sizeof(k_timeouts)) ? k_timeouts[idx] : 0U;
         break;
+    case FIELD_STARTUP_SCREEN:
+        s.startup_screen = (uint8_t)idx;
+        break;
     default:
         s.language = (uint8_t)idx;
         appearance = true;
@@ -250,6 +259,16 @@ static lv_obj_t *make_row(lv_obj_t *list, UiTextId label)
     lv_obj_set_flex_grow(text, 1);
     lv_label_set_long_mode(text, LV_LABEL_LONG_MODE_DOTS);
     return row;
+}
+
+/* A section title between rows (GENEL, SES). */
+static void make_section(lv_obj_t *list, UiTextId title)
+{
+    lv_obj_t *label = ui_make_label(list, &ui_font_14, g_ui.pal.muted, ui_text(title));
+
+    lv_obj_set_style_pad_left(label, PAD + 4, 0);
+    lv_obj_set_style_pad_top(label, 10, 0);
+    lv_obj_set_style_pad_bottom(label, 2, 0);
 }
 
 /* Segmented control: the options of @p map (terminated by ""), one of them
@@ -406,6 +425,9 @@ void ui_settings_build(void)
     s_timeout_map[2] = ui_text(TXT_TIMEOUT_5);
     s_timeout_map[3] = ui_text(TXT_TIMEOUT_15);
     s_timeout_map[4] = "";
+    s_startup_screen_map[0] = ui_text(TXT_DASH_TITLE);
+    s_startup_screen_map[1] = ui_text(TXT_SCREEN_AUDIO);
+    s_startup_screen_map[2] = "";
 
     init_styles();
     g_ui.settings_screen = ui_make_screen();
@@ -426,8 +448,7 @@ void ui_settings_build(void)
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
     g_ui.settings_list = list;
 
-    row = make_row(list, TXT_SET_LAYOUT);
-    g_ui.set_layout = make_segment(row, s_layout_map, 230, FIELD_LAYOUT);
+    make_section(list, TXT_SECTION_GENERAL);
 
     row = make_row(list, TXT_SET_THEME);
     g_ui.set_theme = make_segment(row, s_theme_map, 170, FIELD_THEME);
@@ -435,24 +456,32 @@ void ui_settings_build(void)
     row = make_row(list, TXT_SET_ACCENT);
     build_swatches(row);
 
+    row = make_row(list, TXT_SET_LANGUAGE);
+    g_ui.set_language = make_segment(row, (const char **)k_language_map, 190, FIELD_LANGUAGE);
+
+    row = make_row(list, TXT_SET_TIMEOUT);
+    g_ui.set_timeout = make_segment(row, s_timeout_map, 280, FIELD_TIMEOUT);
+
+    row = make_row(list, TXT_SET_FLIP);
+    g_ui.set_flip_switch = make_switch(row, on_flip_switch);
+
+    row = make_row(list, TXT_SET_STARTUP_SCREEN);
+    g_ui.set_startup_screen = make_segment(row, s_startup_screen_map, 230, FIELD_STARTUP_SCREEN);
+
+    make_section(list, TXT_SECTION_AUDIO);
+
+    row = make_row(list, TXT_SET_LAYOUT);
+    g_ui.set_layout = make_segment(row, s_layout_map, 230, FIELD_LAYOUT);
+
     row = make_row(list, TXT_SET_GRID);
     g_ui.set_grid = make_segment(row, s_grid_map, 250, FIELD_GRID);
 
     row = make_row(list, TXT_SET_STARTUP);
     g_ui.set_startup = make_segment(row, s_startup_map, 270, FIELD_STARTUP);
 
-    row = make_row(list, TXT_SET_TIMEOUT);
-    g_ui.set_timeout = make_segment(row, s_timeout_map, 280, FIELD_TIMEOUT);
-
     row = make_row(list, TXT_SET_LIMIT);
     g_ui.set_limit_switch = make_switch(row, on_limit_switch);
     build_limit_box(list);
-
-    row = make_row(list, TXT_SET_FLIP);
-    g_ui.set_flip_switch = make_switch(row, on_flip_switch);
-
-    row = make_row(list, TXT_SET_LANGUAGE);
-    g_ui.set_language = make_segment(row, (const char **)k_language_map, 190, FIELD_LANGUAGE);
 }
 
 /* ---------------------------------------------------------------- render */
@@ -510,6 +539,7 @@ void ui_settings_render(void)
     check_segment(g_ui.set_startup, s->startup_tab, 3U);
     check_segment(g_ui.set_timeout, timeout, sizeof(k_timeouts)); /* another value: none marked */
     check_segment(g_ui.set_language, s->language, UI_LANGUAGE_COUNT);
+    check_segment(g_ui.set_startup_screen, s->startup_screen, UI_STARTUP_SCREEN_COUNT);
 
     for (uint32_t a = 0U; a < UI_ACCENT_COUNT; a++)
     {

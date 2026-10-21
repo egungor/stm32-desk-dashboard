@@ -4,6 +4,36 @@ Hardware-independent LVGL user interface. It is compiled into the
 firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
 (`firmware/simulator`).
 
+## Application screen (ADR-005, #10)
+
+```text
+┌────┬──────────────────────────────────────────┐
+│ ▦  │                                          │
+│ ♪  │   the shown tab, 424 x 272               │
+│    │                                          │
+│ ⚙  │                                          │
+│ ⇄  │                                          │
+└────┴──────────────────────────────────────────┘
+```
+
+- `ui_shell.c` builds the main screen: a 56 px rail on the left with the
+  Dashboard (`th-large`) and Audio (speaker) tab buttons, the settings
+  button and the connection mark at its foot, and one 424 × 272 container
+  per tab. Both tabs are built with the other screens and the hidden one
+  keeps its state (page, sub-tab). `Ui_CurrentAppTab` reports the shown
+  tab.
+- The first settings after `Ui_Init` choose the tab shown at startup
+  (`startup_screen`: 0 Dashboard, 1 Audio); before them the Dashboard tab
+  is shown. A rebuild keeps the shown tab.
+- Dashboard tab: a placeholder until the dashboard cards (v1 step 6).
+- Audio tab: everything below; the settings button moved to the rail and
+  the flip button to the settings page (the waiting screen keeps its
+  button). Waiting screen, settings, edit mode and keyboard stay full
+  screen and hide the rail.
+- The rail uses `th-large` for the Dashboard: a home glyph needs the fonts
+  regenerated (`tools/gen-ui-fonts.sh`), which was not possible in the
+  sandbox of #10.
+
 ## Boundary
 
 - Depends only on LVGL (`lvgl.h`). No HAL, CMSIS, FreeRTOS, USB,
@@ -25,7 +55,8 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   margin (`VOLUME_TOUCH_PAD`), so a tap on the button's edge never sets
   the volume. `UI_VOLUME_UNKNOWN` disables the controls. Rate limiting is
   the caller's job (`firmware/link`).
-- Display flip: a button in the top right corner of both screens; held
+- Display flip: a button in the top right corner of the waiting screen
+  and a switch on the settings page; the button, held
   for `UI_FLIP_HOLD_MS` (icon turns orange), it calls the
   `UiFlipCallback` (`Ui_SetFlipHandler`) when the finger lifts. The UI
   does not rotate anything: the display port turns the image and mirrors
@@ -42,12 +73,13 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   page) with the whole record through the `UiSettingsCallback`
   (`Ui_SetSettingsHandler`). `flipped` and `screen_timeout` are for the
   display port, the volume limit for the host.
-- Settings page (`ui_settings.c`, #60, design A of #57): the cog button in
-  the main screen's top bar opens it; the left half of its bar goes back.
-  A scrolling list of rows: layout, theme, accent colour (6 swatches), grid,
-  startup tab, screen timeout (never / 1 / 5 / 15 min), volume limit
-  on switch (switch; when on, a slider in 5 % steps, reported on release),
-  flip (switch) and language. A tap applies the change at once and reports
+- Settings page (`ui_settings.c`, #60, design A of #57; sections since
+  #10): the cog button on the rail opens it; the left half of its bar
+  goes back. A scrolling list in two sections: GENEL — theme, accent
+  colour (6 swatches), language, screen timeout (never / 1 / 5 / 15 min),
+  flip (switch), startup screen (Dashboard / Ses); SES — layout, grid,
+  startup tab, volume limit on switch (switch; when on, a slider in 5 %
+  steps, reported on release). A tap applies the change at once and reports
   the record; a change of theme, accent, grid or language rebuilds the
   screens on the next timer run (`ui_request_rebuild`, so the tapped
   control is not deleted inside its own event) and the page stays open at
@@ -56,20 +88,21 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   control changes nothing. A new device list or settings from the host
   leave the page open; the waiting screen closes it. "Layout" chooses A, B
   or C; the grid row is greyed out (and ignores taps) outside layout A.
-- Layouts (`UiSettings.layout`, #60, designs of #57): A cards (`ui.c`,
-  tabs in the top bar, volume and pages in the bottom strip, grid
-  2x2 / 3x2 / 3x3 / list); B list (`ui_layouts.c`: tab rail on the left
-  with all / favorites / edit / settings, five rows with the Windows name
-  under an alias and a check mark on the active one, vertical volume on
-  the right); C large tile (`ui_layouts.c`: the active device, its volume
-  and mute in a panel on the left, the other devices as six tiles, tabs as
-  pills). All three fill the same objects (device buttons, tabs, pager,
+- Layouts of the Audio tab (`UiSettings.layout`, #60, designs of #57;
+  reflowed to 424 px in #10): A cards (`ui.c`, sub-tabs and the edit
+  button in the top bar, volume and pages in the bottom strip, grid
+  2x2 / 3x2 / 3x3 / list); B list (`ui_layouts.c`: A's top bar over the
+  rows, four rows with the Windows name under an alias and a check mark on
+  the active one, vertical volume on the right; its own rail of #60 gave
+  way to the application rail); C large tile (`ui_layouts.c`: the active
+  device, its volume and mute in a panel on the left, the other devices as
+  six tiles, tabs as pills — favorites as a star only — and the edit
+  button). All three fill the same objects (device buttons, tabs, pager,
   slider, mute) so `ui.c` renders them; they differ in `CardKind`. The
   mockups scroll B and show page dots in C; both use the page buttons of A
-  here. B and C have no flip button on the main screen: "Ekranı döndür"
-  on the settings page does it (the waiting screen keeps its button).
+  here.
 - Edit mode (`ui_edit.c`, #60, design A of #57): the pencil button in
-  the top bar (shown once `Ui_SetEditHandlers` is called) opens every
+  the Audio tab's top bar (shown once `Ui_SetEditHandlers` is called) opens every
   device, in the user's order, as cards of four per page. Each card has
   four buttons: move one place left, move one place right, favorite (in
   the accent colour when set) and alias. They call `UiEditHandlers`; the
@@ -101,9 +134,10 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   keyboard (about 6 KB) exist only while shown. The heap is 128 KB
   (`LV_MEM_SIZE`, raised from 64 KB in #60): with the densest main screen,
   the settings page and LVGL's draw buffers, 64 KB ran out in the
-  simulator. Simulator (`Ui_MemoryUse`): 30–36 KB in use on the main
-  screen in any layout, 47–51 KB with the settings page, 47 KB with the
-  edit mode and keyboard; peak 53 KB (41 %). No growth over repeated
+  simulator. Simulator (`Ui_MemoryUse`, #10, both tabs built): 34–39 KB
+  in use on the main screen in any layout, 51–56 KB with the settings
+  page, 44–49 KB with the edit mode and keyboard; peak 58 KB (44 %), far
+  below the 96 KB at which ADR-005 would build only the shown tab. No growth over repeated
   rebuilds, layout changes, or opening and closing these screens. Avoid
   `opa` below 100 % on an object: LVGL then draws it through a layer
   buffer from this heap (up to 24 KB); use `bg_opa` / `text_opa`.
@@ -114,10 +148,11 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
 
 | File | Content |
 |---|---|
-| `ui.h`, `ui.c` | Screens and API |
+| `ui.h`, `ui.c` | Screens and API; Audio tab layout A |
+| `ui_shell.c` | Main screen: rail, Dashboard and Audio tabs (ADR-005) |
 | `ui_settings.c` | Settings page |
 | `ui_edit.c` | Edit mode (order, favorites) and alias keyboard |
-| `ui_layouts.c` | Main screens of layouts B (list) and C (large tile) |
+| `ui_layouts.c` | Audio tab of layouts B (list) and C (large tile) |
 | `ui_internal.h` | State and helpers shared by the UI files |
 | `ui_theme.c` | Dark and light palettes, accent colours |
 | `ui_text.c`, `ui_text.h` | UI text, Turkish and English (generated) |
