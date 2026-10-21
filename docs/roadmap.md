@@ -138,8 +138,14 @@ parallel after step 3.
 - [x] 9. Menu of the day — menu images → Claude API → monthly JSON; card and daily detail with the salad bar (#20)
 - Test release `v0.9.0-beta.1` after step 9 (#22): steps 1–9 on the board and Windows; findings decide what is fixed before step 10
 - [ ] 10. Claude Code approval: spike — hook behaviour on Windows, timeouts (#24, `docs/hook-spike.md`; the probe is in, the runs on Windows are open)
-- [ ] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board (#26; built with ADR-007's defaults, the spike may change them)
-- [ ] 12. Release v1.0.0
+- [x] 11. Claude Code approval — `PermissionRequest` command hook, named pipe, prompt on the board (#26; built with ADR-007's defaults, the spike may change them)
+- Test release `v0.9.0-beta.2` after step 11: steps 1–11; the approval checks are in `docs/hardware.md`, "Pending hardware and Windows tests"
+- [ ] 12. Release v1.0.0 (#28)
+  - [x] Release preparation: roadmap, `CLAUDE.md`, README and wiki sources describe the dashboard and the approvals (#28)
+  - [ ] The owner's further requests before v1.0.0 (each its own issue)
+  - [ ] Spike runs on Windows (#24); ADR-007 "Spike results" and step 11's values updated
+  - [ ] Beta checks (#22 and the approval row in `docs/hardware.md`); findings fixed
+  - [ ] Tag `v1.0.0` on `main`; the installer and firmware attached by CI; README "Download" names v1.0.0
 
 After v1:
 

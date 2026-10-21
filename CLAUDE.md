@@ -26,15 +26,16 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 11 (#26): Claude Code approvals on the board
-(`host/Hook/ApprovalService`, `Platform/Windows/WinHookPipe`,
-`dashboard-host hook permission`; the prompt in `dash_client.c` and
-`ui_dash.c`), built with ADR-007's default values. Open: the spike of
-step 10 (#24, `docs/hook-spike.md`) on the user's PC; its results may
-change the matcher and the timeouts. Done: steps 1–9 and the test release
-`v0.9.0-beta.1` (#22). The v1 steps and their status are in
-`docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the
-current task asks for it.
+Dashboard v1, step 12 (#28): release preparation **without the
+`v1.0.0` tag** — the owner has more requests before v1.0.0; each comes
+as its own issue. Done: steps 1–11 (Claude Code approvals: #26,
+`host/Hook/ApprovalService`, `Platform/Windows/WinHookPipe`, the prompt
+in `ui_dash.c`) and the test releases `v0.9.0-beta.1` (#22) and
+`v0.9.0-beta.2`. Open: the spike runs of step 10 (#24,
+`docs/hook-spike.md`) on the user's PC, deferred by the owner; their
+results may change the matcher and the timeouts of step 11. Do not tag
+`v1.0.0` unless the owner asks. The v1 steps and their status are in
+`docs/roadmap.md`, "Dashboard v1".
 
 Inherited open work: the M7 board and Windows checks listed in
 `docs/hardware.md`, "Pending hardware and Windows tests".
