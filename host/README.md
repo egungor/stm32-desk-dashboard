@@ -34,6 +34,7 @@ host/
 │   ├── HostController.*    # protocol v3 audio exchanges (protocol/protocol.md)
 │   ├── DashController.*    # dashboard records: cards, details, actions, TIME (ADR-006)
 │   ├── FrameRouter.*       # one decode per frame; audio vs dashboard commands
+│   ├── MediaKeys.*         # media strip ACTION -> previous / play-pause / next key
 │   ├── SequencedSink.h     # one sequence counter for every frame the host sends
 │   ├── Preferences.*       # aliases, order, favorites, settings record (ADR-004)
 │   ├── PreferenceFile.*    # text format of the preference file
@@ -44,6 +45,7 @@ host/
 ├── Platform/Windows/       # Windows only
 │   ├── WinAudioSystem.*    # IAudioSystem on Core Audio / MMDevice
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
+│   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
 │   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8

@@ -10,9 +10,11 @@
 #include "FrameRouter.h"
 #include "FrameText.h"
 #include "HidMatch.h"
+#include "MediaKeys.h"
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
+#include "WinMediaKeys.h"
 
 namespace stm32_audio::host::win {
 
@@ -115,6 +117,10 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     HostController controller(audio, sink);
     DashController dash(sink, localTimeNow);
     FrameRouter router(controller, dash, sink);
+    WinMediaKeys mediaKeys;
+    // The media strip (<< || >>); card and prompt actions come with their
+    // features (v1 steps 8-11) and are answered with ERROR until then.
+    dash.setActionHandler([&](const ProtoAction& action) { return handleMediaAction(action, mediaKeys); });
     WinPreferenceFile file;
     PreferenceStore store(file, controller.preferences());
     const bool saving = loadPreferences(file, store, false, log);

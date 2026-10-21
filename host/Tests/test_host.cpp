@@ -21,6 +21,7 @@
 #include "FrameText.h"
 #include "HidMatch.h"
 #include "HostController.h"
+#include "MediaKeys.h"
 #include "PreferenceFile.h"
 #include "PreferenceStore.h"
 #include "Preferences.h"
@@ -1717,6 +1718,63 @@ void testFrameTextDashboard()
     CHECK(describeMessage(m) == "TIME seq=0 local=42");
 }
 
+struct FakeMediaKeys : IMediaKeys {
+    std::vector<MediaKey> pressed;
+    bool ok = true;
+    bool press(MediaKey key) override
+    {
+        pressed.push_back(key);
+        return ok;
+    }
+};
+
+void testMediaKeys()
+{
+    CHECK(mediaKeyFor(PROTO_MEDIA_PREVIOUS) == MediaKey::Previous);
+    CHECK(mediaKeyFor(PROTO_MEDIA_PLAY_PAUSE) == MediaKey::PlayPause);
+    CHECK(mediaKeyFor(PROTO_MEDIA_NEXT) == MediaKey::Next);
+    CHECK(!mediaKeyFor(0).has_value());
+    CHECK(!mediaKeyFor(4).has_value());
+
+    FakeMediaKeys keys;
+    ProtoAction a{};
+    a.kind = PROTO_ACTION_MEDIA;
+    a.action = PROTO_MEDIA_PLAY_PAUSE;
+    CHECK(handleMediaAction(a, keys));
+    CHECK(keys.pressed.size() == 1U && keys.pressed[0] == MediaKey::PlayPause);
+
+    a.action = 9;  // unknown media action: no key
+    CHECK(!handleMediaAction(a, keys));
+    a.kind = PROTO_ACTION_CARD;  // not the media strip
+    a.action = PROTO_MEDIA_NEXT;
+    CHECK(!handleMediaAction(a, keys));
+    CHECK(keys.pressed.size() == 1U);
+
+    keys.ok = false;  // Windows refused the input
+    a.kind = PROTO_ACTION_MEDIA;
+    CHECK(!handleMediaAction(a, keys));
+    CHECK(keys.pressed.size() == 2U && keys.pressed[1] == MediaKey::Next);
+
+    // Through DashController: a pressed key is answered by nothing, a
+    // refused one by ERROR OPERATION_FAILED.
+    DashRig r;
+    r.dash.setActionHandler([&](const ProtoAction& act) { return handleMediaAction(act, keys); });
+    r.dash.onConnected();
+    r.sink.sent.clear();
+    ProtoMessage action = dashMessage(PROTO_CMD_ACTION, 20);
+    action.u.action.kind = PROTO_ACTION_MEDIA;
+    action.u.action.action = PROTO_MEDIA_PREVIOUS;
+    keys.ok = true;
+    r.dash.onMessage(action);
+    CHECK(r.sink.sent.empty() && keys.pressed.back() == MediaKey::Previous);
+    keys.ok = false;
+    r.dash.onMessage(action);
+    CHECK(r.sink.sent.size() == 1U);
+    const ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.ref_command == PROTO_CMD_ACTION &&
+          m.u.error.ref_sequence == 20U && m.u.error.code == PROTO_ERROR_OPERATION_FAILED);
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -1768,6 +1826,7 @@ int main()
     testDashTime();
     testFrameRouter();
     testFrameTextDashboard();
+    testMediaKeys();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
