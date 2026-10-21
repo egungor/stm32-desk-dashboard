@@ -1,4 +1,4 @@
-// Dashboard side of protocol v3 on the host (ADR-006; protocol.md,
+// Dashboard side of protocol v4 on the host (ADR-006; protocol.md,
 // "Dashboard records" and "Exchanges").
 //
 // Holds the text record of every card slot and sends it to the board:
@@ -59,6 +59,8 @@ public:
     using DetailFn = std::function<std::optional<std::string>(std::uint8_t slot, std::int8_t arg)>;
     // A button of a detail or the media strip; false: could not be done.
     using ActionFn = std::function<bool(const ProtoAction& action)>;
+    // GET_MEDIA (ADR-008): the media side sends what plays.
+    using MediaRequestFn = std::function<void()>;
 
     static constexpr std::uint64_t kTimeIntervalMs = 10U * 60U * 1000U;
     static constexpr std::uint32_t kClockJumpSeconds = 2U;
@@ -100,6 +102,7 @@ public:
 
     void setDetailHandler(DetailFn handler) { detail_ = std::move(handler); }
     void setActionHandler(ActionFn handler) { action_ = std::move(handler); }
+    void setMediaRequestHandler(MediaRequestFn handler) { mediaRequest_ = std::move(handler); }
 
     const Stats& stats() const { return stats_; }
 
@@ -121,6 +124,7 @@ private:
     ClockFn clock_;
     DetailFn detail_;
     ActionFn action_;
+    MediaRequestFn mediaRequest_;
     Stats stats_;
     std::array<Slot, PROTO_MAX_CARDS> cards_{};
     bool synced_ = false;

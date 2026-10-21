@@ -93,6 +93,13 @@ void DashController::onMessage(const ProtoMessage& msg)
             sendError(PROTO_ERROR_OPERATION_FAILED, msg.command, msg.sequence);
         }
         break;
+    case PROTO_CMD_GET_MEDIA:
+        if (mediaRequest_) {
+            mediaRequest_();
+        } else {
+            sendError(PROTO_ERROR_OPERATION_FAILED, msg.command, msg.sequence);
+        }
+        break;
     case PROTO_CMD_ERROR:
         ++stats_.errorsReceived;
         break;

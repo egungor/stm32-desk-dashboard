@@ -35,6 +35,8 @@ add_library(host_core STATIC
     App/Startup.cpp
     Hook/ApprovalService.cpp
     Hook/ClaudeHook.cpp
+    Media/MediaCover.cpp
+    Media/MediaService.cpp
     Menu/MenuData.cpp
     Menu/MenuImport.cpp
     Menu/MenuService.cpp
@@ -42,7 +44,7 @@ add_library(host_core STATIC
     Weather/WeatherLocation.cpp
     Weather/WeatherReport.cpp
     Weather/WeatherService.cpp)
-target_include_directories(host_core PUBLIC Audio Hid App Hook Menu Weather)
+target_include_directories(host_core PUBLIC Audio Hid App Hook Media Menu Weather)
 # nlohmann/json (ADR-006), vendored: no warnings from it.
 target_include_directories(host_core SYSTEM PRIVATE third_party)
 find_package(Threads REQUIRED)
@@ -65,13 +67,16 @@ if(WIN32)
         Platform/Windows/WinHookPipe.cpp
         Platform/Windows/WinHttpClient.cpp
         Platform/Windows/WinMediaKeys.cpp
+        Platform/Windows/WinMediaSession.cpp
         Platform/Windows/WinMenuImport.cpp
         Platform/Windows/WinPreferenceFile.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
     target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32)
+    # WinMediaSession (ADR-008): C++/WinRT from the Windows SDK, WIC.
+    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32
+                          windowsapp windowscodecs shcore)
 
     # Console program: run, list, set-default, volume, mute, watch, alias, startup.
     add_executable(dashboard-host Platform/Windows/main.cpp)

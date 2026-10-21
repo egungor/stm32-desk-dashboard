@@ -28,6 +28,10 @@
 //                                      step 10 spike (#24): logs its input to
 //                                      hook-probe.log, answers as hook-probe.txt
 //                                      says (docs/hook-spike.md)
+//   dashboard-host media             what plays now in the Windows media session
+//                                      (ADR-008): app, texts, status, position, cover
+//   dashboard-host media previous|play-pause|next
+//                                      send that control to the session, then print
 //   dashboard-host menu              print the menu card and today's detail
 //   dashboard-host menu import <image> [<image> ...]
 //                                      read menu images with the Claude API into
@@ -60,6 +64,7 @@
 #include "FrameText.h"
 #include "HostController.h"
 #include "HostService.h"
+#include "MediaSession.h"
 #include "PreferenceStore.h"
 #include "MenuService.h"
 #include "WeatherCard.h"
@@ -67,6 +72,7 @@
 #include "WinAudioSystem.h"
 #include "WinHttpClient.h"
 #include "WinHookPipe.h"
+#include "WinMediaSession.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
@@ -588,6 +594,66 @@ int cmdMenu(const std::vector<std::string>& args)
     return 0;
 }
 
+int cmdMedia(const std::vector<std::string>& args)
+{
+    std::optional<MediaKey> key;
+    if (args.size() == 3) {
+        if (args[2] == "previous") {
+            key = MediaKey::Previous;
+        } else if (args[2] == "play-pause") {
+            key = MediaKey::PlayPause;
+        } else if (args[2] == "next") {
+            key = MediaKey::Next;
+        } else {
+            return usage();
+        }
+    } else if (args.size() != 2) {
+        return usage();
+    }
+
+    EventQueue events;
+    win::WinMediaSession session(events, printLine);
+    if (!session.start()) {
+        std::printf("FAIL: cannot start the media session thread.\n");
+        return 1;
+    }
+    // A few polls: the session, then the thumbnail of the track.
+    auto waitMs = [&events](std::uint64_t ms) {
+        const std::uint64_t end = GetTickCount64() + ms;
+        while (GetTickCount64() < end) {
+            (void)events.pop(std::chrono::milliseconds(100));
+        }
+    };
+    waitMs(3000);
+    if (key) {
+        if (!session.command(*key)) {
+            std::printf("FAIL: no media session.\n");
+            session.stop();
+            return 1;
+        }
+        waitMs(1500);
+    }
+
+    static const char* const status[] = {"no media session", "stopped", "playing", "paused"};
+    const MediaSnapshot m = session.snapshot();
+    session.stop();
+    std::printf("Status:   %s\n", m.status < PROTO_MEDIA_STATUS_COUNT ? status[m.status] : "?");
+    if (m.status == PROTO_MEDIA_STATUS_NONE) {
+        return 0;
+    }
+    std::printf("App:      %s\n", m.app.c_str());
+    std::printf("Title:    %s\n", m.title.c_str());
+    std::printf("Artist:   %s\n", m.artist.c_str());
+    std::printf("Album:    %s\n", m.album.c_str());
+    std::printf("Position: %u:%02u / %u:%02u%s\n", m.positionS / 60U, m.positionS % 60U, m.durationS / 60U,
+                m.durationS % 60U, m.durationS == 0U ? " (duration unknown)" : "");
+    std::printf("Controls: %s%s%s\n", (m.controls & PROTO_MEDIA_CAN_PREVIOUS) != 0U ? "previous " : "",
+                (m.controls & PROTO_MEDIA_CAN_PLAY_PAUSE) != 0U ? "play/pause " : "",
+                (m.controls & PROTO_MEDIA_CAN_NEXT) != 0U ? "next" : "");
+    std::printf("Cover:    %s\n", m.cover ? "120 x 120 (RGB565)" : "none");
+    return 0;
+}
+
 int cmdStartup(const std::string& arg)
 {
     const std::wstring tray = win::trayProgramPath();
@@ -618,7 +684,8 @@ int usage()
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
-        "                        menu | menu import <image> [<image> ...] | hook permission | hook probe\n");
+        "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
+        "                        media | media previous|play-pause|next\n");
     return 2;
 }
 
@@ -659,6 +726,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "menu") {
         return cmdMenu(args);
+    }
+    if (cmd == "media") {
+        return cmdMedia(args);
     }
 
     EventQueue events;

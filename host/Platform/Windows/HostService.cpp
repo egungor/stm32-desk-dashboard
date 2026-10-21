@@ -12,6 +12,7 @@
 #include "FrameText.h"
 #include "HidMatch.h"
 #include "MediaKeys.h"
+#include "MediaService.h"
 #include "MenuService.h"
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
@@ -20,13 +21,15 @@
 #include "WeatherService.h"
 #include "WinHttpClient.h"
 #include "WinMediaKeys.h"
+#include "WinMediaSession.h"
 #include "WinMenuImport.h"
 
 namespace stm32_audio::host::win {
 
 namespace {
 
-// Logs every frame, then hands it to the real transport.
+// Logs every frame, then hands it to the real transport. Of a cover's 534
+// ART_PARTs only the first and the last are logged.
 class LoggingSink : public IFrameSink {
 public:
     LoggingSink(IFrameSink& next, const LogFn& log) : next_(next), log_(log) {}
@@ -36,6 +39,10 @@ public:
         ProtoMessage msg{};
         const bool decoded = Proto_Decode(frame.data(), &msg) == PROTO_OK;
         const bool sent = next_.sendFrame(frame);
+        if (decoded && msg.command == PROTO_CMD_ART_PART && msg.u.art.index != 0U &&
+            msg.u.art.index + 1U != PROTO_ART_PARTS && sent) {
+            return sent;
+        }
         log_(std::string("-> ") + (decoded ? describeMessage(msg) : std::string("(invalid frame)")) +
              (sent ? "" : "  [send failed]"));
         return sent;
@@ -124,19 +131,24 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     DashController dash(sink, localTimeNow);
     FrameRouter router(controller, dash, sink);
     WinMediaKeys mediaKeys;
+    // Now playing (ADR-008): the Windows media session, read on its own
+    // thread; the controls go to it, or to the media keys without one.
+    WinMediaSession mediaSession(events, log);
+    MediaService media(sink, mediaSession, mediaKeys);
+    dash.setMediaRequestHandler([&media] { media.onRequest(GetTickCount64()); });
     // Claude Code permission requests (ADR-007): the pipe from
     // "dashboard-host hook permission", the queue, the prompt and card 3.
     WinHookPipe hookPipe(events, log);
     ApprovalService approvals(
         dash, localTimeNow, [&hookPipe](std::uint64_t ticket, HookAnswer answer) { hookPipe.answer(ticket, answer); },
         log);
-    // The media strip (<< || >>) and the prompt's buttons; card buttons have
-    // no feature yet and are answered with ERROR.
+    // The media controls (strip and Music tab) and the prompt's buttons;
+    // card buttons have no feature yet and are answered with ERROR.
     dash.setActionHandler([&](const ProtoAction& action) {
         if (action.kind == PROTO_ACTION_PROMPT) {
             return approvals.onAction(action, GetTickCount64());
         }
-        return handleMediaAction(action, mediaKeys);
+        return media.onAction(action);
     });
     // Weather card and detail (slot 0, ADR-006); the forecast is fetched on
     // a worker thread.
@@ -194,10 +206,15 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     if (hookPipe.start()) {
         log("Claude Code hook pipe ready.");
     }
+    if (!mediaSession.start()) {
+        log("WARN: cannot start the media session thread; the media strip uses media keys.");
+    }
     approvals.onTick(GetTickCount64());  // the card
 
     for (;;) {
-        const std::optional<QueuedEvent> item = events.pop(std::chrono::milliseconds(500));
+        // While a cover is being sent, come back at once for its next parts.
+        const std::optional<QueuedEvent> item =
+            events.pop(media.sendingArt() ? std::chrono::milliseconds(0) : std::chrono::milliseconds(500));
         if (saving && store.poll(GetTickCount64())) {
             log("Preferences reloaded from " + file.location());
             controller.onPreferencesChanged();
@@ -210,6 +227,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         approvals.setLanguage(controller.preferences().settings().language);
         approvals.onTick(GetTickCount64());
         dash.onTick(GetTickCount64());
+        media.onTick(GetTickCount64());
         if (!item) {
             continue;
         }
@@ -222,6 +240,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             log("Controller connected: " + link.description());
             controller.onConnected();
             dash.onConnected();
+            media.onConnected(GetTickCount64());
             if (hooks.connection) {
                 hooks.connection(true);
             }
@@ -231,6 +250,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             controller.onDisconnected();
             approvals.onDisconnected();  // nobody can answer: back to the terminal
             dash.onDisconnected();
+            media.onDisconnected();
             if (hooks.connection) {
                 hooks.connection(false);
             }
@@ -241,6 +261,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::HookCancelled:
             approvals.onCancelled(item->ticket, GetTickCount64());
             break;
+        case HostEvent::MediaChanged:
+            break;  // media.onTick above took the new snapshot
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
             menu.reload();
@@ -248,6 +270,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::Quit: {
             approvals.cancelAll();
             hookPipe.stop();
+            mediaSession.stop();
             link.stop();
             if (saving && !store.flush()) {
                 log("WARN: could not save " + file.location());

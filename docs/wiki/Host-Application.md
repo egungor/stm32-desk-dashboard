@@ -38,6 +38,8 @@ other console commands work while the tray program runs. Preferences
 | `menu import <image> ...` | Read menu images with the Claude API into `menu-YYYY-MM.json` (key in `claude.txt` or `ANTHROPIC_API_KEY`) |
 | `hook permission` | Claude Code `PermissionRequest` hook: hands the request to the tray program and the board (ADR-007) |
 | `hook probe` | Observing hook for the approval spike (`docs/hook-spike.md`) |
+| `media` | What plays in the Windows media session: app, title, artist, album, status, position, cover |
+| `media previous\|play-pause\|next` | Send that control to the session |
 
 **Volume limit on switch** (settings page on the board, off by default):
 when the board selects an output louder than the limit, the host turns it

@@ -4,7 +4,7 @@
 // Producers (Core Audio notification threads, the HID reader thread) only
 // push; the consumer thread pops and calls the controller.
 //
-// - DevicesChanged / DefaultChanged / VolumeChanged / MenuChanged / Quit: a kind that is
+// - DevicesChanged / DefaultChanged / VolumeChanged / MenuChanged / MediaChanged / Quit: a kind that is
 //   already waiting is not queued twice, so a burst of Core Audio
 //   notifications becomes one refresh.
 // - FrameReceived carries a protocol frame; HidConnected / HidDisconnected
@@ -34,6 +34,7 @@ enum class HostEvent {
     HidConnected,     // the controller's HID interface was opened
     HidDisconnected,  // the controller's HID interface went away
     MenuChanged,      // a menu import wrote the month files
+    MediaChanged,     // what plays on the PC changed (ADR-008)
     HookRequest,      // a Claude Code permission request from the pipe (ticket, text)
     HookCancelled,    // its hook went away before an answer (ticket)
     Quit,
@@ -125,7 +126,8 @@ private:
     static bool coalesces(HostEvent event)
     {
         return event == HostEvent::DevicesChanged || event == HostEvent::DefaultChanged ||
-               event == HostEvent::VolumeChanged || event == HostEvent::MenuChanged || event == HostEvent::Quit;
+               event == HostEvent::VolumeChanged || event == HostEvent::MenuChanged ||
+               event == HostEvent::MediaChanged || event == HostEvent::Quit;
     }
 
     const std::size_t maxFrames_;

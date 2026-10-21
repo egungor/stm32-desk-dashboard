@@ -31,7 +31,7 @@ host/
 │   ├── IFrameSink.h        # outgoing 64-byte protocol frames
 │   └── HidMatch.h          # which HID interface is the controller (ADR-003)
 ├── App/
-│   ├── HostController.*    # protocol v3 audio exchanges (protocol/protocol.md)
+│   ├── HostController.*    # protocol v4 audio exchanges (protocol/protocol.md)
 │   ├── DashController.*    # dashboard records: cards, details, actions, TIME (ADR-006)
 │   ├── FrameRouter.*       # one decode per frame; audio vs dashboard commands
 │   ├── MediaKeys.*         # media strip ACTION -> previous / play-pause / next key
@@ -47,6 +47,10 @@ host/
 ├── Hook/
 │   ├── ClaudeHook.*        # PermissionRequest decision JSON, pipe lines, settings snippet, probe (#24)
 │   └── ApprovalService.*   # Claude Code requests: queue, prompt, timeouts, card slot 3 (#26)
+├── Media/                  # now playing (ADR-008, #31)
+│   ├── MediaSession.h      # IMediaSession: snapshot (texts, status, position, cover), commands
+│   ├── MediaCover.*        # square crop, BGRA -> RGB565, app name from the AppUserModelID
+│   └── MediaService.*      # MEDIA_PART / MEDIA_STATE / ART_PART, controls to the session or keys
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
@@ -61,6 +65,7 @@ host/
 │   ├── WinAudioSystem.*    # IAudioSystem on Core Audio / MMDevice
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
+│   ├── WinMediaSession.*   # IMediaSession on Windows.Media.Control (C++/WinRT), cover through WIC
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
 │   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
@@ -141,6 +146,10 @@ dashboard-host hook permission   Claude Code PermissionRequest hook: the request
 dashboard-host hook probe        Claude Code PermissionRequest hook for the step 10
                                    spike: logs to hook-probe.log, answers as
                                    hook-probe.txt says (docs/hook-spike.md)
+dashboard-host media             what plays in the Windows media session: app,
+                                   texts, status, position, controls, cover
+dashboard-host media previous|play-pause|next
+                                   send that control to the session, then print
 dashboard-host menu              print the menu card and the day's detail
 dashboard-host menu import <image> [<image> ...]
                                    read menu images with the Claude API into
@@ -222,6 +231,32 @@ on the board:
 
 The Claude Code card shows waiting requests and the last decision; its
 detail the last five.
+
+## Now playing (#31, ADR-008)
+
+The Music tab and the Dashboard's media strip show what plays on the PC.
+`WinMediaSession` reads Windows' system media transport controls
+(`Windows.Media.Control`, the session Windows calls current, as in the
+volume flyout) on its own thread every 500 ms: title, artist, album, the
+app, playing / paused, the enabled controls and the timeline. For a new
+track it reads the thumbnail (again for a few seconds if the player
+publishes it late), crops a centred square, scales it to 120 × 120 with
+WIC and converts it to RGB565. A change queues `MediaChanged`.
+
+`MediaService` sends the media record, `MEDIA_STATE` and the cover
+(`protocol.md`, "Now playing") on connect and on `GET_MEDIA`; then a new
+record when the texts change, `MEDIA_STATE` when the status, controls,
+cover or duration change, after a seek (more than 2 s off) and every
+30 s while playing, and a new cover 8 parts per loop turn (about 2.7 s
+in all), so other frames are not held up. `host.log` shows only the
+first and the last part of a cover.
+
+The controls (`ACTION` kind 2) go to the session (skip previous, toggle
+play/pause, skip next); without a session, or when it refuses, to the
+media keys of step 7.
+
+`dashboard-host media` prints what the reader sees (useful to check a
+player), `dashboard-host media next` etc. sends a control.
 
 ## Install
 
