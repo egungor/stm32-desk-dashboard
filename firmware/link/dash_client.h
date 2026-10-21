@@ -1,7 +1,7 @@
 /**
  * @file    dash_client.h
- * @brief   STM32 side of the dashboard commands of protocol v3 (ADR-006;
- *          protocol/protocol.md, "Dashboard records").
+ * @brief   STM32 side of the dashboard commands of protocol v4 (ADR-006,
+ *          ADR-008; protocol/protocol.md, "Dashboard records", "Now playing").
  *
  * Hardware independent, like link_client.h: frames go out through a
  * callback; decoded dashboard messages come in through Dash_OnMessage()
@@ -9,8 +9,9 @@
  * the UI is driven through callbacks; time is passed in by the caller.
  *
  * Behaviour:
- *   - Dash_OnConnected() sends GET_CARDS; the host answers with TIME and
- *     every card slot (CARD_PART or CARD_CLEAR).
+ *   - Dash_OnConnected() sends GET_CARDS and GET_MEDIA; the host answers
+ *     with TIME and every card slot (CARD_PART or CARD_CLEAR), and with
+ *     what plays (MEDIA_PART, MEDIA_STATE, the cover).
  *   - Card and detail records are collected from their parts
  *     (ProtoAssembler) and handed to the UI only when complete. A record
  *     still incomplete LINK_RETRY_MS after its last part is asked for
@@ -27,6 +28,14 @@
  *     times it out). A disconnect closes the shown prompt.
  *     Dash_AnswerPrompt() sends ACTION kind 1 for it.
  *   - TIME sets the clock: Dash_LocalTime() counts on from the last TIME.
+ *   - Now playing (ADR-008): a complete media record goes to show_media,
+ *     MEDIA_STATE to media_state. The cover of the last MEDIA_STATE is
+ *     collected into the buffer given with Dash_SetArtBuffer and handed to
+ *     show_art when complete (NULL: no cover); a cover already shown is
+ *     not collected again. A media record or cover still incomplete
+ *     DASH_RETRY_MS after its last part (or after the MEDIA_STATE that
+ *     named it) is asked for again with GET_MEDIA. A disconnect reports
+ *     status none and no cover.
  *
  * Sequence numbers: the client numbers its frames from a counter it is
  * given (Dash_SetSequenceCounter), so that it can share the audio
@@ -34,8 +43,8 @@
  * protocol.md defines it, and the audio client still recognises the
  * ERROR frames that answer its own requests by their ref_sequence.
  *
- * Static buffers only (one card, one detail and one prompt record being
- * assembled).
+ * Static buffers only (one card, one detail, one prompt and one media
+ * record being assembled; the cover buffer is the caller's).
  * Not thread-safe: call everything from one task.
  */
 #ifndef DASH_CLIENT_H
@@ -77,6 +86,14 @@ typedef struct
     /** The prompt @p id is to be closed (PROMPT_CLOSE or disconnect). */
     void (*close_prompt)(uint8_t id, void *ctx);
     void *ctx;
+    /* Now playing (ADR-008), all optional. */
+    /** The media record (NUL-terminated: title ␟ artist ␟ album ␟ app). */
+    void (*show_media)(const char *text, void *ctx);
+    /** MEDIA_STATE arrived (also status none on a disconnect). */
+    void (*media_state)(const ProtoMediaState *state, void *ctx);
+    /** A complete cover (PROTO_ART_BYTES of RGB565), or NULL: none. The
+     *  buffer is reused for the next cover: copy what is to be kept. */
+    void (*show_art)(const uint8_t *pixels, void *ctx);
 } DashCallbacks;
 
 typedef struct
@@ -103,6 +120,14 @@ typedef struct
     uint32_t prompt_part_ms;   /**< time of the last prompt part */
     uint16_t prompt_shown;     /**< id of the shown prompt, DASH_NO_PROMPT if none */
 
+    ProtoAssembler media_asm;
+    uint8_t media_buf[PROTO_MEDIA_MAX_BYTES + 1U];
+    uint32_t media_part_ms;    /**< time of the last media part */
+
+    ProtoArtAssembler art_asm; /**< collects into the caller's buffer */
+    uint32_t art_part_ms;      /**< time of the last cover part or its MEDIA_STATE */
+    uint8_t art_shown;         /**< id of the cover handed to show_art, PROTO_NO_ART if none */
+
     bool time_known;
     uint32_t time_base;        /**< local time of the last TIME */
     uint32_t time_base_ms;     /**< now_ms when it arrived */
@@ -120,7 +145,11 @@ bool Dash_Owns(const ProtoMessage *msg);
 /** Number frames from @p counter (e.g. &link.sequence of the audio client). */
 void Dash_SetSequenceCounter(DashClient *dash, uint8_t *counter);
 
-/** USB configured: ask for the cards (and the time). */
+/** The buffer covers are collected in (PROTO_ART_BYTES); without one,
+ *  covers are ignored. */
+void Dash_SetArtBuffer(DashClient *dash, uint8_t *buffer);
+
+/** USB configured: ask for the cards (and the time) and what plays. */
 void Dash_OnConnected(DashClient *dash, uint32_t now_ms);
 void Dash_OnDisconnected(DashClient *dash);
 

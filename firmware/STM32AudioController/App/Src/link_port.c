@@ -89,6 +89,27 @@ static void cb_dash_close_prompt(uint8_t id, void *ctx)
     Ui_ClosePrompt(id);
 }
 
+/* Now playing (ADR-008). */
+static void cb_dash_media(const char *text, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH MEDIA bytes=%u", (unsigned)strlen(text));
+    Ui_SetMedia(text);
+}
+
+static void cb_dash_media_state(const ProtoMediaState *state, void *ctx)
+{
+    (void)ctx;
+    Ui_SetMediaState(state->status, state->controls, state->position, state->duration);
+}
+
+static void cb_dash_art(const uint8_t *pixels, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH ART %s", (pixels != NULL) ? "shown" : "none");
+    Ui_SetMediaArt(pixels);
+}
+
 static void on_ui_prompt_action(uint8_t id, uint8_t action, void *user)
 {
     (void)user;
@@ -328,13 +349,17 @@ void LinkPort_Init(void)
     }
     Link_Init(&s_link, &callbacks);
     {
-        static const DashCallbacks dash = { cb_send_frame, cb_dash_card,   cb_dash_detail,       cb_dash_notice,
-                                            cb_dash_time,  cb_dash_prompt, cb_dash_close_prompt, NULL };
+        static const DashCallbacks dash = { cb_send_frame,  cb_dash_card,   cb_dash_detail,       cb_dash_notice,
+                                            cb_dash_time,   cb_dash_prompt, cb_dash_close_prompt, NULL,
+                                            cb_dash_media,  cb_dash_media_state, cb_dash_art };
         static const UiDashHandlers ui_dash = { on_ui_open_detail, on_ui_close_detail, on_ui_detail_action,
                                                 on_ui_media, on_ui_prompt_action };
 
         Dash_Init(&s_dash, &dash);
         Dash_SetSequenceCounter(&s_dash, &s_link.sequence);
+        /* Cover buffers in SDRAM (initialised before this runs, app.c). */
+        Dash_SetArtBuffer(&s_dash, (uint8_t *)UI_PORT_ART_RX_ADDR);
+        Ui_SetMediaArtBuffer((uint8_t *)UI_PORT_ART_SHOW_ADDR);
         Ui_SetDashHandlers(&ui_dash, NULL);
     }
 }

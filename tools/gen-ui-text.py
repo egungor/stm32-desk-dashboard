@@ -85,6 +85,10 @@ TEXTS = [
     ("TXT_MONTH_10", "Ekim", "October"),
     ("TXT_MONTH_11", "Kasım", "November"),
     ("TXT_MONTH_12", "Aralık", "December"),
+    # Music tab and now playing (ADR-008, #32)
+    ("TXT_SCREEN_MUSIC", "Müzik", "Music"),
+    ("TXT_NOTHING_PLAYING", "Şu an çalan bir şey yok", "Nothing is playing"),
+    ("TXT_MEDIA_PAUSED", "Duraklatıldı", "Paused"),
 ]
 
 

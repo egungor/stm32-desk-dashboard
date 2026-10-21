@@ -4,20 +4,23 @@
  *
  *     ┌────┬──────────────────────────────────┐
  *     │ ▦  │                                  │
- *     │ ♪  │   the shown tab, 424 x 272        │
- *     │    │                                  │
+ *     │ ♫  │   the shown tab, 424 x 272        │
+ *     │ ♪  │                                  │
  *     │ ⚙  │                                  │
  *     │ ⇄  │                                  │
  *     └────┴──────────────────────────────────┘
  *
- * The rail holds the tab buttons (Dashboard, Audio), the settings button
- * and the connection mark. Both tabs are built once (with the other
- * screens) and the one not shown is hidden, so its state (page, sub-tab)
- * survives a switch.
+ * The rail holds the tab buttons (Dashboard, Music, Audio), the settings
+ * button and the connection mark. Every tab is built once (with the other
+ * screens) and the ones not shown are hidden, so their state (page,
+ * sub-tab) survives a switch.
  */
 #include "ui_internal.h"
 
 #define RAIL_BTN 44
+
+/* Top to bottom on the rail (ADR-008: Music right after the Dashboard). */
+static const uint32_t s_rail_order[UI_APP_TAB_COUNT] = { UI_APP_TAB_DASHBOARD, UI_APP_TAB_MUSIC, UI_APP_TAB_AUDIO };
 
 static void on_rail_tab(lv_event_t *e)
 {
@@ -56,7 +59,8 @@ static lv_obj_t *make_tab(lv_obj_t *scr)
 
 void ui_shell_build(void)
 {
-    static const char *const tab_symbols[UI_APP_TAB_COUNT] = { SYM_GRID, SYM_VOLUME };
+    /* By UI_APP_TAB_* value; the rail shows them in s_rail_order. */
+    static const char *const tab_symbols[UI_APP_TAB_COUNT] = { SYM_GRID, SYM_VOLUME, SYM_MUSIC };
     lv_obj_t *scr;
     lv_obj_t *rail;
     lv_obj_t *spacer;
@@ -76,8 +80,10 @@ void ui_shell_build(void)
     lv_obj_set_style_pad_row(rail, PAD, 0);
     lv_obj_set_flex_flow(rail, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(rail, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    for (uint32_t t = 0U; t < UI_APP_TAB_COUNT; t++)
+    for (uint32_t i = 0U; i < UI_APP_TAB_COUNT; i++)
     {
+        const uint32_t t = s_rail_order[i];
+
         g_ui.rail_btns[t] = make_rail_button(rail, tab_symbols[t], on_rail_tab, (void *)(uintptr_t)t,
                                              &g_ui.rail_labels[t]);
     }
@@ -90,6 +96,8 @@ void ui_shell_build(void)
 
     g_ui.dash_tab = make_tab(scr);
     ui_dash_build();
+    g_ui.music_tab = make_tab(scr);
+    ui_music_build();
     g_ui.audio_tab = make_tab(scr);
 }
 
@@ -111,15 +119,20 @@ void ui_shell_show_tab(uint32_t tab)
         lv_obj_set_style_bg_opa(g_ui.rail_btns[t], on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
         lv_obj_set_style_text_color(g_ui.rail_labels[t], ui_color(on ? g_ui.pal.on_acc : g_ui.pal.muted), 0);
     }
-    if (tab == UI_APP_TAB_DASHBOARD)
     {
-        lv_obj_remove_flag(g_ui.dash_tab, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(g_ui.audio_tab, LV_OBJ_FLAG_HIDDEN);
-    }
-    else
-    {
-        lv_obj_add_flag(g_ui.dash_tab, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(g_ui.audio_tab, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_t *const tabs[UI_APP_TAB_COUNT] = { g_ui.dash_tab, g_ui.audio_tab, g_ui.music_tab };
+
+        for (uint32_t t = 0U; t < UI_APP_TAB_COUNT; t++)
+        {
+            if (t == tab)
+            {
+                lv_obj_remove_flag(tabs[t], LV_OBJ_FLAG_HIDDEN);
+            }
+            else
+            {
+                lv_obj_add_flag(tabs[t], LV_OBJ_FLAG_HIDDEN);
+            }
+        }
     }
 }
 

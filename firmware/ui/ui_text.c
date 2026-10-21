@@ -77,6 +77,9 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "Ekim", /* TXT_MONTH_10 */
         "Kas\xC4\xB1m", /* TXT_MONTH_11 */
         "Aral\xC4\xB1k", /* TXT_MONTH_12 */
+        "M\xC3\xBCzik", /* TXT_SCREEN_MUSIC */
+        "\xC5\x9Eu an \xC3\xA7" "alan bir \xC5\x9F" "ey yok", /* TXT_NOTHING_PLAYING */
+        "Duraklat\xC4\xB1ld\xC4\xB1", /* TXT_MEDIA_PAUSED */
     },
     {
         "All", /* TXT_TAB_ALL */
@@ -148,6 +151,9 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "October", /* TXT_MONTH_10 */
         "November", /* TXT_MONTH_11 */
         "December", /* TXT_MONTH_12 */
+        "Music", /* TXT_SCREEN_MUSIC */
+        "Nothing is playing", /* TXT_NOTHING_PLAYING */
+        "Paused", /* TXT_MEDIA_PAUSED */
     },
 };
 
