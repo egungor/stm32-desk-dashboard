@@ -11,16 +11,9 @@
 #include <string>
 #include <thread>
 
+#include "HttpClient.h"
+
 namespace stm32_audio::host {
-
-class IHttpClient {
-public:
-    virtual ~IHttpClient() = default;
-
-    // GET @p url; the body of a 200 answer, or nullopt (no network, other
-    // status, timeout). May block for seconds; must be thread-safe.
-    virtual std::optional<std::string> get(const std::string& url) = 0;
-};
 
 class BackgroundFetch {
 public:

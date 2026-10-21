@@ -33,11 +33,14 @@ add_library(host_core STATIC
     App/PreferenceStore.cpp
     App/Preferences.cpp
     App/Startup.cpp
+    Menu/MenuData.cpp
+    Menu/MenuImport.cpp
+    Menu/MenuService.cpp
     Weather/WeatherCard.cpp
     Weather/WeatherLocation.cpp
     Weather/WeatherReport.cpp
     Weather/WeatherService.cpp)
-target_include_directories(host_core PUBLIC Audio Hid App Weather)
+target_include_directories(host_core PUBLIC Audio Hid App Menu Weather)
 # nlohmann/json (ADR-006), vendored: no warnings from it.
 target_include_directories(host_core SYSTEM PRIVATE third_party)
 find_package(Threads REQUIRED)
@@ -59,12 +62,13 @@ if(WIN32)
         Platform/Windows/WinHidLink.cpp
         Platform/Windows/WinHttpClient.cpp
         Platform/Windows/WinMediaKeys.cpp
+        Platform/Windows/WinMenuImport.cpp
         Platform/Windows/WinPreferenceFile.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
     target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp)
+    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32)
 
     # Console program: run, list, set-default, volume, mute, watch, alias, startup.
     add_executable(dashboard-host Platform/Windows/main.cpp)
@@ -90,6 +94,7 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(test_host Tests/test_host.cpp)
     target_link_libraries(test_host PRIVATE host_core)
+    target_include_directories(test_host SYSTEM PRIVATE third_party)
     if(MSVC)
         target_compile_options(test_host PRIVATE /W4 /WX /permissive- /utf-8)
     else()

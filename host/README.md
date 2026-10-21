@@ -35,7 +35,8 @@ host/
 │   ├── DashController.*    # dashboard records: cards, details, actions, TIME (ADR-006)
 │   ├── FrameRouter.*       # one decode per frame; audio vs dashboard commands
 │   ├── MediaKeys.*         # media strip ACTION -> previous / play-pause / next key
-│   ├── BackgroundFetch.*   # IHttpClient; one HTTP GET at a time on a worker thread
+│   ├── HttpClient.h        # IHttpClient: GET and POST, for tests without a network
+│   ├── BackgroundFetch.*   # one HTTP GET at a time on a worker thread
 │   ├── SequencedSink.h     # one sequence counter for every frame the host sends
 │   ├── Preferences.*       # aliases, order, favorites, settings record (ADR-004)
 │   ├── PreferenceFile.*    # text format of the preference file
@@ -43,6 +44,10 @@ host/
 │   ├── EventQueue.h        # serialises Core Audio and HID events into the controller
 │   ├── FrameText.*         # readable one-line form of a protocol message
 │   └── Startup.*           # Run value of "start with Windows", tray text (#74)
+├── Menu/                   # the menu of the day (#20)
+│   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
+│   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
+│   └── MenuService.*       # card slot 1 and the day detail (‹ › by working day)
 ├── Weather/                # the weather card (#18)
 │   ├── WeatherReport.*     # Open-Meteo URL and answer, WMO code -> icon and text
 │   ├── WeatherLocation.*   # weather.txt, Open-Meteo geocoding
@@ -53,9 +58,10 @@ host/
 │   ├── WinAudioSystem.*    # IAudioSystem on Core Audio / MMDevice
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
-│   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy, 10 s timeouts)
+│   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
+│   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
-│   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt
+│   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt, ...
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8
 │   ├── HostService.*       # the "run" loop, shared by console and tray (#74)
 │   ├── WinStartup.*        # HKCU Run value, single instance mutex (#74)
@@ -126,6 +132,10 @@ dashboard-host weather <city>    find <city> with the Open-Meteo geocoding API
                                    and save it as the weather location
 dashboard-host weather <lat> <lon> [name]
                                    save a location exactly
+dashboard-host menu              print the menu card and the day's detail
+dashboard-host menu import <image> [<image> ...]
+                                   read menu images with the Claude API into
+                                   menu-YYYY-MM.json
 ```
 
 Arguments are read as UTF-8 (`CommandLineToArgvW`), so aliases may
@@ -153,6 +163,36 @@ the last data and says "Güncellendi 14:00". Texts follow the board's
 language (settings record). WMO weather codes map to the icon numbers of
 `protocol/protocol.md` ("Icon") in `Weather/WeatherReport.cpp`.
 
+## Menu of the day (#20)
+
+The Dashboard's second card (slot 1): the main dish, the soup and
+"Salata bar: 6 çeşit"; "Resmi tatil" on a holiday, the next Monday at the
+weekend, "Menü yüklenmedi" without data. Its detail shows the day's five
+lines and the salad bar; ‹ › move by working day.
+
+Import: tray menu "Menü görüntülerini yükle…" (one or more PNG, JPEG,
+WebP or GIF files, at most 10 and 5 MB each) or
+`dashboard-host menu import <files>`. The images go to the Claude API
+(Messages API, `https://api.anthropic.com/v1/messages`) in one call with
+a structured output (`output_config.format`, a fixed JSON schema); the
+host checks the answer, gives each day the year closest to the import
+date and merges the days by date into
+`%APPDATA%\stm32-desk-dashboard\menu-YYYY-MM.json` (meal and salad bar
+images can be imported separately). A balloon shows a summary, e.g.
+"Ekim 2026: 20 gün yemek, 17 gün salata bar, 2 tatil; salata bar eksik:
+26, 27, 30 Ekim". The month file can be corrected in Notepad; the tray
+reads it again within a minute.
+
+The API key: `%APPDATA%\stm32-desk-dashboard\claude.txt`
+
+```text
+api_key=sk-ant-...
+model=claude-sonnet-5-5
+```
+
+(`model` is optional) or the `ANTHROPIC_API_KEY` environment variable.
+The images are sent to Anthropic for this one call; nothing else is.
+
 ## Install
 
 `installer/` builds a setup (Inno Setup) that installs both programs for
@@ -172,6 +212,9 @@ main thread owns a hidden window, the tray icon and its menu:
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has the value
   `STM32 Desk Dashboard` = `"<folder>\dashboard-tray.exe"` (current
   user only, no administrator rights); a click adds or removes it;
+- "Menü görüntülerini yükle…": the menu import (#20, "Menu of the day"
+  above) on a background thread; a balloon shows the summary or the
+  error;
 - "Ayarlar klasörünü aç": `%APPDATA%\stm32-desk-dashboard`;
 - "Günlüğü aç": `host.log` in that folder: the same lines as `run`
   prints, with the local time; above 1 MB at start it becomes

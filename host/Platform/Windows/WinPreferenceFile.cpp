@@ -14,7 +14,7 @@ constexpr DWORD kMaxFileBytes = 1024U * 1024U;  // far above any real file
 
 }  // namespace
 
-WinPreferenceFile::WinPreferenceFile(const wchar_t* name) : name_(name)
+WinPreferenceFile::WinPreferenceFile(const wchar_t* name, const wchar_t* extension) : name_(name)
 {
     wchar_t buffer[MAX_PATH];
     const DWORD n = GetEnvironmentVariableW(L"APPDATA", buffer, MAX_PATH);
@@ -22,7 +22,7 @@ WinPreferenceFile::WinPreferenceFile(const wchar_t* name) : name_(name)
         return;
     }
     dir_ = std::wstring(buffer) + L"\\stm32-desk-dashboard";
-    path_ = dir_ + L"\\" + name_ + L".txt";
+    path_ = dir_ + L"\\" + name_ + L"." + extension;
 }
 
 std::optional<std::string> WinPreferenceFile::read()

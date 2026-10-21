@@ -956,22 +956,30 @@ static void run_dashboard_script(void)
         "9" F "\xC3\x87" "ar 28" F "-4\xC2\xB0 / 4\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %70\n"
         "3" F "Per 29" F "5\xC2\xB0 / 13\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %5\n"
         "5" F "Cum 30" F "6\xC2\xB0 / 13\xC2\xB0";
+    /* Card and detail as host/Menu/MenuService makes them (#20). */
+    static const char *const menu_card =
+        "11" F "Yemek" F "\n"
+        "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
+        "Tarhana \xC3\xA7orba\n"
+        "Salata bar: 6 \xC3\xA7" "e\xC5\x9Fit";
     static const char *const menu_detail =
         "Yemek" F "5 Ekim Pazartesi" F "n\n"
-        "0" F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
-        "0" F "Yan yemek" F "Kalem b\xC3\xB6rek\n"
-        "0" F "\xC3\x87orba" F "Tarhana \xC3\xA7orba\n"
-        "0" F "Tatl\xC4\xB1" F "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava\n"
+        F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
+        F "Yan yemek" F "Kalem b\xC3\xB6rek\n"
+        F "\xC3\x87orba" F "Tarhana \xC3\xA7orba\n"
+        F "Tatl\xC4\xB1" F "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava\n"
+        F "Yan\xC4\xB1nda" F "Yo\xC4\x9Furt / \xC3\xBCz\xC3\xBCm komposto\n"
         "#Salata bar\n"
-        "0" F "" F "Akdeniz salata \xC2\xB7 Havu\xC3\xA7 tarator \xC2\xB7 Zyt. b\xC3\xB6r\xC3\xBClce \xC2\xB7 "
+        F F "Akdeniz salata \xC2\xB7 Havu\xC3\xA7 tarator \xC2\xB7 Zyt. b\xC3\xB6r\xC3\xBClce \xC2\xB7 "
         "Cevizli biber \xC2\xB7 Makarna salata \xC2\xB7 Zeytin salata\n"
+        /* not sent by the host's menu: tests the generic button */
         "!1" F "Yenile";
     UiSettings s = *Ui_Settings();
 
     Ui_SetDashHandlers(&handlers, NULL);
     Ui_SetTime(1792593125U); /* 2026-10-21 14:32:05, a Wednesday */
     Ui_SetCard(0U, weather_card);
-    Ui_SetCard(1U, "0" F "YEMEK" F "\nKa\xC4\x9F\xC4\xB1t kebab\xC4\xB1\nTarhana \xC3\xA7orba\nSalata bar: 6 \xC3\xA7" "e\xC5\x9Fit");
+    Ui_SetCard(1U, menu_card);
     Ui_SetCard(2U, "");
     Ui_SetCard(3U, "0" F "CLAUDE CODE" F "\nOnay bekleyen yok");
     Ui_SetCard(7U, "ignored");

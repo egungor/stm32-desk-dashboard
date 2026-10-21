@@ -28,6 +28,11 @@ enum class TrayText {
     Exit,              // menu
     AlreadyRunning,    // message box when another instance serves the board
     StartupFailed,     // message box when the Run key cannot be written
+    LoadMenu,          // menu: choose menu images and import them (#20)
+    MenuImages,        // file dialog filter name
+    MenuImporting,     // balloon while the Claude API reads the images
+    MenuImported,      // balloon title after a successful import
+    MenuImportFailed,  // balloon title after a failed import
 };
 
 const char* trayText(TrayText id, std::uint8_t language);

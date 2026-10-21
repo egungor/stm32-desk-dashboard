@@ -49,3 +49,10 @@ coverage/
 # Secrets/local configuration
 .env
 *.local
+
+# Host settings and data that belong in %APPDATA%, never in the repo
+# (API key, location, menus and their images)
+claude.txt
+weather.txt
+menu-*.json
+menu-images/
