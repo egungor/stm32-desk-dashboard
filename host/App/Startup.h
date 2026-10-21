@@ -33,6 +33,8 @@ enum class TrayText {
     MenuImporting,     // balloon while the Claude API reads the images
     MenuImported,      // balloon title after a successful import
     MenuImportFailed,  // balloon title after a failed import
+    CopyHookSettings,  // menu: copy the Claude Code hook snippet (#26)
+    HookSettingsCopied, // balloon after copying it
 };
 
 const char* trayText(TrayText id, std::uint8_t language);

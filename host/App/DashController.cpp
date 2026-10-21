@@ -156,6 +156,34 @@ void DashController::sendAll()
     for (std::uint8_t slot = 0; slot < PROTO_MAX_CARDS; ++slot) {
         sendCard(slot);
     }
+    if (prompt_) {
+        sendRecord(PROTO_CMD_PROMPT_PART, prompt_->id, prompt_->generation, prompt_->text);
+    }
+}
+
+void DashController::showPrompt(std::uint8_t id, std::string text)
+{
+    Prompt p;
+    p.id = id;
+    p.generation = ++promptGeneration_;
+    p.text = cutUtf8(std::move(text), PROTO_PROMPT_MAX_BYTES);
+    prompt_ = std::move(p);
+    if (synced_) {
+        sendRecord(PROTO_CMD_PROMPT_PART, prompt_->id, prompt_->generation, prompt_->text);
+    }
+}
+
+void DashController::closePrompt(std::uint8_t id)
+{
+    if (prompt_ && prompt_->id == id) {
+        prompt_.reset();
+    }
+    if (synced_) {
+        ProtoMessage msg{};
+        msg.command = PROTO_CMD_PROMPT_CLOSE;
+        msg.u.prompt_id = id;
+        send(msg);
+    }
 }
 
 void DashController::sendCard(std::uint8_t slot)

@@ -101,6 +101,13 @@ const char* trayText(TrayText id, std::uint8_t language)
         return english ? "Menu loaded" : "Men\xC3\xBC y\xC3\xBCklendi";
     case TrayText::MenuImportFailed:
         return english ? "Menu not loaded" : "Men\xC3\xBC y\xC3\xBCklenemedi";
+    case TrayText::CopyHookSettings:
+        return english ? "Copy the Claude Code hook setting"
+                       : "Claude Code hook ayar\xC4\xB1n\xC4\xB1 kopyala";
+    case TrayText::HookSettingsCopied:
+        return english ? "Copied. Merge it into %USERPROFILE%\\.claude\\settings.json of this PC."
+                       : "Kopyaland\xC4\xB1. Bu bilgisayar\xC4\xB1n %USERPROFILE%\\.claude\\settings.json "
+                         "dosyas\xC4\xB1na ekleyin.";
     }
     return "";
 }

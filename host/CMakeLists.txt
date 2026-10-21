@@ -33,6 +33,7 @@ add_library(host_core STATIC
     App/PreferenceStore.cpp
     App/Preferences.cpp
     App/Startup.cpp
+    Hook/ApprovalService.cpp
     Hook/ClaudeHook.cpp
     Menu/MenuData.cpp
     Menu/MenuImport.cpp
@@ -61,6 +62,7 @@ if(WIN32)
         Platform/Windows/HostService.cpp
         Platform/Windows/WinAudioSystem.cpp
         Platform/Windows/WinHidLink.cpp
+        Platform/Windows/WinHookPipe.cpp
         Platform/Windows/WinHttpClient.cpp
         Platform/Windows/WinMediaKeys.cpp
         Platform/Windows/WinMenuImport.cpp
