@@ -152,7 +152,7 @@ Requests of 2026-10-21 before v1.0.0 (media first, then notifications):
 - [x] Media 1. ADR-008 and protocol v4 — `MEDIA_PART`, `MEDIA_STATE`, `ART_PART` (120 × 120 RGB565 cover), `GET_MEDIA`, `startup_screen` 2 Music; codec tests (#30)
 - [x] Media 2. Host — Windows media session (`Windows.Media.Control`, C++/WinRT), cover through WIC, `MediaService`, controls through the session (#31)
 - [x] Media 3. Board — bottom strip of the Dashboard: media controls on the left (previous, play or pause by state, next), volume slider and mute on the right; Music tab after the Dashboard (cover, texts, progress, controls) (#32)
-- [ ] Notifications 1. Spike — how the tray program can read Windows notifications (`UserNotificationListener` needs package identity) (#33)
+- [ ] Notifications 1. Spike — how the tray program can read Windows notifications (#33, `docs/notification-spike.md`; the probe is in, the runs on Windows are open)
 - [ ] Notifications 2. The fourth card, its list and a short pop-up on the board (#34)
 
 After v1:

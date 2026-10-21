@@ -32,6 +32,10 @@
 //                                      (ADR-008): app, texts, status, position, cover
 //   dashboard-host media previous|play-pause|next
 //                                      send that control to the session, then print
+//   dashboard-host notify probe [n]  notification spike (#33): try the
+//                                      notification listener and the
+//                                      notification database; last n toasts
+//   dashboard-host notify watch      print new toasts as they arrive (Ctrl+C)
 //   dashboard-host menu              print the menu card and today's detail
 //   dashboard-host menu import <image> [<image> ...]
 //                                      read menu images with the Claude API into
@@ -73,6 +77,7 @@
 #include "WinHttpClient.h"
 #include "WinHookPipe.h"
 #include "WinMediaSession.h"
+#include "WinNotificationProbe.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
@@ -685,7 +690,7 @@ int usage()
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
         "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
-        "                        media | media previous|play-pause|next\n");
+        "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n");
     return 2;
 }
 
@@ -729,6 +734,14 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "media") {
         return cmdMedia(args);
+    }
+    if (cmd == "notify" && args.size() >= 3 && args.size() <= 4 && args[2] == "probe") {
+        const unsigned long count = args.size() == 4 ? std::strtoul(args[3].c_str(), nullptr, 10) : 10UL;
+        return win::runNotificationProbe(count == 0UL || count > 100UL ? 10U : static_cast<unsigned>(count),
+                                         printLine);
+    }
+    if (cmd == "notify" && args.size() == 3 && args[2] == "watch") {
+        return win::runNotificationWatch(printLine);
     }
 
     EventQueue events;
