@@ -26,7 +26,7 @@ public:
 
     // nullopt: no location set (the card says how to set one). A different
     // location drops the report and fetches at once.
-    void setLocation(std::optional<WeatherLocation> location);
+    void setLocation(std::optional<WeatherLocation> place);
     const std::optional<WeatherLocation>& location() const { return location_; }
 
     // 0 Turkish, 1 English (settings record).

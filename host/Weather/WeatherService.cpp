@@ -63,9 +63,9 @@ void WeatherService::publish()
 {
     const std::uint32_t now = clock_();
     dash_.setCard(kSlot, weather_.card(now));
-    std::optional<std::string> detail = weather_.detail(now);
-    if (detail != shownDetail_) {
-        shownDetail_ = std::move(detail);
+    std::optional<std::string> text = weather_.detail(now);
+    if (text != shownDetail_) {
+        shownDetail_ = std::move(text);
         dash_.refreshDetail(kSlot);  // sent only if the board has it open
     }
 }

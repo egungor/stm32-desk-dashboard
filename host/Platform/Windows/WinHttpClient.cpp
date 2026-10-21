@@ -85,11 +85,11 @@ std::optional<std::string> WinHttpClient::get(const std::string& url)
             return std::nullopt;
         }
         std::vector<char> chunk(available);
-        DWORD read = 0;
-        if (!WinHttpReadData(request.h, chunk.data(), available, &read)) {
+        DWORD got = 0;
+        if (!WinHttpReadData(request.h, chunk.data(), available, &got)) {
             return std::nullopt;
         }
-        body.append(chunk.data(), read);
+        body.append(chunk.data(), got);
     }
     return body;
 }

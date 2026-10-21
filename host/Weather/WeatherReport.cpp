@@ -40,11 +40,23 @@ bool parseDate(const json& value, WeatherDay& day)
         return false;
     }
     const std::string& text = value.get_ref<const std::string&>();
-    int y = 0;
-    int m = 0;
-    int d = 0;
-    if (text.size() != 10U || std::sscanf(text.c_str(), "%4d-%2d-%2d", &y, &m, &d) != 3 || m < 1 || m > 12 ||
-        d < 1 || d > 31) {
+    if (text.size() != 10U || text[4] != '-' || text[7] != '-') {
+        return false;
+    }
+    auto digits = [&text](std::size_t from, std::size_t count) {
+        int n = 0;
+        for (std::size_t i = from; i < from + count; ++i) {
+            if (text[i] < '0' || text[i] > '9') {
+                return -1;
+            }
+            n = n * 10 + (text[i] - '0');
+        }
+        return n;
+    };
+    const int y = digits(0, 4);
+    const int m = digits(5, 2);
+    const int d = digits(8, 2);
+    if (y < 0 || m < 1 || m > 12 || d < 1 || d > 31) {
         return false;
     }
     day.year = y;

@@ -92,18 +92,17 @@ std::string iconField(int icon)
 
 }  // namespace
 
-void WeatherCard::setLocation(std::optional<WeatherLocation> location)
+void WeatherCard::setLocation(std::optional<WeatherLocation> place)
 {
-    const bool same = location.has_value() == location_.has_value() &&
-                      (!location || (location->latitude == location_->latitude &&
-                                     location->longitude == location_->longitude));
-    if (location && location_) {
-        location_->name = location->name;  // a new name alone needs no fetch
+    const bool same = place.has_value() == location_.has_value() &&
+                      (!place || (place->latitude == location_->latitude && place->longitude == location_->longitude));
+    if (place && location_) {
+        location_->name = place->name;  // a new name alone needs no fetch
     }
     if (same) {
         return;
     }
-    location_ = std::move(location);
+    location_ = std::move(place);
     report_.reset();
     stale_ = false;
     fetching_ = false;  // an answer still on its way is for the old place
