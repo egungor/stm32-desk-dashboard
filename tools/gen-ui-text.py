@@ -56,6 +56,13 @@ TEXTS = [
     ("TXT_HERO_TITLE", "ETKİN ÇIKIŞ", "ACTIVE OUTPUT"),
     ("TXT_HERO_NONE", "Varsayılan çıkış yok", "No default output"),
     ("TXT_HERO_VOLUME", "ses", "volume"),
+    # Application screen and tabs (ADR-005, #10)
+    ("TXT_DASH_TITLE", "Dashboard", "Dashboard"),
+    ("TXT_DASH_SOON", "Kartlar yakında burada", "Cards will appear here"),
+    ("TXT_SET_STARTUP_SCREEN", "Açılış ekranı", "Startup screen"),
+    ("TXT_SCREEN_AUDIO", "Ses", "Audio"),
+    ("TXT_SECTION_GENERAL", "GENEL", "GENERAL"),
+    ("TXT_SECTION_AUDIO", "SES", "AUDIO"),
 ]
 
 

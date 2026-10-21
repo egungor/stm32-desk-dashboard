@@ -2,7 +2,18 @@
 
 ## Status
 
-Proposed (issue #5). Implemented in Dashboard v1 step 4 (`docs/roadmap.md`).
+Accepted (issue #5, PR #7). Implemented in Dashboard v1 step 4 (#10):
+simulator VERIFIED in CI, on the board REQUIRES HARDWARE.
+
+Notes from the implementation (#10):
+
+- Layouts A, B and C were all ported; none had to be dropped. B lost its
+  own rail and uses A's top bar with four rows per page; C's hero panel
+  is 176 px wide and its favorites pill shows only the star.
+- Heap peak with both tabs built: 58 KB of 128 KB in the simulator, so
+  tabs stay built (the 96 KB fallback is not needed).
+- The rail's Dashboard button uses the `th-large` glyph; a home glyph
+  needs a font regeneration (`tools/gen-ui-fonts.sh`).
 
 ## Context
 

@@ -1,18 +1,22 @@
 /**
  * @file    ui_layouts.c
- * @brief   Main screens of layouts B (list) and C (large tile) (#60;
- *          designs from #57). Layout A (cards) is in ui.c.
+ * @brief   Audio tab content of layouts B (list) and C (large tile) (#60;
+ *          designs from #57; in the 424 px tab since #10). Layout A
+ *          (cards) is in ui.c.
  *
  * Both fill the same UiState objects as layout A (device buttons, tabs,
  * pager, volume slider, mute button), so ui.c renders all three. They
  * differ in what a device button shows (CardKind) and where things sit:
  *
- *   B: tab rail on the left (all, favorites, edit, settings), five rows
- *      with the Windows name under an alias, pages below them, vertical
- *      volume on the right.
+ *   B: layout A's top bar (all, favorites, edit), four rows with the
+ *      Windows name under an alias, pages below them, vertical volume on
+ *      the right. (Before #10 B had its own rail; the application rail
+ *      took its place, ADR-005.)
  *   C: the active device in a large panel on the left with its volume;
  *      the other devices as six small tiles on the right, tabs as pills
- *      above them, pages below.
+ *      and the edit button above them, pages below.
+ *
+ * Settings are opened from the application rail in both.
  *
  * The mockups scroll the list (B) and show page dots (C); here both use
  * the same page buttons as layout A, which need no extra objects per
@@ -20,14 +24,13 @@
  */
 #include "ui_internal.h"
 
-#define RAIL_W     60
 #define VOL_W      64
 #define RAIL_BTN   44
-#define LIST_ROWS  5U
-#define ROW_H      38
+#define LIST_ROWS  4U
+#define ROW_H      40
 #define ROW_GAP    4
 #define PAGER_H    28
-#define HERO_W     196
+#define HERO_W     176
 #define TILE_COLS  2U
 #define TILE_ROWS  3U
 
@@ -91,7 +94,7 @@ static void build_list_row(lv_obj_t *scr, uint32_t slot, int32_t x, int32_t w)
 
     b->btn = lv_button_create(scr);
     ui_style_card(b->btn, 10);
-    lv_obj_set_pos(b->btn, x, 32 + ((int32_t)slot * (ROW_H + ROW_GAP)));
+    lv_obj_set_pos(b->btn, x, BAR_H + PAD + ((int32_t)slot * (ROW_H + ROW_GAP)));
     lv_obj_set_size(b->btn, w, ROW_H);
     lv_obj_set_style_pad_hor(b->btn, 10, 0);
     lv_obj_set_style_pad_ver(b->btn, 0, 0);
@@ -123,55 +126,27 @@ static void build_list_row(lv_obj_t *scr, uint32_t slot, int32_t x, int32_t w)
 
 void ui_build_list_main(void)
 {
-    static const char *const tab_symbols[2] = { SYM_LIST, SYM_STAR };
-    const int32_t x = RAIL_W + PAD;
-    const int32_t w = UI_WIDTH - RAIL_W - VOL_W - (2 * PAD);
-    lv_obj_t *scr;
-    lv_obj_t *rail;
+    const int32_t x = PAD;
+    const int32_t w = UI_CONTENT_W - VOL_W - (2 * PAD);
+    lv_obj_t *const tab = g_ui.audio_tab;
     lv_obj_t *vol;
-    lv_obj_t *plug;
 
     g_ui.card_kind = CARD_LIST;
     g_ui.per_page = LIST_ROWS;
-    g_ui.main_screen = ui_make_screen();
-    scr = g_ui.main_screen;
 
-    /* Rail: tabs, edit, settings; connection mark at the bottom. */
-    rail = make_panel(scr, 0, 0, RAIL_W, UI_HEIGHT, 0);
-    lv_obj_set_style_pad_ver(rail, PAD, 0);
-    lv_obj_set_style_pad_row(rail, PAD, 0);
-    lv_obj_set_flex_flow(rail, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(rail, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    for (uint32_t t = 0U; t < 2U; t++)
-    {
-        g_ui.tab_btns[t] = make_icon_button(rail, RAIL_BTN, tab_symbols[t], ui_on_tab_clicked, (void *)(uintptr_t)t,
-                                            &g_ui.tab_labels[t]);
-    }
-    g_ui.edit_btn = make_icon_button(rail, RAIL_BTN, SYM_PENCIL, ui_on_edit_clicked, NULL, NULL);
-    if (!g_ui.edit_set)
-    {
-        lv_obj_add_flag(g_ui.edit_btn, LV_OBJ_FLAG_HIDDEN);
-    }
-    (void)make_icon_button(rail, RAIL_BTN, SYM_COG, ui_on_settings_clicked, NULL, NULL);
-    plug = ui_make_label(scr, &ui_font_16, g_ui.pal.link, SYM_PLUG);
-    lv_obj_align(plug, LV_ALIGN_BOTTOM_LEFT, (RAIL_W - 16) / 2, -10);
-
-    /* Title and count over the rows. */
-    g_ui.list_title = ui_make_label(scr, &ui_font_14, g_ui.pal.muted, "");
-    lv_obj_set_pos(g_ui.list_title, x + 2, 8);
-    g_ui.list_count = ui_make_label(scr, &ui_font_14, g_ui.pal.muted, "");
-    lv_obj_align(g_ui.list_count, LV_ALIGN_TOP_RIGHT, -(VOL_W + PAD + 2), 8);
+    /* Sub-tabs and edit as in layout A, over the rows only. */
+    ui_build_tab_bar(tab, UI_CONTENT_W - VOL_W);
 
     for (uint32_t slot = 0U; slot < LIST_ROWS; slot++)
     {
-        build_list_row(scr, slot, x, w);
+        build_list_row(tab, slot, x, w);
     }
-    g_ui.empty_label = ui_make_label(scr, &ui_font_16, g_ui.pal.muted, "");
-    lv_obj_align(g_ui.empty_label, LV_ALIGN_CENTER, (RAIL_W - VOL_W) / 2, 0);
-    build_pager(scr, x, UI_HEIGHT - PAGER_H - 4, w);
+    g_ui.empty_label = ui_make_label(tab, &ui_font_16, g_ui.pal.muted, "");
+    lv_obj_align(g_ui.empty_label, LV_ALIGN_CENTER, -VOL_W / 2, 0);
+    build_pager(tab, x, UI_HEIGHT - PAGER_H - 6, w);
 
     /* Vertical volume: percentage, slider, mute button. */
-    vol = make_panel(scr, UI_WIDTH - VOL_W, 0, VOL_W, UI_HEIGHT, 0);
+    vol = make_panel(tab, UI_CONTENT_W - VOL_W, 0, VOL_W, UI_HEIGHT, 0);
     lv_obj_set_style_pad_ver(vol, 10, 0);
     lv_obj_set_style_pad_row(vol, 12, 0);
     lv_obj_set_flex_flow(vol, LV_FLEX_FLOW_COLUMN);
@@ -269,7 +244,7 @@ void ui_build_tiles_main(void)
 {
     static const UiTextId tab_texts[2] = { TXT_TAB_ALL, TXT_STARTUP_FAV };
     const int32_t x0 = PAD + HERO_W + PAD;
-    const int32_t w_all = UI_WIDTH - x0 - PAD;
+    const int32_t w_all = UI_CONTENT_W - x0 - PAD;
     const int32_t tile_w = (w_all - PAD) / (int32_t)TILE_COLS;
     const int32_t tile_y = 52;
     const int32_t tile_h = (UI_HEIGHT - tile_y - PAGER_H - 8 - ((int32_t)(TILE_ROWS - 1U) * PAD)) / (int32_t)TILE_ROWS;
@@ -280,12 +255,11 @@ void ui_build_tiles_main(void)
 
     g_ui.card_kind = CARD_TILE;
     g_ui.per_page = TILE_COLS * TILE_ROWS;
-    g_ui.main_screen = ui_make_screen();
-    scr = g_ui.main_screen;
+    scr = g_ui.audio_tab;
 
     build_hero(scr);
 
-    /* Tabs as pills, then edit and settings buttons. */
+    /* Tabs as pills (favorites as a star only, to fit), then the edit button. */
     top = ui_make_box(scr);
     lv_obj_set_pos(top, x0, PAD);
     lv_obj_set_size(top, w_all, 36);
@@ -304,7 +278,7 @@ void ui_build_tiles_main(void)
         g_ui.tab_labels[t] = ui_make_label(btn, &ui_font_16, g_ui.pal.muted, "");
         if (t == 1U)
         {
-            lv_label_set_text_fmt(g_ui.tab_labels[t], "%s %s", SYM_STAR, ui_text(tab_texts[t]));
+            lv_label_set_text_static(g_ui.tab_labels[t], SYM_STAR);
         }
         else
         {
@@ -319,7 +293,6 @@ void ui_build_tiles_main(void)
     {
         lv_obj_add_flag(g_ui.edit_btn, LV_OBJ_FLAG_HIDDEN);
     }
-    (void)make_icon_button(top, 34, SYM_COG, ui_on_settings_clicked, NULL, NULL);
 
     for (uint32_t slot = 0U; slot < (TILE_COLS * TILE_ROWS); slot++)
     {

@@ -29,6 +29,9 @@
 #define BTN_RADIUS   12
 #define FLIP_W       44
 #define TAB_W        116
+/* Application screen (ADR-005): rail on the left, the shown tab beside it. */
+#define SHELL_RAIL_W 56
+#define UI_CONTENT_W (UI_WIDTH - SHELL_RAIL_W) /* 424 */
 
 /* Font Awesome glyphs in ui_font_14/16/22 (tools/gen-ui-fonts.sh). */
 #define SYM_CHECK      "\xEF\x80\x8C"
@@ -141,7 +144,12 @@ typedef struct
 
     /* Objects (rebuilt when the appearance changes). */
     lv_obj_t      *waiting_screen;
-    lv_obj_t      *main_screen;
+    lv_obj_t      *main_screen;    /**< application screen: rail and tabs (ui_shell.c) */
+    lv_obj_t      *dash_tab;       /**< Dashboard tab content, 424 x 272 */
+    lv_obj_t      *audio_tab;      /**< Audio tab content, 424 x 272 */
+    lv_obj_t      *rail_btns[UI_APP_TAB_COUNT];
+    lv_obj_t      *rail_labels[UI_APP_TAB_COUNT];
+    uint32_t       app_tab;        /**< UI_APP_TAB_*, kept over a rebuild */
     UiDeviceButton buttons[UI_MAX_PER_PAGE];
     uint32_t       per_page;
     lv_obj_t      *tab_btns[2];
@@ -182,6 +190,7 @@ typedef struct
     lv_obj_t *set_limit_slider;
     lv_obj_t *set_limit_label;
     lv_obj_t *set_flip_switch;
+    lv_obj_t *set_startup_screen;
     bool      rebuild_queued;      /**< ui_request_rebuild() pending */
 
     /* Edit mode and alias keyboard (ui_edit.c): built while shown. */
@@ -222,10 +231,19 @@ void      ui_on_edit_clicked(lv_event_t *e);
 lv_obj_t *ui_make_small_button(lv_obj_t *parent, int32_t w, int32_t h, const char *symbol, lv_obj_t **label);
 void      ui_style_volume_slider(lv_obj_t *slider);
 
-/* Main screens of layouts B (list) and C (large tile) (ui_layouts.c). They
- * set g_ui.per_page, g_ui.card_kind and the main screen objects. */
+/** The Audio tab's top bar (layouts A and B): All / Favorites and the edit
+ *  button, @p width wide at the top of @p parent (ui.c). */
+void ui_build_tab_bar(lv_obj_t *parent, int32_t width);
+
+/* Audio tab content of layouts B (list) and C (large tile) (ui_layouts.c),
+ * built into g_ui.audio_tab. They set g_ui.per_page, g_ui.card_kind and the
+ * main screen objects. */
 void ui_build_list_main(void);
 void ui_build_tiles_main(void);
+
+/* Application screen (ui_shell.c, ADR-005). */
+void ui_shell_build(void);          /**< create g_ui.main_screen, rail, dash_tab, audio_tab */
+void ui_shell_show_tab(uint32_t tab); /**< show UI_APP_TAB_* in the content area */
 
 /** Fill g_ui.pal from g_ui.settings (theme, accent). */
 void ui_theme_update(void);

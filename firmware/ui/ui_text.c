@@ -50,6 +50,12 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "ETK\xC4\xB0N \xC3\x87IKI\xC5\x9E", /* TXT_HERO_TITLE */
         "Varsay\xC4\xB1lan \xC3\xA7\xC4\xB1k\xC4\xB1\xC5\x9F yok", /* TXT_HERO_NONE */
         "ses", /* TXT_HERO_VOLUME */
+        "Dashboard", /* TXT_DASH_TITLE */
+        "Kartlar yak\xC4\xB1nda burada", /* TXT_DASH_SOON */
+        "A\xC3\xA7\xC4\xB1l\xC4\xB1\xC5\x9F ekran\xC4\xB1", /* TXT_SET_STARTUP_SCREEN */
+        "Ses", /* TXT_SCREEN_AUDIO */
+        "GENEL", /* TXT_SECTION_GENERAL */
+        "SES", /* TXT_SECTION_AUDIO */
     },
     {
         "All", /* TXT_TAB_ALL */
@@ -94,6 +100,12 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "ACTIVE OUTPUT", /* TXT_HERO_TITLE */
         "No default output", /* TXT_HERO_NONE */
         "volume", /* TXT_HERO_VOLUME */
+        "Dashboard", /* TXT_DASH_TITLE */
+        "Cards will appear here", /* TXT_DASH_SOON */
+        "Startup screen", /* TXT_SET_STARTUP_SCREEN */
+        "Audio", /* TXT_SCREEN_AUDIO */
+        "GENERAL", /* TXT_SECTION_GENERAL */
+        "AUDIO", /* TXT_SECTION_AUDIO */
     },
 };
 

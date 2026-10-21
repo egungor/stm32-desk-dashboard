@@ -40,6 +40,7 @@ add_library(ui STATIC
     ${UI_DIR}/ui_settings.c
     ${UI_DIR}/ui_edit.c
     ${UI_DIR}/ui_layouts.c
+    ${UI_DIR}/ui_shell.c
     ${UI_DIR}/fonts/ui_font_14.c
     ${UI_DIR}/fonts/ui_font_16.c
     ${UI_DIR}/fonts/ui_font_22.c
@@ -47,7 +48,7 @@ add_library(ui STATIC
 target_include_directories(ui PUBLIC ${UI_DIR})
 target_link_libraries(ui PUBLIC lvgl)
 set_target_properties(ui PROPERTIES C_STANDARD ${UI_C_STANDARD})
-set_source_files_properties(${UI_DIR}/ui.c ${UI_DIR}/ui_text.c ${UI_DIR}/ui_theme.c ${UI_DIR}/ui_settings.c ${UI_DIR}/ui_edit.c ${UI_DIR}/ui_layouts.c
+set_source_files_properties(${UI_DIR}/ui.c ${UI_DIR}/ui_text.c ${UI_DIR}/ui_theme.c ${UI_DIR}/ui_settings.c ${UI_DIR}/ui_edit.c ${UI_DIR}/ui_layouts.c ${UI_DIR}/ui_shell.c
     PROPERTIES COMPILE_OPTIONS "${UI_WARNINGS}")
 
 add_executable(ui_simulator main.c)
