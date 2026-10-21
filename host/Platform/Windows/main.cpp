@@ -20,6 +20,10 @@
 //                                      make it the weather location
 //   dashboard-host weather <lat> <lon> [name]
 //                                      set the weather location exactly
+//   dashboard-host hook probe        Claude Code PermissionRequest hook of the
+//                                      step 10 spike (#24): logs its input to
+//                                      hook-probe.log, answers as hook-probe.txt
+//                                      says (docs/hook-spike.md)
 //   dashboard-host menu              print the menu card and today's detail
 //   dashboard-host menu import <image> [<image> ...]
 //                                      read menu images with the Claude API into
@@ -33,6 +37,8 @@
 // %APPDATA%\stm32-desk-dashboard\weather.txt; "run" reads it every minute.
 
 #include <windows.h>
+#include <fcntl.h>
+#include <io.h>
 #include <shellapi.h>
 
 #include <chrono>
@@ -43,6 +49,7 @@
 #include <vector>
 
 #include "AudioMapping.h"
+#include "ClaudeHook.h"
 #include "DashController.h"
 #include "DeviceRegistry.h"
 #include "EventQueue.h"
@@ -393,6 +400,69 @@ int cmdWeather(const std::vector<std::string>& args)
     return result;
 }
 
+// "2026-10-21 15:04:05.123"
+std::string localTimeText()
+{
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%04u-%02u-%02u %02u:%02u:%02u.%03u", t.wYear, t.wMonth, t.wDay, t.wHour,
+                  t.wMinute, t.wSecond, t.wMilliseconds);
+    return buffer;
+}
+
+// One line at the end of %APPDATA%\stm32-desk-dashboard\hook-probe.log;
+// parallel hooks may write at the same time (append is atomic per write).
+void appendProbeLog(const std::wstring& dir, const std::string& line)
+{
+    if (dir.empty()) {
+        return;
+    }
+    (void)CreateDirectoryW(dir.c_str(), nullptr);
+    const HANDLE file = CreateFileW((dir + L"\\hook-probe.log").c_str(), FILE_APPEND_DATA,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                                    nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    const std::string text = line + "\r\n";
+    DWORD written = 0;
+    (void)WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+    CloseHandle(file);
+}
+
+// The probe hook of the step 10 spike (ADR-007, #24). Prints nothing but
+// the decision, so Claude Code reads stdout as the hook's answer.
+int cmdHookProbe()
+{
+    const ULONGLONG started = GetTickCount64();
+    const DWORD pid = GetCurrentProcessId();
+    (void)_setmode(_fileno(stdin), _O_BINARY);
+    (void)_setmode(_fileno(stdout), _O_BINARY);
+    std::string input;
+    char buffer[4096];
+    std::size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), stdin)) > 0) {
+        input.append(buffer, n);
+    }
+
+    win::WinPreferenceFile config(L"hook-probe");
+    const HookProbeConfig probe = parseHookProbeConfig(config.read());
+    appendProbeLog(config.directory(), hookProbeLogLine("start", localTimeText(), GetTickCount64() - started, pid,
+                                                        input, probe));
+    if (probe.waitSeconds > 0) {
+        Sleep(static_cast<DWORD>(probe.waitSeconds) * 1000U);
+    }
+    const std::string out = permissionDecisionJson(probe.answer);
+    if (!out.empty()) {
+        std::fwrite(out.data(), 1, out.size(), stdout);
+        std::fflush(stdout);
+    }
+    appendProbeLog(config.directory(),
+                   hookProbeLogLine("end", localTimeText(), GetTickCount64() - started, pid, input, probe));
+    return probe.exitCode;
+}
+
 int cmdMenu(const std::vector<std::string>& args)
 {
     if (args.size() >= 4 && args[2] == "import") {
@@ -460,7 +530,7 @@ int usage()
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
-        "                        menu | menu import <image> [<image> ...]\n");
+        "                        menu | menu import <image> [<image> ...] | hook probe\n");
     return 2;
 }
 
@@ -489,6 +559,9 @@ int run(const std::vector<std::string>& args)
 
     if (cmd == "startup" && args.size() == 3) {
         return cmdStartup(args[2]);  // no audio needed
+    }
+    if (cmd == "hook" && args.size() == 3 && args[2] == "probe") {
+        return cmdHookProbe();  // started by Claude Code: no audio, nothing else on stdout
     }
     if (cmd == "weather") {
         return cmdWeather(args);

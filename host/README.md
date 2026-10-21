@@ -44,6 +44,8 @@ host/
 │   ├── EventQueue.h        # serialises Core Audio and HID events into the controller
 │   ├── FrameText.*         # readable one-line form of a protocol message
 │   └── Startup.*           # Run value of "start with Windows", tray text (#74)
+├── Hook/
+│   └── ClaudeHook.*        # PermissionRequest decision JSON; the spike's probe (#24)
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
@@ -132,6 +134,9 @@ dashboard-host weather <city>    find <city> with the Open-Meteo geocoding API
                                    and save it as the weather location
 dashboard-host weather <lat> <lon> [name]
                                    save a location exactly
+dashboard-host hook probe        Claude Code PermissionRequest hook for the step 10
+                                   spike: logs to hook-probe.log, answers as
+                                   hook-probe.txt says (docs/hook-spike.md)
 dashboard-host menu              print the menu card and the day's detail
 dashboard-host menu import <image> [<image> ...]
                                    read menu images with the Claude API into

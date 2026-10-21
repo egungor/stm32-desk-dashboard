@@ -98,6 +98,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `App/MediaKeys` | no | Media strip `ACTION` (kind 2) → previous / play-pause / next behind `IMediaKeys` |
 | `App/HttpClient.h`, `App/BackgroundFetch` | no | `IHttpClient` (GET, POST); one GET at a time on a worker thread, result polled by the loop |
 | `Menu/MenuData`, `MenuImport` | no | Month files `menu-YYYY-MM.json`, merge by date; menu images → Claude API request and answer (nlohmann/json) |
+| `Hook/ClaudeHook` | no | Claude Code `PermissionRequest` decision JSON; the step 10 probe's config and log lines (ADR-007) |
 | `Menu/MenuService` | no | Menu card (slot 1) and day detail, from the month files |
 | `Weather/WeatherReport`, `WeatherLocation` | no | Open-Meteo forecast and geocoding (nlohmann/json), WMO code → icon number and text, `weather.txt` |
 | `Weather/WeatherCard`, `WeatherService` | no | Weather card (slot 0) and detail: when to fetch, the records, the location file |
