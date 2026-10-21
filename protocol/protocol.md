@@ -231,7 +231,7 @@ missing trailing fields count as empty.
 | Record | Max bytes | Lines |
 |---|---|---|
 | Card | 256 | 1: `icon` ␟ `title` ␟ `badge`; 2–4: text lines |
-| Detail | 2048 | 1: `title` ␟ `subtitle`; then rows, section titles and buttons |
+| Detail | 2048 | 1: `title` ␟ `subtitle` ␟ `flags`; then rows, section titles and buttons. `flags`: letters, `n` = show previous / next (`OPEN_DETAIL` −1 / +1) in the header; others are ignored |
 | Prompt | 1024 | 1: `title` ␟ `subtitle` ␟ `seconds` (countdown, decimal; empty = none); then as a detail |
 
 Detail and prompt lines after the first:
