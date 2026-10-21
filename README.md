@@ -77,6 +77,7 @@ host v0.7.0-beta.2: layout A, layouts B and C, the settings page. More:
 | LVGL UI (device buttons, pages, waiting screen, notices) | Simulator in CI; VERIFIED on the board |
 | USB HID interface and STM32 protocol client | Unit tests in CI; VERIFIED on the board and Windows as `1209:0001`; as `1209:0002` REQUIRES HARDWARE |
 | Protocol v2 (64-byte frames, CRC-16; preferences and settings, ADR-004) | Codec tests in CI (Linux, Windows); VERIFIED on the board and Windows (#58) |
+| Protocol v3 (dashboard records, ADR-006; #8) | Codec tests in CI; the firmware and host speak v3 but do not use the dashboard commands yet; on the board REQUIRES HARDWARE |
 | Windows host: Core Audio, default device switching, HID transport | Unit tests in CI; VERIFIED on Windows |
 | Firmware ↔ host together | Loopback integration test in CI; end to end VERIFIED; adding or removing a Windows device while connected NOT TESTED |
 | Volume and mute on the touchscreen (M6) | VERIFIED on the board and Windows |

@@ -69,7 +69,8 @@ static bool settings_valid(const UiSettings *s)
     return (s->layout < UI_LAYOUT_COUNT) && (s->theme < UI_THEME_COUNT) && (s->accent < UI_ACCENT_COUNT) &&
            (s->grid < UI_GRID_COUNT) && (s->startup_tab <= UI_STARTUP_FAVORITES) &&
            (s->last_tab <= UI_TAB_FAVORITES) && (s->screen_timeout <= 60U) && (s->flipped <= 1U) &&
-           (s->language < UI_LANGUAGE_COUNT) && (s->volume_limit_on <= 1U) && (s->volume_limit <= 100U);
+           (s->language < UI_LANGUAGE_COUNT) && (s->volume_limit_on <= 1U) && (s->volume_limit <= 100U) &&
+           (s->startup_screen < UI_STARTUP_SCREEN_COUNT);
 }
 
 /* ------------------------------------------------------------------ view */

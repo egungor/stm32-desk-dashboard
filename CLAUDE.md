@@ -26,9 +26,11 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 2 (#5): ADR-005 (tabbed shell), ADR-006 (cards and
-protocol v3), ADR-007 (Claude Code approvals). Step 1 is done: the code
-is the audio controller renamed (USB PID `1209:0002`). The v1 steps
+Dashboard v1, step 3 (#8): protocol version 3 (ADR-006) in
+`protocol/`; firmware and host speak v3 but use only the audio commands
+so far. Done: step 1 (the audio controller renamed, USB PID `1209:0002`)
+and step 2 (ADR-005 tabbed shell, ADR-006 cards and protocol v3, ADR-007
+Claude Code approvals). The v1 steps
 and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the current task asks
 for it.
 

@@ -15,7 +15,7 @@ audio playback endpoint.
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ firmware/link (link_client.c)    │         │ App/HostController               │
-│   protocol v2, STM32 side        │         │   protocol v2, DeviceRegistry    │
+│   protocol v3, STM32 side        │         │   protocol v3, DeviceRegistry    │
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ App/link_port.c, App/usb_link.c  │◄───────►│ Platform/Windows/WinHidLink      │
@@ -77,7 +77,7 @@ Responsible for:
 | Module | Hardware dependent | Role |
 |---|---|---|
 | `ui/` | no (LVGL only) | Screens: device buttons (2×2 per page, icon, name, active and pending marks), bottom strip (mute, volume slider, page arrows), waiting screen, error screen, notices |
-| `link/` | no (C, protocol codec) | Protocol v2 state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts |
+| `link/` | no (C, protocol codec) | Protocol v3 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts |
 | `App/usb_link.c` | yes | Vendor HID class (ADR-003); the ISR only queues received frames |
 | `App/link_port.c` | yes | Connects USB, `link/` and `ui/` in the UI task |
 | `App/ui_port.c` | yes | LVGL on the LTDC (two SDRAM framebuffers, swap on VBLANK) and the FT5336 |
@@ -92,7 +92,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | Module | Windows dependent | Role |
 |---|---|---|
 | `Audio/DeviceRegistry` | no | Endpoints → session-local `device_index`, at most 32, names truncated to 48 bytes |
-| `App/HostController` | no | Protocol v2, host side |
+| `App/HostController` | no | Protocol v3 audio commands, host side |
 | `App/EventQueue` | no | Serialises Core Audio and HID events into one consumer thread |
 | `Hid/HidMatch.h` | no | Which HID interface is the controller |
 | `Platform/Windows/WinAudioSystem` | yes | `IAudioSystem` on Core Audio; default switching through `IPolicyConfig` (ADR-002) |
@@ -119,7 +119,7 @@ go to `docs/images/` once the UI has been checked on the board.
 ## Important design decisions
 
 - STM32 ↔ Windows: vendor USB HID, 64-byte reports, VID:PID `1209:0002`
-  (ADR-003); protocol v2 with 64-byte frames and CRC-16
+  (ADR-003); protocol v3 with 64-byte frames and CRC-16
   (`protocol/protocol.md`)
 - Host language: C++17
 - GUI: LVGL v9.5.0 (git submodule). The UI lives in `firmware/ui/`, depends

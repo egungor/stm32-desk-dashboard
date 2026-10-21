@@ -31,7 +31,7 @@ host/
 │   ├── IFrameSink.h        # outgoing 64-byte protocol frames
 │   └── HidMatch.h          # which HID interface is the controller (ADR-003)
 ├── App/
-│   ├── HostController.*    # protocol v2 exchanges (protocol/protocol.md)
+│   ├── HostController.*    # protocol v3 audio exchanges (protocol/protocol.md)
 │   ├── Preferences.*       # aliases, order, favorites, settings record (ADR-004)
 │   ├── PreferenceFile.*    # text format of the preference file
 │   ├── PreferenceStore.*   # load, save at most once per second, reload on change

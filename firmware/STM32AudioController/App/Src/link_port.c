@@ -88,6 +88,7 @@ static void to_ui(const ProtoSettings *p, UiSettings *u)
     u->language = p->language;
     u->volume_limit_on = p->volume_limit_on;
     u->volume_limit = p->volume_limit;
+    u->startup_screen = p->startup_screen;
 }
 
 static void to_proto(const UiSettings *u, ProtoSettings *p)
@@ -103,6 +104,7 @@ static void to_proto(const UiSettings *u, ProtoSettings *p)
     p->language = u->language;
     p->volume_limit_on = u->volume_limit_on;
     p->volume_limit = u->volume_limit;
+    p->startup_screen = u->startup_screen;
 }
 
 /* Settings from the host or a local change: the UI applies its fields,

@@ -31,6 +31,7 @@ const SettingField kSettingFields[] = {
     {"language", &ProtoSettings::language},
     {"volume_limit_on", &ProtoSettings::volume_limit_on},
     {"volume_limit", &ProtoSettings::volume_limit},
+    {"startup_screen", &ProtoSettings::startup_screen},
 };
 
 std::string escape(const std::string& field)

@@ -167,6 +167,7 @@ enum
     UI_STARTUP_LAST = 0, UI_STARTUP_ALL = 1, UI_STARTUP_FAVORITES = 2,
     UI_TAB_ALL = 0, UI_TAB_FAVORITES = 1,
     UI_LANGUAGE_TURKISH = 0, UI_LANGUAGE_ENGLISH = 1, UI_LANGUAGE_COUNT = 2,
+    UI_STARTUP_SCREEN_DASHBOARD = 0, UI_STARTUP_SCREEN_AUDIO = 1, UI_STARTUP_SCREEN_COUNT = 2,
 };
 
 typedef struct
@@ -182,6 +183,7 @@ typedef struct
     uint8_t language;        /**< UI_LANGUAGE_* */
     uint8_t volume_limit_on; /**< 0/1 (host) */
     uint8_t volume_limit;    /**< percent (host) */
+    uint8_t startup_screen;  /**< UI_STARTUP_SCREEN_* (shell, ADR-005; kept and passed back for now) */
 } UiSettings;
 
 /**

@@ -941,9 +941,11 @@ void testPreferenceFileRoundTrip()
     s.flipped = 1;
     s.volume_limit_on = 1;
     s.volume_limit = 35;
+    s.startup_screen = 1;
     (void)p.setSettings(s);
 
     const std::string text = serializePreferences(p);
+    CHECK(text.find("startup_screen\t1\n") != std::string::npos);
     CHECK(text.rfind("# stm32-desk-dashboard preferences\nversion\t1\n", 0) == 0);
     Preferences q;
     CHECK(parsePreferences(text, q));
