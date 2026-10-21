@@ -1,6 +1,6 @@
 /**
  * @file    protocol.c
- * @brief   STM32 <-> Windows host protocol, version 3 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 4 (see protocol/protocol.md).
  */
 #include "protocol.h"
 
@@ -16,6 +16,7 @@
 #define DEVICE_FIXED_BYTES    7U /* generation .. name_len */
 #define ALIAS_FIXED_BYTES     3U /* generation, position, alias_len */
 #define SET_ALIAS_FIXED_BYTES 3U /* generation, device_index, alias_len */
+#define MEDIA_STATE_BYTES     11U /* status, controls, art_id, position, duration */
 
 uint16_t Proto_Crc16(const uint8_t *data, size_t len)
 {
@@ -62,9 +63,13 @@ static int is_known_command(uint8_t command)
     case PROTO_CMD_DETAIL_PART:
     case PROTO_CMD_PROMPT_PART:
     case PROTO_CMD_PROMPT_CLOSE:
+    case PROTO_CMD_MEDIA_PART:
+    case PROTO_CMD_MEDIA_STATE:
+    case PROTO_CMD_ART_PART:
     case PROTO_CMD_GET_CARDS:
     case PROTO_CMD_OPEN_DETAIL:
     case PROTO_CMD_ACTION:
+    case PROTO_CMD_GET_MEDIA:
     case PROTO_CMD_ERROR:
         return 1;
     default:
@@ -241,6 +246,8 @@ static uint8_t max_parts_of(uint8_t command)
         return (uint8_t)PROTO_DETAIL_MAX_PARTS;
     case PROTO_CMD_PROMPT_PART:
         return (uint8_t)PROTO_PROMPT_MAX_PARTS;
+    case PROTO_CMD_MEDIA_PART:
+        return (uint8_t)PROTO_MEDIA_MAX_PARTS;
     default:
         return 0U;
     }
@@ -256,6 +263,8 @@ uint16_t Proto_RecordMaxBytes(uint8_t command)
         return (uint16_t)PROTO_DETAIL_MAX_BYTES;
     case PROTO_CMD_PROMPT_PART:
         return (uint16_t)PROTO_PROMPT_MAX_BYTES;
+    case PROTO_CMD_MEDIA_PART:
+        return (uint16_t)PROTO_MEDIA_MAX_BYTES;
     default:
         return 0U;
     }
@@ -272,6 +281,10 @@ static int is_valid_part(uint8_t command, const ProtoRecordPart *p)
         (p->len > PROTO_PART_DATA_BYTES))
     {
         return 0;
+    }
+    if ((command == PROTO_CMD_MEDIA_PART) && (p->id != 0U))
+    {
+        return 0; /* one media record */
     }
     if ((command != PROTO_CMD_PROMPT_PART) && (p->id >= PROTO_MAX_CARDS))
     {
@@ -312,6 +325,34 @@ static int is_valid_action(const ProtoAction *a)
     default:
         return 1; /* PROTO_ACTION_PROMPT: any prompt id */
     }
+}
+
+static int is_valid_media_state(const ProtoMediaState *m)
+{
+    if ((m->status >= PROTO_MEDIA_STATUS_COUNT) || ((m->controls & ~PROTO_MEDIA_CONTROLS_MASK) != 0U))
+    {
+        return 0;
+    }
+    return (m->duration == 0U) || (m->position <= m->duration);
+}
+
+static int is_valid_art_part(const ProtoArtPart *a)
+{
+    return (a->art_id != PROTO_NO_ART) && (a->index < PROTO_ART_PARTS) &&
+           (a->len == Proto_ArtPartBytes(a->index));
+}
+
+static void put_u32(uint8_t *out, uint32_t v)
+{
+    out[0] = (uint8_t)(v & 0xFFU);
+    out[1] = (uint8_t)((v >> 8) & 0xFFU);
+    out[2] = (uint8_t)((v >> 16) & 0xFFU);
+    out[3] = (uint8_t)((v >> 24) & 0xFFU);
+}
+
+static uint32_t get_u32(const uint8_t *in)
+{
+    return (uint32_t)in[0] | ((uint32_t)in[1] << 8) | ((uint32_t)in[2] << 16) | ((uint32_t)in[3] << 24);
 }
 
 uint8_t Proto_RecordPartCount(uint16_t length)
@@ -433,6 +474,85 @@ ProtoAsmResult Proto_AssemblerAdd(ProtoAssembler *asm_, const ProtoRecordPart *p
     return PROTO_ASM_COMPLETE;
 }
 
+/* -------------------------------------------------------------- covers */
+
+uint8_t Proto_ArtPartBytes(uint16_t index)
+{
+    uint32_t rest;
+
+    if (index >= PROTO_ART_PARTS)
+    {
+        return 0U;
+    }
+    rest = PROTO_ART_BYTES - ((uint32_t)index * PROTO_ART_DATA_BYTES);
+    return (uint8_t)((rest > PROTO_ART_DATA_BYTES) ? PROTO_ART_DATA_BYTES : rest);
+}
+
+int Proto_ArtPart(const uint8_t *art, uint8_t art_id, uint16_t index, ProtoArtPart *out)
+{
+    if ((art == NULL) || (out == NULL) || (art_id == PROTO_NO_ART) || (index >= PROTO_ART_PARTS))
+    {
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->art_id = art_id;
+    out->index = index;
+    out->len = Proto_ArtPartBytes(index);
+    memcpy(out->data, &art[(uint32_t)index * PROTO_ART_DATA_BYTES], out->len);
+    return 1;
+}
+
+void Proto_ArtAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer)
+{
+    if (asm_ == NULL)
+    {
+        return;
+    }
+    memset(asm_, 0, sizeof(*asm_));
+    asm_->buffer = buffer;
+}
+
+void Proto_ArtAssemblerStart(ProtoArtAssembler *asm_, uint8_t art_id)
+{
+    if ((asm_ == NULL) || ((art_id == asm_->art_id) && (art_id != PROTO_NO_ART)))
+    {
+        return;
+    }
+    asm_->art_id = art_id;
+    asm_->count = 0U;
+    memset(asm_->received, 0, sizeof(asm_->received));
+}
+
+ProtoAsmResult Proto_ArtAssemblerAdd(ProtoArtAssembler *asm_, const ProtoArtPart *part)
+{
+    uint16_t byte;
+    uint8_t bit;
+
+    if ((asm_ == NULL) || (part == NULL) || (asm_->buffer == NULL) || (asm_->art_id == PROTO_NO_ART) ||
+        (part->art_id != asm_->art_id) || !is_valid_art_part(part))
+    {
+        return PROTO_ASM_OVERFLOW;
+    }
+    byte = (uint16_t)(part->index / 8U);
+    bit = (uint8_t)(1U << (part->index % 8U));
+    if ((asm_->received[byte] & bit) != 0U)
+    {
+        return PROTO_ASM_DUPLICATE;
+    }
+    memcpy(&asm_->buffer[(uint32_t)part->index * PROTO_ART_DATA_BYTES], part->data, part->len);
+    asm_->received[byte] = (uint8_t)(asm_->received[byte] | bit);
+    asm_->count++;
+    if (asm_->count < PROTO_ART_PARTS)
+    {
+        return PROTO_ASM_PARTIAL;
+    }
+    /* Complete: collect nothing more until the next cover is started. */
+    asm_->art_id = PROTO_NO_ART;
+    asm_->count = 0U;
+    memset(asm_->received, 0, sizeof(asm_->received));
+    return PROTO_ASM_COMPLETE;
+}
+
 /* Write the payload of @p msg; return its length, or -1 if a field is
  * invalid. */
 static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
@@ -521,7 +641,39 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
         return (int)PROTO_SETTINGS_BYTES;
 
     case PROTO_CMD_GET_CARDS:
+    case PROTO_CMD_GET_MEDIA:
         return 0;
+
+    case PROTO_CMD_MEDIA_STATE:
+    {
+        const ProtoMediaState *m = &msg->u.media;
+
+        if (!is_valid_media_state(m))
+        {
+            return -1;
+        }
+        payload[0] = m->status;
+        payload[1] = m->controls;
+        payload[2] = m->art_id;
+        put_u32(&payload[3], m->position);
+        put_u32(&payload[7], m->duration);
+        return (int)MEDIA_STATE_BYTES;
+    }
+
+    case PROTO_CMD_ART_PART:
+    {
+        const ProtoArtPart *a = &msg->u.art;
+
+        if (!is_valid_art_part(a))
+        {
+            return -1;
+        }
+        payload[0] = a->art_id;
+        payload[1] = (uint8_t)(a->index & 0xFFU);
+        payload[2] = (uint8_t)(a->index >> 8);
+        memcpy(&payload[PROTO_ART_HEADER_BYTES], a->data, a->len);
+        return (int)(PROTO_ART_HEADER_BYTES + a->len);
+    }
 
     case PROTO_CMD_TIME:
     {
@@ -537,6 +689,7 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
     case PROTO_CMD_CARD_PART:
     case PROTO_CMD_DETAIL_PART:
     case PROTO_CMD_PROMPT_PART:
+    case PROTO_CMD_MEDIA_PART:
     {
         const ProtoRecordPart *p = &msg->u.part;
 
@@ -746,7 +899,43 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
         return Proto_SettingsValid(&msg->u.settings);
 
     case PROTO_CMD_GET_CARDS:
+    case PROTO_CMD_GET_MEDIA:
         return len == 0U;
+
+    case PROTO_CMD_MEDIA_STATE:
+    {
+        ProtoMediaState *m = &msg->u.media;
+
+        if (len != MEDIA_STATE_BYTES)
+        {
+            return 0;
+        }
+        m->status = payload[0];
+        m->controls = payload[1];
+        m->art_id = payload[2];
+        m->position = get_u32(&payload[3]);
+        m->duration = get_u32(&payload[7]);
+        return is_valid_media_state(m);
+    }
+
+    case PROTO_CMD_ART_PART:
+    {
+        ProtoArtPart *a = &msg->u.art;
+
+        if (len < PROTO_ART_HEADER_BYTES)
+        {
+            return 0;
+        }
+        a->art_id = payload[0];
+        a->index = (uint16_t)(payload[1] | ((uint16_t)payload[2] << 8));
+        a->len = (uint8_t)(len - PROTO_ART_HEADER_BYTES);
+        if (!is_valid_art_part(a))
+        {
+            return 0;
+        }
+        memcpy(a->data, &payload[PROTO_ART_HEADER_BYTES], a->len);
+        return 1;
+    }
 
     case PROTO_CMD_TIME:
         if (len != 4U)
@@ -760,6 +949,7 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
     case PROTO_CMD_CARD_PART:
     case PROTO_CMD_DETAIL_PART:
     case PROTO_CMD_PROMPT_PART:
+    case PROTO_CMD_MEDIA_PART:
     {
         ProtoRecordPart *p = &msg->u.part;
 

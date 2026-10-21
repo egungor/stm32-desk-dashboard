@@ -1,6 +1,6 @@
 /**
  * @file    protocol.h
- * @brief   STM32 <-> Windows host protocol, version 3 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 4 (see protocol/protocol.md).
  *
  * Portable C99 codec shared by the firmware and the host. Every message is
  * one fixed-size frame of PROTO_FRAME_SIZE bytes:
@@ -30,7 +30,7 @@ extern "C" {
 
 #define PROTO_FRAME_SIZE   64U
 #define PROTO_MAGIC        0xA5U
-#define PROTO_VERSION      3U
+#define PROTO_VERSION      4U
 #define PROTO_HEADER_SIZE  5U
 #define PROTO_CRC_OFFSET   62U
 #define PROTO_MAX_PAYLOAD  (PROTO_CRC_OFFSET - PROTO_HEADER_SIZE) /* 57 */
@@ -57,12 +57,37 @@ extern "C" {
 #define PROTO_CARD_MAX_BYTES    256U
 #define PROTO_DETAIL_MAX_BYTES  2048U
 #define PROTO_PROMPT_MAX_BYTES  1024U
+#define PROTO_MEDIA_MAX_BYTES   512U
 /** Most parts of a record of each kind (ceil(max / 53)). */
 #define PROTO_CARD_MAX_PARTS    5U
 #define PROTO_DETAIL_MAX_PARTS  39U
 #define PROTO_PROMPT_MAX_PARTS  20U
+#define PROTO_MEDIA_MAX_PARTS   10U
 /** Record text: lines end with '\n', fields are separated by this byte. */
 #define PROTO_FIELD_SEPARATOR   0x1FU
+
+/* Now playing (ADR-008, version 4). */
+/** MEDIA_STATE status. */
+#define PROTO_MEDIA_STATUS_NONE    0U /**< no media session */
+#define PROTO_MEDIA_STATUS_STOPPED 1U
+#define PROTO_MEDIA_STATUS_PLAYING 2U
+#define PROTO_MEDIA_STATUS_PAUSED  3U
+#define PROTO_MEDIA_STATUS_COUNT   4U
+/** MEDIA_STATE controls: the buttons the session takes. */
+#define PROTO_MEDIA_CAN_PREVIOUS   0x01U
+#define PROTO_MEDIA_CAN_PLAY_PAUSE 0x02U
+#define PROTO_MEDIA_CAN_NEXT       0x04U
+#define PROTO_MEDIA_CONTROLS_MASK  0x07U
+/** MEDIA_STATE art_id meaning "no cover". */
+#define PROTO_NO_ART               0U
+/** Cover: square, RGB565 little endian, row by row from the top left. */
+#define PROTO_ART_SIZE             120U
+#define PROTO_ART_BYTES            (PROTO_ART_SIZE * PROTO_ART_SIZE * 2U) /* 28800 */
+/** ART_PART header bytes (art_id, index u16) and data bytes per part. */
+#define PROTO_ART_HEADER_BYTES     3U
+#define PROTO_ART_DATA_BYTES       (PROTO_MAX_PAYLOAD - PROTO_ART_HEADER_BYTES) /* 54 */
+/** Parts of one cover (ceil(28800 / 54)); the last holds 18 bytes. */
+#define PROTO_ART_PARTS            ((PROTO_ART_BYTES + PROTO_ART_DATA_BYTES - 1U) / PROTO_ART_DATA_BYTES) /* 534 */
 
 typedef enum
 {
@@ -86,9 +111,13 @@ typedef enum
     PROTO_CMD_DETAIL_PART     = 0x23, /**< host -> STM32, part of a detail record */
     PROTO_CMD_PROMPT_PART     = 0x24, /**< host -> STM32, part of a prompt record */
     PROTO_CMD_PROMPT_CLOSE    = 0x25, /**< host -> STM32 */
+    PROTO_CMD_MEDIA_PART      = 0x26, /**< host -> STM32, part of the media record (v4) */
+    PROTO_CMD_MEDIA_STATE     = 0x27, /**< host -> STM32 (v4) */
+    PROTO_CMD_ART_PART        = 0x28, /**< host -> STM32, part of a cover (v4) */
     PROTO_CMD_GET_CARDS       = 0x30, /**< STM32 -> host */
     PROTO_CMD_OPEN_DETAIL     = 0x31, /**< STM32 -> host */
     PROTO_CMD_ACTION          = 0x32, /**< STM32 -> host */
+    PROTO_CMD_GET_MEDIA       = 0x33, /**< STM32 -> host (v4) */
     PROTO_CMD_ERROR           = 0x7F  /**< either direction */
 } ProtoCommand;
 
@@ -119,7 +148,7 @@ typedef enum
 #define PROTO_TAB_COUNT          2U  /**< 0 all, 1 favorites */
 #define PROTO_MAX_SCREEN_TIMEOUT 60U /**< minutes; 0 = never */
 #define PROTO_LANGUAGE_COUNT     2U  /**< 0 Turkish, 1 English */
-#define PROTO_STARTUP_SCREEN_COUNT 2U /**< 0 Dashboard, 1 Audio (ADR-005) */
+#define PROTO_STARTUP_SCREEN_COUNT 3U /**< 0 Dashboard, 1 Audio (ADR-005), 2 Music (ADR-008) */
 #define PROTO_SETTINGS_BYTES     12U
 #define PROTO_DEFAULT_VOLUME_LIMIT 50U
 
@@ -196,7 +225,7 @@ typedef struct
     uint8_t language;        /**< < PROTO_LANGUAGE_COUNT */
     uint8_t volume_limit_on; /**< 0 or 1 */
     uint8_t volume_limit;    /**< 0 .. PROTO_MAX_VOLUME */
-    uint8_t startup_screen;  /**< < PROTO_STARTUP_SCREEN_COUNT (version 3) */
+    uint8_t startup_screen;  /**< < PROTO_STARTUP_SCREEN_COUNT (version 3; 2 Music: version 4) */
 } ProtoSettings;
 
 /** ACTION kinds. */
@@ -213,16 +242,35 @@ typedef enum
 #define PROTO_MEDIA_PLAY_PAUSE 2U
 #define PROTO_MEDIA_NEXT       3U
 
-/** CARD_PART, DETAIL_PART, PROMPT_PART: one part of a text record. */
+/** CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART: one part of a text record. */
 typedef struct
 {
-    uint8_t id;         /**< card slot (< PROTO_MAX_CARDS) or prompt id */
+    uint8_t id;         /**< card slot (< PROTO_MAX_CARDS), prompt id, or 0 (media) */
     uint8_t generation; /**< changes for every new version of the record */
     uint8_t part;       /**< 0 .. parts-1 */
     uint8_t parts;      /**< 1 .. the command's PROTO_*_MAX_PARTS */
     uint8_t len;        /**< bytes in data: PROTO_PART_DATA_BYTES except in the last part */
     uint8_t data[PROTO_PART_DATA_BYTES]; /**< UTF-8, no NUL, not terminated */
 } ProtoRecordPart;
+
+/** MEDIA_STATE payload (ADR-008). */
+typedef struct
+{
+    uint8_t  status;   /**< PROTO_MEDIA_STATUS_* */
+    uint8_t  controls; /**< PROTO_MEDIA_CAN_* */
+    uint8_t  art_id;   /**< PROTO_NO_ART, or 1..255: the cover sent in ART_PARTs */
+    uint32_t position; /**< seconds; <= duration when duration is not 0 */
+    uint32_t duration; /**< seconds; 0 = unknown */
+} ProtoMediaState;
+
+/** ART_PART payload: one part of a cover. */
+typedef struct
+{
+    uint8_t  art_id; /**< 1..255 */
+    uint16_t index;  /**< 0 .. PROTO_ART_PARTS-1 */
+    uint8_t  len;    /**< PROTO_ART_DATA_BYTES, or the rest in the last part */
+    uint8_t  data[PROTO_ART_DATA_BYTES];
+} ProtoArtPart;
 
 /** OPEN_DETAIL payload. */
 typedef struct
@@ -262,7 +310,9 @@ typedef struct
         uint8_t            muted;        /**< SET_MUTE, MUTE_CHANGED: 0 or 1 */
         ProtoError         error;        /**< ERROR */
         uint32_t           local_time;   /**< TIME: seconds since 1970-01-01 00:00 local time */
-        ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART */
+        ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART */
+        ProtoMediaState    media;        /**< MEDIA_STATE */
+        ProtoArtPart       art;          /**< ART_PART */
         uint8_t            slot;         /**< CARD_CLEAR */
         uint8_t            prompt_id;    /**< PROMPT_CLOSE */
         ProtoOpenDetail    open_detail;  /**< OPEN_DETAIL */
@@ -301,8 +351,8 @@ int Proto_SettingsValid(const ProtoSettings *settings);
 /* ------------------------------------------------------------ records */
 
 /**
- * Largest record of a part command (CARD_PART, DETAIL_PART, PROMPT_PART),
- * in bytes; 0 for any other command.
+ * Largest record of a part command (CARD_PART, DETAIL_PART, PROMPT_PART,
+ * MEDIA_PART), in bytes; 0 for any other command.
  */
 uint16_t Proto_RecordMaxBytes(uint8_t command);
 
@@ -359,6 +409,48 @@ void Proto_AssemblerReset(ProtoAssembler *asm_);
  * record). After PROTO_ASM_OVERFLOW it is idle too.
  */
 ProtoAsmResult Proto_AssemblerAdd(ProtoAssembler *asm_, const ProtoRecordPart *part);
+
+/* -------------------------------------------------------------- covers */
+
+/** Bytes in part @p index of a cover: PROTO_ART_DATA_BYTES, the rest in the
+ *  last part, 0 for an index beyond it. */
+uint8_t Proto_ArtPartBytes(uint16_t index);
+
+/**
+ * @brief  Fill @p out with part @p index of the cover @p art
+ *         (PROTO_ART_BYTES bytes; sender side).
+ * @return 1, or 0 if @p art_id is PROTO_NO_ART or @p index is not a part.
+ */
+int Proto_ArtPart(const uint8_t *art, uint8_t art_id, uint16_t index, ProtoArtPart *out);
+
+/**
+ * Collects the parts of one cover into a caller-owned buffer of
+ * PROTO_ART_BYTES bytes (receiver side). Parts of another art_id than the
+ * one set with Proto_ArtAssemblerStart are dropped.
+ */
+typedef struct
+{
+    uint8_t *buffer;   /**< PROTO_ART_BYTES bytes */
+    uint8_t  art_id;   /**< cover being collected; PROTO_NO_ART = none */
+    uint16_t count;    /**< parts received */
+    uint8_t  received[(PROTO_ART_PARTS + 7U) / 8U]; /**< bit n: part n arrived */
+} ProtoArtAssembler;
+
+/** Prepare @p asm_ with @p buffer (PROTO_ART_BYTES bytes); collects nothing. */
+void Proto_ArtAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer);
+
+/** Collect the cover @p art_id from now on (PROTO_NO_ART: none); parts
+ *  collected for another id are forgotten. The same id again: no change. */
+void Proto_ArtAssemblerStart(ProtoArtAssembler *asm_, uint8_t art_id);
+
+/**
+ * @brief  Add one decoded part.
+ * @return PROTO_ASM_PARTIAL, PROTO_ASM_COMPLETE (the cover is in the buffer;
+ *         the assembler then collects nothing until the next Start),
+ *         PROTO_ASM_DUPLICATE, or PROTO_ASM_OVERFLOW for a part of another
+ *         art_id or a bad part (dropped; parts collected so far are kept).
+ */
+ProtoAsmResult Proto_ArtAssemblerAdd(ProtoArtAssembler *asm_, const ProtoArtPart *part);
 
 #ifdef __cplusplus
 }

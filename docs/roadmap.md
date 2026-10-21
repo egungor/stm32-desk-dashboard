@@ -142,14 +142,21 @@ parallel after step 3.
 - Test release `v0.9.0-beta.2` after step 11: steps 1–11; the approval checks are in `docs/hardware.md`, "Pending hardware and Windows tests"
 - [ ] 12. Release v1.0.0 (#28)
   - [x] Release preparation: roadmap, `CLAUDE.md`, README and wiki sources describe the dashboard and the approvals (#28)
-  - [ ] The owner's further requests before v1.0.0 (each its own issue)
+  - [ ] The owner's further requests before v1.0.0 (each its own issue; below)
   - [ ] Spike runs on Windows (#24); ADR-007 "Spike results" and step 11's values updated
   - [ ] Beta checks (#22 and the approval row in `docs/hardware.md`); findings fixed
   - [ ] Tag `v1.0.0` on `main`; the installer and firmware attached by CI; README "Download" names v1.0.0
 
+Requests of 2026-10-21 before v1.0.0 (media first, then notifications):
+
+- [ ] Media 1. ADR-008 and protocol v4 — `MEDIA_PART`, `MEDIA_STATE`, `ART_PART` (120 × 120 RGB565 cover), `GET_MEDIA`, `startup_screen` 2 Music; codec tests (#30)
+- [ ] Media 2. Host — Windows media session (`Windows.Media.Control`, C++/WinRT), cover through WIC, `MediaService`, controls through the session (#31)
+- [ ] Media 3. Board — media strip icons (previous, play or pause by state, next), Music tab after the Dashboard (cover, texts, progress, controls) (#32)
+- [ ] Notifications 1. Spike — how the tray program can read Windows notifications (`UserNotificationListener` needs package identity) (#33)
+- [ ] Notifications 2. The fourth card, its list and a short pop-up on the board (#34)
+
 After v1:
 
-- [ ] Notifications (spike first), the fourth card
 - [ ] Windows settings window (GUI) for the host program: location, Claude API key and menu import, card order, Claude Code hook status (#6; UI technology needs an ADR)
 - [ ] Controls: microphone, lock, shortcuts
 - [ ] The title of the playing track on the media strip

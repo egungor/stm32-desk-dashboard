@@ -15,7 +15,7 @@ audio playback endpoint.
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ firmware/link (link_client.c)    │         │ App/HostController               │
-│   protocol v3, STM32 side        │         │   protocol v3, DeviceRegistry    │
+│   protocol v4, STM32 side        │         │   protocol v4, DeviceRegistry    │
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ App/link_port.c, App/usb_link.c  │◄───────►│ Platform/Windows/WinHidLink      │
@@ -77,7 +77,7 @@ Responsible for:
 | Module | Hardware dependent | Role |
 |---|---|---|
 | `ui/` | no (LVGL only) | Rail and tabs (`ui_shell.c`); Dashboard tab: clock, 2×2 cards, generic detail, media strip (`ui_dash.c`); Audio tab: device buttons, bottom strip (mute, volume slider, page arrows); waiting screen, settings, edit mode, notices |
-| `link/` | no (C, protocol codec) | `link_client.c`: protocol v3 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts. `dash_client.c`: dashboard records (cards, detail, prompt, `TIME`, actions; ADR-006, ADR-007) |
+| `link/` | no (C, protocol codec) | `link_client.c`: protocol v4 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts. `dash_client.c`: dashboard records (cards, detail, prompt, `TIME`, actions; ADR-006, ADR-007) |
 | `App/usb_link.c` | yes | Vendor HID class (ADR-003); the ISR only queues received frames |
 | `App/link_port.c` | yes | Connects USB, `link/` and `ui/` in the UI task; decodes each frame once and gives it to the audio or the dashboard client |
 | `App/ui_port.c` | yes | LVGL on the LTDC (two SDRAM framebuffers, swap on VBLANK) and the FT5336 |
@@ -92,8 +92,8 @@ default task); the USB interrupt only copies frames into a static queue.
 | Module | Windows dependent | Role |
 |---|---|---|
 | `Audio/DeviceRegistry` | no | Endpoints → session-local `device_index`, at most 32, names truncated to 48 bytes |
-| `App/HostController` | no | Protocol v3 audio commands, host side |
-| `App/DashController` | no | Protocol v3 dashboard records: card slots, details, actions, `TIME` (ADR-006) |
+| `App/HostController` | no | Protocol v4 audio commands, host side |
+| `App/DashController` | no | Protocol v4 dashboard records: card slots, details, actions, `TIME` (ADR-006) |
 | `App/FrameRouter` | no | Decodes each frame once; `0x20`–`0x3F` to `DashController`, the rest to `HostController` |
 | `App/MediaKeys` | no | Media strip `ACTION` (kind 2) → previous / play-pause / next behind `IMediaKeys` |
 | `App/HttpClient.h`, `App/BackgroundFetch` | no | `IHttpClient` (GET, POST); one GET at a time on a worker thread, result polled by the loop |
@@ -142,7 +142,7 @@ go to `docs/images/` once the UI has been checked on the board.
 ## Important design decisions
 
 - STM32 ↔ Windows: vendor USB HID, 64-byte reports, VID:PID `1209:0002`
-  (ADR-003); protocol v3 with 64-byte frames and CRC-16
+  (ADR-003); protocol v4 with 64-byte frames and CRC-16
   (`protocol/protocol.md`)
 - Host language: C++17
 - GUI: LVGL v9.5.0 (git submodule). The UI lives in `firmware/ui/`, depends
