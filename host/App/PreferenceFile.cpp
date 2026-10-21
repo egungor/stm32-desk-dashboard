@@ -10,7 +10,7 @@ namespace stm32_audio::host {
 
 namespace {
 
-constexpr const char* kHeader = "# stm32-audio-controller preferences";
+constexpr const char* kHeader = "# stm32-desk-dashboard preferences";
 constexpr const char* kVersion = "1";
 
 // Settings record fields by name, in protocol.md order.

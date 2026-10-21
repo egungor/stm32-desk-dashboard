@@ -10,8 +10,8 @@ namespace stm32_audio::host::win {
 namespace {
 
 const wchar_t kRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const wchar_t kValueName[] = L"STM32 Audio Controller";
-const wchar_t kMutexName[] = L"Local\\stm32-audio-controller-host";
+const wchar_t kValueName[] = L"STM32 Desk Dashboard";
+const wchar_t kMutexName[] = L"Local\\stm32-desk-dashboard-host";
 
 }  // namespace
 
@@ -34,7 +34,7 @@ std::wstring programDirectory()
 
 std::wstring trayProgramPath()
 {
-    return programDirectory() + L"stm32-audio-tray.exe";
+    return programDirectory() + L"dashboard-tray.exe";
 }
 
 bool startupEnabled(const std::wstring& exe)

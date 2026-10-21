@@ -21,7 +21,7 @@ WinPreferenceFile::WinPreferenceFile()
     if (n == 0 || n >= MAX_PATH) {
         return;
     }
-    dir_ = std::wstring(buffer) + L"\\stm32-audio-controller";
+    dir_ = std::wstring(buffer) + L"\\stm32-desk-dashboard";
     path_ = dir_ + L"\\preferences.txt";
 }
 

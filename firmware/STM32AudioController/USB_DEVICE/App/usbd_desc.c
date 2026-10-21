@@ -82,11 +82,11 @@
 #undef USBD_CONFIGURATION_STRING_FS
 #undef USBD_INTERFACE_STRING_FS
 #define USBD_VID                       0x1209
-#define USBD_PID_FS                    0x0001
-#define USBD_MANUFACTURER_STRING       "stm32-audio-controller"
-#define USBD_PRODUCT_STRING_FS         "STM32 Audio Controller"
-#define USBD_CONFIGURATION_STRING_FS   "Audio Controller Config"
-#define USBD_INTERFACE_STRING_FS       "Audio Controller HID"
+#define USBD_PID_FS                    0x0002  /* 0x0001: stm32-audio-controller */
+#define USBD_MANUFACTURER_STRING       "stm32-desk-dashboard"
+#define USBD_PRODUCT_STRING_FS         "STM32 Desk Dashboard"
+#define USBD_CONFIGURATION_STRING_FS   "Desk Dashboard Config"
+#define USBD_INTERFACE_STRING_FS       "Desk Dashboard HID"
 /* USER CODE END PRIVATE_DEFINES */
 
 /**

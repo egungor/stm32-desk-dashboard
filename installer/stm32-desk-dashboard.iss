@@ -1,39 +1,39 @@
 ﻿; Windows installer of the host programs (Inno Setup 6), issue #74.
 ;
 ; Per-user install, no administrator rights:
-;   %LOCALAPPDATA%\Programs\STM32 Audio Controller\
-;     stm32-audio-tray.exe   tray program (serves the controller)
-;     stm32-audio-host.exe   console tools (list, alias, run, startup, ...)
+;   %LOCALAPPDATA%\Programs\STM32 Desk Dashboard\
+;     dashboard-tray.exe   tray program (serves the controller)
+;     dashboard-host.exe   console tools (list, alias, run, startup, ...)
 ; Start menu: the tray program and the uninstaller.
 ; Task "Start with Windows" (checked): the same Run value the tray menu and
-; "stm32-audio-host startup on" write, so the tray menu shows it checked.
+; "dashboard-host startup on" write, so the tray menu shows it checked.
 ; After setup the tray program starts. Uninstall closes it and removes the
-; Run value; preferences in %APPDATA%\stm32-audio-controller are kept.
+; Run value; preferences in %APPDATA%\stm32-desk-dashboard are kept.
 ;
 ; Build (installer/README.md):
-;   iscc /DAppVersion=0.7.0 /DFileVersion=0.7.0.0 /DBinDir=<folder with the exes> stm32-audio-controller.iss
+;   iscc /DAppVersion=0.1.0 /DFileVersion=0.1.0.0 /DBinDir=<folder with the exes> stm32-desk-dashboard.iss
 
 #ifndef AppVersion
-  #define AppVersion "0.7.0-dev"
+  #define AppVersion "0.1.0-dev"
 #endif
 #ifndef FileVersion
-  #define FileVersion "0.7.0.0"
+  #define FileVersion "0.1.0.0"
 #endif
 #ifndef BinDir
   #define BinDir "..\build\host\Release"
 #endif
 
-#define AppName "STM32 Audio Controller"
-#define TrayExe "stm32-audio-tray.exe"
-#define HostExe "stm32-audio-host.exe"
+#define AppName "STM32 Desk Dashboard"
+#define TrayExe "dashboard-tray.exe"
+#define HostExe "dashboard-host.exe"
 
 [Setup]
-AppId={{99969F48-403E-4CA5-AD99-4E0DE31E915B}
+AppId={{5D2524A6-DD16-474E-9E10-45FC837639E7}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=egungor
-AppPublisherURL=https://github.com/egungor/stm32-audio-controller
+AppPublisherURL=https://github.com/egungor/stm32-desk-dashboard
 VersionInfoVersion={#FileVersion}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
@@ -43,8 +43,8 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputBaseFilename=stm32-audio-controller-setup-{#AppVersion}
-SetupIconFile=..\host\Platform\Windows\stm32-audio-tray.ico
+OutputBaseFilename=stm32-desk-dashboard-setup-{#AppVersion}
+SetupIconFile=..\host\Platform\Windows\dashboard-tray.ico
 UninstallDisplayIcon={app}\{#TrayExe}
 Compression=lzma2
 SolidCompression=yes
@@ -62,10 +62,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [CustomMessages]
 turkish.StartWithWindows=Windows açılınca başlat
 english.StartWithWindows=Start with Windows
-turkish.StartNow=STM32 Ses Kumandası'nı şimdi başlat
-english.StartNow=Start STM32 Audio Controller now
-turkish.TrayName=STM32 Ses Kumandası
-english.TrayName=STM32 Audio Controller
+turkish.StartNow=STM32 Masa Paneli'ni şimdi başlat
+english.StartNow=Start STM32 Desk Dashboard now
+turkish.TrayName=STM32 Masa Paneli
+english.TrayName=STM32 Desk Dashboard
 
 [Tasks]
 Name: "autostart"; Description: "{cm:StartWithWindows}"
@@ -81,7 +81,7 @@ Name: "{group}\{cm:UninstallProgram,{cm:TrayName}}"; Filename: "{uninstallexe}"
 
 [Registry]
 ; Same value name and quoting as WinStartup.cpp / Startup.cpp.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "STM32 Audio Controller"; ValueData: """{app}\{#TrayExe}"""; Tasks: autostart; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "STM32 Desk Dashboard"; ValueData: """{app}\{#TrayExe}"""; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#TrayExe}"; Description: "{cm:StartNow}"; Flags: nowait postinstall skipifsilent
@@ -113,5 +113,5 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and not WizardIsTaskSelected('autostart') then
-    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'STM32 Audio Controller');
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'STM32 Desk Dashboard');
 end;

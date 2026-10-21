@@ -10,7 +10,7 @@
 namespace stm32_audio::host {
 
 constexpr std::uint16_t kControllerVid = 0x1209;
-constexpr std::uint16_t kControllerPid = 0x0001;
+constexpr std::uint16_t kControllerPid = 0x0002;  // 0x0001 is stm32-audio-controller
 constexpr std::uint16_t kControllerUsagePage = 0xFF00;
 constexpr std::uint16_t kControllerUsage = 0x0001;
 // Windows report length: report ID byte (always 0) + one protocol frame.

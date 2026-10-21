@@ -69,7 +69,7 @@ const char* trayText(TrayText id, std::uint8_t language)
 
     switch (id) {
     case TrayText::Title:
-        return english ? "STM32 Audio Controller" : "STM32 Ses Kumandas\xC4\xB1";
+        return english ? "STM32 Desk Dashboard" : "STM32 Masa Paneli";
     case TrayText::Waiting:
         return english ? "Waiting for the controller" : "Kumanda bekleniyor";
     case TrayText::Connected:
@@ -83,10 +83,10 @@ const char* trayText(TrayText id, std::uint8_t language)
     case TrayText::Exit:
         return english ? "Exit" : "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F";
     case TrayText::AlreadyRunning:
-        return english ? "The controller is already served by another program (stm32-audio-tray or "
-                         "stm32-audio-host run)."
+        return english ? "The controller is already served by another program (dashboard-tray or "
+                         "dashboard-host run)."
                        : "Kumanda zaten ba\xC5\x9Fka bir program taraf\xC4\xB1ndan kullan\xC4\xB1l\xC4\xB1yor "
-                         "(stm32-audio-tray ya da stm32-audio-host run).";
+                         "(dashboard-tray ya da dashboard-host run).";
     case TrayText::StartupFailed:
         return english ? "The start with Windows setting could not be changed."
                        : "Windows ile ba\xC5\x9Flatma ayar\xC4\xB1 de\xC4\x9Fi\xC5\x9Ftirilemedi.";

@@ -1,13 +1,13 @@
-// stm32-audio-tray: the host as a system tray program (issue #74).
+// dashboard-tray: the host as a system tray program (issue #74).
 //
-// Serves the controller like "stm32-audio-host run", without a console
+// Serves the controller like "dashboard-host run", without a console
 // window: the service loop (HostService) runs on a worker thread and logs
-// to %APPDATA%\stm32-audio-controller\host.log; the main thread owns a
+// to %APPDATA%\stm32-desk-dashboard\host.log; the main thread owns a
 // hidden window, the tray icon and its menu:
 //
 //   <state>                     "Kumanda bağlı" / "Kumanda bekleniyor" (greyed)
 //   Windows ile başlat          check mark; HKCU\...\Run (WinStartup)
-//   Ayarlar klasörünü aç        %APPDATA%\stm32-audio-controller
+//   Ayarlar klasörünü aç        %APPDATA%\stm32-desk-dashboard
 //   Günlüğü aç                  host.log
 //   Çıkış
 //
@@ -60,7 +60,7 @@ struct App {
     std::thread worker;
     std::atomic<bool> connected{false};
     std::atomic<std::uint8_t> language{0};
-    std::wstring dir;       // %APPDATA%\stm32-audio-controller
+    std::wstring dir;       // %APPDATA%\stm32-desk-dashboard
     std::wstring logPath;   // ...\host.log
     FILE* log = nullptr;    // written by the worker only (and before/after it)
 };
@@ -283,19 +283,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     win::WinPreferenceFile prefs;
     g_app.dir = prefs.directory();
     openLog();
-    logLine("stm32-audio-tray started.");
+    logLine("dashboard-tray started.");
 
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
     wc.lpfnWndProc = windowProc;
     wc.hInstance = instance;
-    wc.lpszClassName = L"stm32-audio-tray";
+    wc.lpszClassName = L"dashboard-tray";
     if (RegisterClassExW(&wc) == 0) {
         return 1;
     }
     // A hidden top-level window (not message-only: those miss the
     // TaskbarCreated broadcast).
-    g_app.window = CreateWindowExW(0, wc.lpszClassName, L"stm32-audio-tray", WS_OVERLAPPED, 0, 0, 0, 0, nullptr,
+    g_app.window = CreateWindowExW(0, wc.lpszClassName, L"dashboard-tray", WS_OVERLAPPED, 0, 0, 0, 0, nullptr,
                                    nullptr, instance, nullptr);
     if (g_app.window == nullptr) {
         return 1;
@@ -311,7 +311,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
 
     stopWorker();
-    logLine("stm32-audio-tray stopped.");
+    logLine("dashboard-tray stopped.");
     if (g_app.log != nullptr) {
         std::fclose(g_app.log);
     }

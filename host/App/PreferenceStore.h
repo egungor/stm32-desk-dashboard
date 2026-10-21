@@ -4,7 +4,7 @@
 // - markChanged() when the STM32 changed something; poll() writes the
 //   file at most once per kSaveIntervalMs (changes come in bursts);
 // - poll() also notices, once per kCheckIntervalMs, that another program
-//   (e.g. "stm32-audio-host alias") replaced the file, and reloads it. A
+//   (e.g. "dashboard-host alias") replaced the file, and reloads it. A
 //   change from the file wins over unsaved changes from the STM32.
 //
 // Time is passed in (milliseconds) so tests can drive it. Platform

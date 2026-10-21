@@ -1,6 +1,6 @@
 // The "run" loop: serve the controller over USB HID until Quit (issue #74).
-// Shared by the console program (stm32-audio-host run, lines on stdout)
-// and the tray program (stm32-audio-tray, lines in host.log).
+// Shared by the console program (dashboard-host run, lines on stdout)
+// and the tray program (dashboard-tray, lines in host.log).
 #pragma once
 
 #include <cstdint>

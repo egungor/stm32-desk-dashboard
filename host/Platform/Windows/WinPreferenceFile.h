@@ -1,5 +1,5 @@
 // IPreferenceFile on the Windows file system:
-// %APPDATA%\stm32-audio-controller\preferences.txt, replaced atomically
+// %APPDATA%\stm32-desk-dashboard\preferences.txt, replaced atomically
 // (write preferences.tmp, then MoveFileEx with MOVEFILE_REPLACE_EXISTING).
 // An unreadable file is copied to preferences.bad before it is replaced.
 #pragma once
@@ -18,7 +18,7 @@ public:
 
     bool ok() const { return !dir_.empty(); }
 
-    // %APPDATA%\stm32-audio-controller (no trailing backslash), or "" if
+    // %APPDATA%\stm32-desk-dashboard (no trailing backslash), or "" if
     // unknown. It may not exist yet. The tray program keeps host.log here.
     const std::wstring& directory() const { return dir_; }
 
