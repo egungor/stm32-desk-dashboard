@@ -35,6 +35,7 @@
 #include "Preferences.h"
 #include "SequencedSink.h"
 #include "Startup.h"
+#include "ToastText.h"
 #include "VolumeLimit.h"
 #include "BackgroundFetch.h"
 #include "ApprovalService.h"
@@ -2979,6 +2980,31 @@ void testMediaServiceActions()
     CHECK(describeMessage(s) == "GET_MEDIA seq=0");
 }
 
+// ------------------------------------------------- notification spike (#33)
+
+void testToastText()
+{
+    const char* xml =
+        "<toast launch=\"x\"><visual><binding template=\"ToastGeneric\">"
+        "<text id=\"1\">Ay&#351;e</text>"
+        "<text hint-maxLines=\"2\">  Yar&#x131;n   toplant&#305;\n var &amp; &lt;acil&gt;  </text>"
+        "<text></text><text/><textBox>no</textBox>"
+        "<image src=\"a.png\"/></binding></visual>"
+        "<actions><action content=\"OK\"/></actions></toast>";
+    const std::vector<std::string> t = toastTexts(xml);
+    CHECK(t.size() == 2U);
+    CHECK(t.size() == 2U && t[0] == "Ay\xC5\x9F" "e");
+    CHECK(t.size() == 2U && t[1] == "Yar\xC4\xB1n toplant\xC4\xB1 var & <acil>");
+    CHECK(toastTexts("").empty());
+    CHECK(toastTexts("<text>unterminated").empty());
+    CHECK(toastTexts("<toast><text>&quot;a&apos; &unknown; &#x1F600;</text></toast>") ==
+          std::vector<std::string>{"\"a' &unknown; \xF0\x9F\x98\x80"});
+
+    // 2026-10-22 00:00:00 UTC = 1792627200 s since 1970.
+    CHECK(unixFromFiletime((1792627200LL + 11644473600LL) * 10000000LL) == 1792627200LL);
+    CHECK(unixFromFiletime(0) == 0);
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -3054,6 +3080,7 @@ int main()
     testMediaServiceConnect();
     testMediaServiceChanges();
     testMediaServiceActions();
+    testToastText();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

@@ -51,6 +51,8 @@ host/
 │   ├── MediaSession.h      # IMediaSession: snapshot (texts, status, position, cover), commands
 │   ├── MediaCover.*        # square crop, BGRA -> RGB565, app name from the AppUserModelID
 │   └── MediaService.*      # MEDIA_PART / MEDIA_STATE / ART_PART, controls to the session or keys
+├── Notify/                 # notification spike (#33)
+│   └── ToastText.*         # <text> lines of a toast payload, FILETIME -> Unix time
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
@@ -66,6 +68,7 @@ host/
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
 │   ├── WinMediaSession.*   # IMediaSession on Windows.Media.Control (C++/WinRT), cover through WIC
+│   ├── WinNotificationProbe.* # spike #33: UserNotificationListener and wpndatabase.db (winsqlite3)
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
 │   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
@@ -150,6 +153,10 @@ dashboard-host media             what plays in the Windows media session: app,
                                    texts, status, position, controls, cover
 dashboard-host media previous|play-pause|next
                                    send that control to the session, then print
+dashboard-host notify probe [n]  notification spike (#33): the notification
+                                   listener and the notification database; the
+                                   last n toasts (docs/notification-spike.md)
+dashboard-host notify watch      print new toasts as they arrive (Ctrl+C stops)
 dashboard-host menu              print the menu card and the day's detail
 dashboard-host menu import <image> [<image> ...]
                                    read menu images with the Claude API into
