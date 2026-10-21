@@ -104,6 +104,11 @@ main thread pops them and calls `HostController`.
 
 ## UI
 
+The main screen has a 56 px rail on the left (Dashboard and Audio tabs,
+settings, connection mark) and the shown tab beside it, 424 × 272
+(ADR-005, `firmware/ui/ui_shell.c`). The Dashboard tab is a placeholder
+until the cards of ADR-006. The Audio tab, layout A:
+
 Four large device buttons per page (2×2), each with an icon and the
 device name; the active device is marked by colour and text, a device
 waiting for the host's confirmation by a pending mark. Arrows switch pages

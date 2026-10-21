@@ -26,13 +26,13 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 3 (#8): protocol version 3 (ADR-006) in
-`protocol/`; firmware and host speak v3 but use only the audio commands
-so far. Done: step 1 (the audio controller renamed, USB PID `1209:0002`)
-and step 2 (ADR-005 tabbed shell, ADR-006 cards and protocol v3, ADR-007
-Claude Code approvals). The v1 steps
-and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the current task asks
-for it.
+Dashboard v1, step 4 (#10): the tabbed shell on the board (ADR-005):
+rail with Dashboard (placeholder) and Audio tabs, settings in sections
+with the startup screen. Done: step 1 (the audio controller renamed, USB
+PID `1209:0002`), step 2 (ADR-005, ADR-006, ADR-007) and step 3 (protocol
+v3; firmware and host use only its audio commands so far). The v1 steps
+and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start
+a later step unless the current task asks for it.
 
 Inherited open work: the M7 board and Windows checks listed in
 `docs/hardware.md`, "Pending hardware and Windows tests".
