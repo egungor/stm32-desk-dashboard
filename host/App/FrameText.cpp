@@ -56,6 +56,14 @@ const char* commandName(std::uint8_t command)
         return "OPEN_DETAIL";
     case PROTO_CMD_ACTION:
         return "ACTION";
+    case PROTO_CMD_MEDIA_PART:
+        return "MEDIA_PART";
+    case PROTO_CMD_MEDIA_STATE:
+        return "MEDIA_STATE";
+    case PROTO_CMD_ART_PART:
+        return "ART_PART";
+    case PROTO_CMD_GET_MEDIA:
+        return "GET_MEDIA";
     case PROTO_CMD_ERROR:
         return "ERROR";
     default:
@@ -170,7 +178,8 @@ std::string describeMessage(const ProtoMessage& msg)
         break;
     case PROTO_CMD_CARD_PART:
     case PROTO_CMD_DETAIL_PART:
-    case PROTO_CMD_PROMPT_PART: {
+    case PROTO_CMD_PROMPT_PART:
+    case PROTO_CMD_MEDIA_PART: {
         const ProtoRecordPart& p = msg.u.part;
         out += " id=" + std::to_string(p.id) + " gen=" + std::to_string(p.generation) + " part=" +
                std::to_string(p.part + 1U) + "/" + std::to_string(p.parts) + " bytes=" + std::to_string(p.len);
@@ -188,6 +197,19 @@ std::string describeMessage(const ProtoMessage& msg)
     case PROTO_CMD_ACTION:
         out += " kind=" + std::to_string(msg.u.action.kind) + " ref=" + std::to_string(msg.u.action.ref) +
                " action=" + std::to_string(msg.u.action.action);
+        break;
+    case PROTO_CMD_MEDIA_STATE: {
+        static const char* const status[] = {"none", "stopped", "playing", "paused"};
+        const ProtoMediaState& m = msg.u.media;
+        out += " status=";
+        out += m.status < PROTO_MEDIA_STATUS_COUNT ? status[m.status] : "?";
+        out += " controls=" + std::to_string(m.controls) + " art=" + std::to_string(m.art_id) +
+               " pos=" + std::to_string(m.position) + "/" + std::to_string(m.duration);
+        break;
+    }
+    case PROTO_CMD_ART_PART:
+        out += " art=" + std::to_string(msg.u.art.art_id) + " part=" + std::to_string(msg.u.art.index + 1U) + "/" +
+               std::to_string(PROTO_ART_PARTS);
         break;
     case PROTO_CMD_DEVICE_CHANGED:
         out += " index=" + indexText(msg.u.device_index);

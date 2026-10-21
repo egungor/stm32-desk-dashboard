@@ -5,6 +5,16 @@
 Accepted (issue #30). Protocol, codec and tests: #30. Host (Windows
 media session): #31. Board (media strip, Music tab): #32.
 
+Notes from #31 (host): the reader polls every 500 ms (150 ms after a
+command) rather than subscribing to the session's events, which keeps
+the WinRT code small; a change wakes the service loop
+(`HostEvent::MediaChanged`). The cover goes out 8 parts per turn of the
+service loop, which does not wait while parts are left. A thumbnail that
+comes after the title is read again for up to 10 polls; a cover that
+arrives late gets its own `art_id`. While a track changes (`Changing`)
+the last status is kept, so the play / pause icon does not flicker.
+`host.log` shows the first and last `ART_PART` of a cover only.
+
 ## Context
 
 The owner's requests of 2026-10-21, before v1.0.0:

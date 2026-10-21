@@ -1,5 +1,5 @@
 // Splits the frames from the STM32 between the audio and the dashboard
-// side of protocol v3 (ADR-006, "Routing and sequence numbers"): each
+// side of protocol v4 (ADR-006, "Routing and sequence numbers"): each
 // frame is decoded once; commands 0x20..0x3F go to DashController, the
 // others to HostController; an ERROR goes by its ref_command. Invalid
 // frames are answered here with ERROR (never an ERROR with an ERROR).

@@ -96,6 +96,8 @@ default task); the USB interrupt only copies frames into a static queue.
 | `App/DashController` | no | Protocol v4 dashboard records: card slots, details, actions, `TIME` (ADR-006) |
 | `App/FrameRouter` | no | Decodes each frame once; `0x20`–`0x3F` to `DashController`, the rest to `HostController` |
 | `App/MediaKeys` | no | Media strip `ACTION` (kind 2) → previous / play-pause / next behind `IMediaKeys` |
+| `Media/MediaService` | no | Now playing (ADR-008): `MEDIA_PART`, `MEDIA_STATE`, the cover's `ART_PART`s; controls to `IMediaSession`, else `IMediaKeys` |
+| `Media/MediaCover` | no | Square crop, BGRA → RGB565, app name of a media session |
 | `App/HttpClient.h`, `App/BackgroundFetch` | no | `IHttpClient` (GET, POST); one GET at a time on a worker thread, result polled by the loop |
 | `Menu/MenuData`, `MenuImport` | no | Month files `menu-YYYY-MM.json`, merge by date; menu images → Claude API request and answer (nlohmann/json) |
 | `Hook/ApprovalService` | no | Claude Code requests: queue, prompt record (cut rule), timeouts, `ACTION` kind 1, card slot 3 (ADR-007) |
@@ -108,6 +110,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Hid/HidMatch.h` | no | Which HID interface is the controller |
 | `Platform/Windows/WinAudioSystem` | yes | `IAudioSystem` on Core Audio; default switching through `IPolicyConfig` (ADR-002) |
 | `Platform/Windows/WinMediaKeys` | yes | `IMediaKeys`: one key down and up through `SendInput` (`VK_MEDIA_PREV_TRACK`, `VK_MEDIA_PLAY_PAUSE`, `VK_MEDIA_NEXT_TRACK`) |
+| `Platform/Windows/WinMediaSession` | yes | `IMediaSession` on `Windows.Media.Control` (C++/WinRT) on a worker thread; thumbnail → 120 × 120 RGB565 with WIC |
 | `Platform/Windows/WinHookPipe` | yes | Named pipe server for `dashboard-host hook permission`, current user only; requests into `EventQueue` |
 | `Platform/Windows/WinHttpClient` | yes | `IHttpClient` on WinHTTP (HTTPS, system proxy) |
 | `Platform/Windows/WinMenuImport` | yes | Menu import from image files (console and tray); month files in `%APPDATA%` |

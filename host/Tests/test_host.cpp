@@ -22,7 +22,10 @@
 #include "FrameText.h"
 #include "HidMatch.h"
 #include "HostController.h"
+#include "MediaCover.h"
 #include "MediaKeys.h"
+#include "MediaService.h"
+#include "MediaSession.h"
 #include "MenuData.h"
 #include "MenuImport.h"
 #include "MenuService.h"
@@ -2631,6 +2634,351 @@ void testApprovalService()
     CHECK(!logs.empty());
 }
 
+// ------------------------------------------------------------ now playing
+
+void testMediaCover()
+{
+    SquareCrop c = centerSquare(300, 200);
+    CHECK(c.x == 50U && c.y == 0U && c.size == 200U);
+    c = centerSquare(120, 160);
+    CHECK(c.x == 0U && c.y == 20U && c.size == 120U);
+    c = centerSquare(0, 10);
+    CHECK(c.size == 0U);
+
+    // B, G, R, A -> RGB565 little endian.
+    const std::uint8_t px[] = {
+        0x00, 0x00, 0xFF, 0xFF,  // red   -> 0xF800
+        0x00, 0xFF, 0x00, 0x80,  // green -> 0x07E0 (alpha ignored)
+        0xFF, 0x00, 0x00, 0x00,  // blue  -> 0x001F
+        0xFF, 0xFF, 0xFF, 0xFF,  // white -> 0xFFFF
+        0x08, 0x04, 0x10, 0xFF,  // r=0x10 g=0x04 b=0x08 -> (2<<11)|(1<<5)|1 = 0x1021
+    };
+    const std::vector<std::uint8_t> out = rgb565FromBgra(px, sizeof(px));
+    const std::vector<std::uint8_t> expected = {0x00, 0xF8, 0xE0, 0x07, 0x1F, 0x00, 0xFF, 0xFF, 0x21, 0x10};
+    CHECK(out == expected);
+    CHECK(rgb565FromBgra(px, 3).empty());
+    CHECK(rgb565FromBgra(nullptr, 4).empty());
+
+    CHECK(mediaAppName("Spotify.exe") == "Spotify");
+    CHECK(mediaAppName("C:\\Program Files\\Spotify\\Spotify.exe") == "Spotify");
+    CHECK(mediaAppName("chrome") == "Chrome");
+    CHECK(mediaAppName("MSEdge") == "Edge");
+    CHECK(mediaAppName("308046B0AF4A39CB") == "Firefox");
+    CHECK(mediaAppName("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic") == "Media Player");
+    CHECK(mediaAppName("Contoso.Player_abc123!App") == "App");
+    CHECK(mediaAppName("myplayer.exe") == "Myplayer");
+    CHECK(mediaAppName("") == "");
+}
+
+struct FakeMediaSession : IMediaSession {
+    MediaSnapshot snap;
+    std::vector<MediaKey> commands;
+    bool ok = true;
+    MediaSnapshot snapshot() const override { return snap; }
+    bool command(MediaKey key) override
+    {
+        commands.push_back(key);
+        return ok;
+    }
+};
+
+std::shared_ptr<const std::vector<std::uint8_t>> testCover(std::uint8_t seed)
+{
+    auto cover = std::make_shared<std::vector<std::uint8_t>>(PROTO_ART_BYTES);
+    for (std::size_t i = 0; i < cover->size(); ++i) {
+        (*cover)[i] = static_cast<std::uint8_t>(i * 3U + seed);
+    }
+    return cover;
+}
+
+struct MediaRig {
+    FakeSink sink;
+    FakeMediaSession session;
+    FakeMediaKeys keys;
+    MediaService media{sink, session, keys};
+
+    std::size_t count(std::uint8_t command) const
+    {
+        std::size_t n = 0;
+        for (const ProtoMessage& m : sink.sent) {
+            n += m.command == command ? 1U : 0U;
+        }
+        return n;
+    }
+    std::optional<ProtoMediaState> lastState() const
+    {
+        std::optional<ProtoMediaState> s;
+        for (const ProtoMessage& m : sink.sent) {
+            if (m.command == PROTO_CMD_MEDIA_STATE) {
+                s = m.u.media;
+            }
+        }
+        return s;
+    }
+    // Every tick until the cover is out (at most @p ticks).
+    void drainArt(std::uint64_t nowMs, int ticks = 200)
+    {
+        while (media.sendingArt() && ticks-- > 0) {
+            media.onTick(nowMs);
+        }
+    }
+};
+
+void testMediaServiceConnect()
+{
+    MediaRig r;
+    r.session.snap.status = PROTO_MEDIA_STATUS_PLAYING;
+    r.session.snap.controls = PROTO_MEDIA_CAN_PREVIOUS | PROTO_MEDIA_CAN_PLAY_PAUSE | PROTO_MEDIA_CAN_NEXT;
+    r.session.snap.title = "Şarkı";
+    r.session.snap.artist = "Sanatçı";
+    r.session.snap.album = "Albüm";
+    r.session.snap.app = "Spotify";
+    r.session.snap.positionS = 10;
+    r.session.snap.durationS = 200;
+    r.session.snap.sampledAtMs = 1000;
+    r.session.snap.coverVersion = 1;
+    r.session.snap.cover = testCover(1);
+
+    // Nothing before the board is connected.
+    r.media.onTick(1000);
+    CHECK(r.sink.sent.empty());
+    CHECK(!r.media.sendingArt());
+
+    // Connect: the record, the state, then the first cover parts.
+    r.media.onConnected(3500);
+    CHECK(!r.sink.sent.empty() && r.sink.sent.front().command == PROTO_CMD_MEDIA_PART);
+    std::string record;
+    std::size_t i = 0;
+    for (; i < r.sink.sent.size() && r.sink.sent[i].command == PROTO_CMD_MEDIA_PART; ++i) {
+        const ProtoRecordPart& part = r.sink.sent[i].u.part;
+        CHECK(part.id == 0U);
+        record.append(reinterpret_cast<const char*>(part.data), part.len);
+    }
+    CHECK(record == recordLine({"Şarkı", "Sanatçı", "Albüm", "Spotify"}));
+    CHECK(i < r.sink.sent.size() && r.sink.sent[i].command == PROTO_CMD_MEDIA_STATE);
+    const ProtoMediaState st = r.sink.sent[i].u.media;
+    CHECK(st.status == PROTO_MEDIA_STATUS_PLAYING && st.controls == 7U);
+    CHECK(st.position == 12U && st.duration == 200U);  // 10 s + 2.5 s since the sample
+    CHECK(st.art_id != PROTO_NO_ART);
+    CHECK(r.count(PROTO_CMD_ART_PART) == MediaService::kArtPartsPerTick);
+    CHECK(r.media.sendingArt());
+
+    // The cover follows a few parts per tick, in order, complete.
+    r.drainArt(3600);
+    CHECK(!r.media.sendingArt());
+    CHECK(r.count(PROTO_CMD_ART_PART) == PROTO_ART_PARTS);
+    static std::uint8_t got[PROTO_ART_BYTES];
+    ProtoArtAssembler a;
+    Proto_ArtAssemblerInit(&a, got);
+    Proto_ArtAssemblerStart(&a, st.art_id);
+    ProtoAsmResult last = PROTO_ASM_PARTIAL;
+    for (const ProtoMessage& m : r.sink.sent) {
+        if (m.command == PROTO_CMD_ART_PART) {
+            last = Proto_ArtAssemblerAdd(&a, &m.u.art);
+        }
+    }
+    CHECK(last == PROTO_ASM_COMPLETE);
+    CHECK(std::memcmp(got, r.session.snap.cover->data(), PROTO_ART_BYTES) == 0);
+    CHECK(r.media.stats().coversSent == 1U);
+
+    // Steady playback: nothing new until the 30 s refresh.
+    r.sink.sent.clear();
+    r.media.onTick(10000);
+    CHECK(r.sink.sent.empty());
+    r.media.onTick(3500 + MediaService::kStateIntervalMs);
+    CHECK(r.count(PROTO_CMD_MEDIA_STATE) == 1U && r.sink.sent.size() == 1U);
+
+    // GET_MEDIA sends everything again, the same cover id.
+    r.sink.sent.clear();
+    r.media.onRequest(40000);
+    CHECK(r.count(PROTO_CMD_MEDIA_PART) >= 1U && r.count(PROTO_CMD_MEDIA_STATE) == 1U);
+    CHECK(r.lastState()->art_id == st.art_id);
+    r.drainArt(40000);
+    CHECK(r.count(PROTO_CMD_ART_PART) == PROTO_ART_PARTS);
+
+    // Disconnected: nothing, also no cover.
+    r.media.onDisconnected();
+    r.sink.sent.clear();
+    r.session.snap.title = "Başka";
+    r.media.onTick(41000);
+    CHECK(r.sink.sent.empty() && !r.media.sendingArt());
+}
+
+void testMediaServiceChanges()
+{
+    MediaRig r;
+    r.session.snap.status = PROTO_MEDIA_STATUS_PAUSED;
+    r.session.snap.title = "A";
+    r.session.snap.positionS = 30;
+    r.session.snap.durationS = 100;
+    r.session.snap.sampledAtMs = 0;
+    r.media.onConnected(0);
+    CHECK(r.lastState()->status == PROTO_MEDIA_STATUS_PAUSED && r.lastState()->art_id == PROTO_NO_ART);
+    CHECK(!r.media.sendingArt());
+
+    // Paused: the position does not move, nothing is sent.
+    r.sink.sent.clear();
+    r.media.onTick(60000);
+    CHECK(r.sink.sent.empty());
+
+    // Play: a new state at once.
+    r.session.snap.status = PROTO_MEDIA_STATUS_PLAYING;
+    r.session.snap.sampledAtMs = 60000;
+    r.media.onTick(60000);
+    CHECK(r.count(PROTO_CMD_MEDIA_STATE) == 1U && r.count(PROTO_CMD_MEDIA_PART) == 0U);
+    CHECK(r.lastState()->status == PROTO_MEDIA_STATUS_PLAYING && r.lastState()->position == 30U);
+
+    // The reader's position follows the clock: no state.
+    r.sink.sent.clear();
+    r.session.snap.positionS = 35;
+    r.session.snap.sampledAtMs = 65000;
+    r.media.onTick(65500);
+    CHECK(r.sink.sent.empty());
+
+    // A seek (more than 2 s off): a state.
+    r.session.snap.positionS = 80;
+    r.session.snap.sampledAtMs = 66000;
+    r.media.onTick(66000);
+    CHECK(r.count(PROTO_CMD_MEDIA_STATE) == 1U && r.lastState()->position == 80U);
+
+    // Counting past the end stops at the duration.
+    r.sink.sent.clear();
+    r.session.snap.positionS = 99;
+    r.session.snap.sampledAtMs = 85000;
+    r.media.onTick(95000);  // 99 + 10 s
+    CHECK(r.sink.sent.empty() || r.lastState()->position <= 100U);
+
+    // New track with a cover: the record, the state with a new cover id, the cover.
+    r.sink.sent.clear();
+    r.session.snap.title = "B";
+    r.session.snap.positionS = 0;
+    r.session.snap.sampledAtMs = 96000;
+    r.session.snap.coverVersion = 5;
+    r.session.snap.cover = testCover(2);
+    r.media.onTick(96000);
+    CHECK(r.count(PROTO_CMD_MEDIA_PART) == 1U && r.count(PROTO_CMD_MEDIA_STATE) == 1U);
+    CHECK(r.sink.sent.front().command == PROTO_CMD_MEDIA_PART);
+    const std::uint8_t first = r.lastState()->art_id;
+    CHECK(first != PROTO_NO_ART && r.media.sendingArt());
+
+    // Another cover while the first is being sent: a new id, sent from part 0.
+    r.session.snap.coverVersion = 6;
+    r.session.snap.cover = testCover(3);
+    r.sink.sent.clear();
+    r.media.onTick(96100);
+    CHECK(r.lastState()->art_id != first && r.lastState()->art_id != PROTO_NO_ART);
+    bool fromZero = false;
+    for (const ProtoMessage& m : r.sink.sent) {
+        if (m.command == PROTO_CMD_ART_PART) {
+            fromZero = m.u.art.index == 0U && m.u.art.art_id == r.lastState()->art_id;
+            break;
+        }
+    }
+    CHECK(fromZero);
+
+    // A track without a cover: art_id 0, the cover stops.
+    r.session.snap.coverVersion = 7;
+    r.session.snap.cover.reset();
+    r.sink.sent.clear();
+    r.media.onTick(96200);
+    CHECK(r.lastState()->art_id == PROTO_NO_ART);
+    CHECK(r.count(PROTO_CMD_ART_PART) == 0U && !r.media.sendingArt());
+
+    // No session: status none.
+    r.session.snap = MediaSnapshot{};
+    r.session.snap.coverVersion = 8;
+    r.sink.sent.clear();
+    r.media.onTick(97000);
+    CHECK(r.lastState()->status == PROTO_MEDIA_STATUS_NONE);
+    CHECK(r.media.stats().sendFailures == 0U);
+
+    // Cover ids run 1..255 and skip 0.
+    MediaRig ids;
+    ids.media.onConnected(0);
+    std::uint8_t previous = 0;
+    bool neverZero = true;
+    for (std::uint32_t v = 1; v <= 300; ++v) {
+        ids.session.snap.coverVersion = v;
+        ids.session.snap.cover = testCover(0);
+        ids.media.onTick(v);
+        neverZero = neverZero && ids.media.artId() != PROTO_NO_ART && ids.media.artId() != previous;
+        previous = ids.media.artId();
+    }
+    CHECK(neverZero);
+}
+
+void testMediaServiceActions()
+{
+    MediaRig r;
+    ProtoAction a{};
+    a.kind = PROTO_ACTION_MEDIA;
+    a.action = PROTO_MEDIA_NEXT;
+
+    // No session: the media keys.
+    CHECK(r.media.onAction(a));
+    CHECK(r.keys.pressed.size() == 1U && r.keys.pressed[0] == MediaKey::Next && r.session.commands.empty());
+
+    // A session: its command, no key.
+    r.session.snap.status = PROTO_MEDIA_STATUS_PAUSED;
+    a.action = PROTO_MEDIA_PLAY_PAUSE;
+    CHECK(r.media.onAction(a));
+    CHECK(r.session.commands.size() == 1U && r.session.commands[0] == MediaKey::PlayPause);
+    CHECK(r.keys.pressed.size() == 1U);
+
+    // The session refuses: the key.
+    r.session.ok = false;
+    a.action = PROTO_MEDIA_PREVIOUS;
+    CHECK(r.media.onAction(a));
+    CHECK(r.keys.pressed.size() == 2U && r.keys.pressed[1] == MediaKey::Previous);
+
+    // Not the media strip, or an unknown action: false.
+    a.kind = PROTO_ACTION_PROMPT;
+    CHECK(!r.media.onAction(a));
+    a.kind = PROTO_ACTION_MEDIA;
+    a.action = 9;
+    CHECK(!r.media.onAction(a));
+
+    // GET_MEDIA through DashController: the handler, or ERROR without one.
+    DashRig d;
+    d.dash.onConnected();
+    d.sink.sent.clear();
+    d.dash.onMessage(dashMessage(PROTO_CMD_GET_MEDIA, 4));
+    ProtoMessage m = d.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.code == PROTO_ERROR_OPERATION_FAILED &&
+          m.u.error.ref_command == PROTO_CMD_GET_MEDIA);
+    int requests = 0;
+    d.dash.setMediaRequestHandler([&requests] { ++requests; });
+    d.dash.onMessage(dashMessage(PROTO_CMD_GET_MEDIA, 5));
+    CHECK(requests == 1 && d.sink.sent.empty());
+
+    // The router sends GET_MEDIA to the dashboard side.
+    CHECK(FrameRouter::isDashboardCommand(PROTO_CMD_GET_MEDIA));
+
+    // MediaChanged is merged like the other state events.
+    EventQueue q;
+    q.push(HostEvent::MediaChanged);
+    q.push(HostEvent::MediaChanged);
+    CHECK(q.size() == 1U);
+
+    // Log lines.
+    ProtoMessage s{};
+    s.command = PROTO_CMD_MEDIA_STATE;
+    s.u.media.status = PROTO_MEDIA_STATUS_PLAYING;
+    s.u.media.controls = 7;
+    s.u.media.art_id = 3;
+    s.u.media.position = 12;
+    s.u.media.duration = 200;
+    CHECK(describeMessage(s) == "MEDIA_STATE seq=0 status=playing controls=7 art=3 pos=12/200");
+    s = ProtoMessage{};
+    s.command = PROTO_CMD_ART_PART;
+    s.u.art.art_id = 3;
+    s.u.art.index = 533;
+    CHECK(describeMessage(s) == "ART_PART seq=0 art=3 part=534/534");
+    s = ProtoMessage{};
+    s.command = PROTO_CMD_GET_MEDIA;
+    CHECK(describeMessage(s) == "GET_MEDIA seq=0");
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -2702,6 +3050,10 @@ int main()
     testApprovalPrompt();
     testApprovalService();
     testEventQueueHook();
+    testMediaCover();
+    testMediaServiceConnect();
+    testMediaServiceChanges();
+    testMediaServiceActions();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
