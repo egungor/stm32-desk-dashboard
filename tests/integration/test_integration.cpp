@@ -207,7 +207,8 @@ public:
         cb.ctx = this;
         Link_Init(&link, &cb);
         const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard,   &Rig::fwDetail,      &Rig::fwDashNotice,
-                                   &Rig::fwTime, &Rig::fwPrompt, &Rig::fwClosePrompt, this};
+                                   &Rig::fwTime, &Rig::fwPrompt, &Rig::fwClosePrompt, this,
+                                   nullptr,      nullptr,        nullptr};  // now playing: not driven here
         Dash_Init(&dashClient, &dcb);
         Dash_SetSequenceCounter(&dashClient, &link.sequence);  // link_port.c
     }
