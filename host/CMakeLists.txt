@@ -27,6 +27,7 @@ add_library(host_core STATIC
     App/FrameRouter.cpp
     App/FrameText.cpp
     App/HostController.cpp
+    App/MediaKeys.cpp
     App/PreferenceFile.cpp
     App/PreferenceStore.cpp
     App/Preferences.cpp
@@ -48,6 +49,7 @@ if(WIN32)
         Platform/Windows/HostService.cpp
         Platform/Windows/WinAudioSystem.cpp
         Platform/Windows/WinHidLink.cpp
+        Platform/Windows/WinMediaKeys.cpp
         Platform/Windows/WinPreferenceFile.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)

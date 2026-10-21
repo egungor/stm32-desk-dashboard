@@ -95,10 +95,12 @@ default task); the USB interrupt only copies frames into a static queue.
 | `App/HostController` | no | Protocol v3 audio commands, host side |
 | `App/DashController` | no | Protocol v3 dashboard records: card slots, details, actions, `TIME` (ADR-006) |
 | `App/FrameRouter` | no | Decodes each frame once; `0x20`–`0x3F` to `DashController`, the rest to `HostController` |
+| `App/MediaKeys` | no | Media strip `ACTION` (kind 2) → previous / play-pause / next behind `IMediaKeys` |
 | `App/SequencedSink` | no | Sets one sequence counter (and the CRC) on every frame the host sends |
 | `App/EventQueue` | no | Serialises Core Audio and HID events into one consumer thread |
 | `Hid/HidMatch.h` | no | Which HID interface is the controller |
 | `Platform/Windows/WinAudioSystem` | yes | `IAudioSystem` on Core Audio; default switching through `IPolicyConfig` (ADR-002) |
+| `Platform/Windows/WinMediaKeys` | yes | `IMediaKeys`: one key down and up through `SendInput` (`VK_MEDIA_PREV_TRACK`, `VK_MEDIA_PLAY_PAUSE`, `VK_MEDIA_NEXT_TRACK`) |
 | `Platform/Windows/WinHidLink` | yes | Finds and opens the controller, reader thread, writes frames |
 | `Platform/Windows/main.cpp` | yes | Console program `dashboard-host` |
 

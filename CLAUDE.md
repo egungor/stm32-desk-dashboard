@@ -26,12 +26,13 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 6 (#14): the dashboard on the board (`dash_client.c`,
-`ui_dash.c`: clock, 2×2 cards, generic detail, media strip; ADR-006).
-Done: steps 1–5 (rename and USB PID `1209:0002`; ADR-005/006/007;
-protocol v3; tabbed shell; host `FrameRouter` and `DashController`).
-Features that fill the cards (weather, menu, media keys, Claude Code)
-come in steps 7–11. The v1 steps and their status are in
+Dashboard v1, step 7 (#16): media keys on the host (`App/MediaKeys`,
+`Platform/Windows/WinMediaKeys`: the media strip's `ACTION` presses
+previous / play-pause / next through `SendInput`). Done: steps 1–6
+(rename and USB PID `1209:0002`; ADR-005/006/007; protocol v3; tabbed
+shell; host `FrameRouter` and `DashController`; board dashboard
+components). Features that fill the cards (weather, menu, Claude Code)
+come in steps 8–11. The v1 steps and their status are in
 `docs/roadmap.md`, "Dashboard v1". Do not start a later step unless the
 current task asks for it.
 
