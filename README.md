@@ -14,15 +14,19 @@ renamed**; the dashboard is being built step by step, see
 The project consists of:
 
 - **STM32F7 firmware** — touchscreen UI and USB HID communication
-- **Windows host application** — tray program and console tools; today:
-  Windows audio endpoints and the default playback device
+- **Windows host application** — tray program and console tools: Windows
+  audio endpoints and the default playback device, the weather, the menu
+  of the day (read from images with the Claude API), media keys
 - **Shared protocol** — the contract between STM32 and Windows
 - **Tests and CI** — automated validation for host/protocol code
 
 ## Download
 
-There is no release of the dashboard yet. Releases will be on the
-**[Releases page](https://github.com/egungor/stm32-desk-dashboard/releases)**:
+Releases are on the
+**[Releases page](https://github.com/egungor/stm32-desk-dashboard/releases)**.
+The first one, `v0.9.0-beta.1`, is a test pre-release of Dashboard v1
+steps 1–9 (clock, weather, menu of the day, media keys; no Claude Code
+approval yet); its checklist is issue #22.
 
 | File | What |
 |---|---|

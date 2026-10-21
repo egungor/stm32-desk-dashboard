@@ -26,15 +26,14 @@ beyond what the current step needs.
 
 ## Current milestone
 
-Dashboard v1, step 9 (#20): the menu of the day (`host/Menu`: menu
-images → Claude API with a structured output → `menu-YYYY-MM.json`
-merged by date; card slot 1 and the day detail; tray "Menü
-görüntülerini yükle…"). Done: steps 1–8 (rename and USB PID
-`1209:0002`; ADR-005/006/007; protocol v3; tabbed shell; host
-`FrameRouter` and `DashController`; board dashboard components; media
-keys; weather). Claude Code approval comes in steps 10–11. The v1 steps
-and their status are in `docs/roadmap.md`, "Dashboard v1". Do not start
-a later step unless the current task asks for it.
+Dashboard v1, paused after step 9 for the test release
+`v0.9.0-beta.1` (#22: checklist for the board and Windows). Done: steps
+1–9 (rename and USB PID `1209:0002`; ADR-005/006/007; protocol v3;
+tabbed shell; host `FrameRouter` and `DashController`; board dashboard
+components; media keys; weather; menu of the day). Fix what the beta
+test finds before step 10 (Claude Code approval spike). The v1 steps and
+their status are in `docs/roadmap.md`, "Dashboard v1". Do not start a
+later step unless the current task asks for it.
 
 Inherited open work: the M7 board and Windows checks listed in
 `docs/hardware.md`, "Pending hardware and Windows tests".
