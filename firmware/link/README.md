@@ -1,4 +1,13 @@
-# Protocol client (`firmware/link`)
+# Protocol clients (`firmware/link`)
+
+Two clients, hardware independent, share the USB link (ADR-006):
+`link_client.c` (audio commands, below) and `dash_client.c` (dashboard,
+at the end). `App/Src/link_port.c` decodes each received frame once and
+gives it to the dashboard client when `Dash_Owns` says so, otherwise to
+the audio client; the dashboard client numbers its frames from the audio
+client's counter.
+
+## Audio (`link_client.c`)
 
 STM32 side of the audio commands of protocol v3 (`protocol/protocol.md`). Hardware independent
 C: frames go out through a callback and come in through `Link_OnFrame`,
@@ -37,3 +46,20 @@ cmake -S firmware/link -B build/link
 cmake --build build/link
 ctest --test-dir build/link --output-on-failure
 ```
+
+## Dashboard (`dash_client.c`, #14)
+
+- after USB is configured, sends `GET_CARDS`; the host answers with
+  `TIME` and every card slot;
+- collects `CARD_PART` / `DETAIL_PART` records (`ProtoAssembler`) and
+  hands them to the UI only when complete; `CARD_CLEAR` empties a slot;
+- a card record still incomplete 1 s after its last part: `GET_CARDS`
+  again; a detail: `OPEN_DETAIL` again with the same argument;
+- `Dash_OpenDetail` sends `OPEN_DETAIL`; detail parts for another slot
+  than the open one are ignored; no complete detail and no `ERROR` within
+  2 s, or an `ERROR` about it: `DASH_NOTICE_DETAIL_FAILED`;
+- `Dash_Action` sends `ACTION` (detail buttons, media strip); an `ERROR`
+  about it: `DASH_NOTICE_ACTION_FAILED`;
+- `TIME` sets the clock; `Dash_LocalTime` counts on with the tick.
+
+Tests: `tests/test_dash.c` (`ctest`, with `tests/test_link.c`).
