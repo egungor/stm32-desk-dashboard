@@ -363,7 +363,10 @@ function render() {
 
 function renderDevices() {
   const box = $("devices");
-  if (box.contains(document.activeElement)) return;  // do not disturb typing
+  // Do not disturb typing a name; a clicked button (↑ ↓ ★) must not stop the
+  // list from showing the new order.
+  const active = document.activeElement;
+  if (active && active.tagName === "INPUT" && box.contains(active)) return;
   box.textContent = "";
   const list = state.devices;
   if (!list.length) {
