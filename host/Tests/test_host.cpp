@@ -1525,7 +1525,7 @@ void testTrayText()
     CHECK(std::strcmp(trayText(TrayText::Exit, 1), "Exit") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 0), "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 7), trayText(TrayText::Exit, 0)) == 0);  // unknown: Turkish
-    for (int id = 0; id <= static_cast<int>(TrayText::EditFoodLists); ++id) {
+    for (int id = 0; id <= static_cast<int>(TrayText::SettingsNotSaved); ++id) {
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 0)) > 0);
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 1)) > 0);
     }

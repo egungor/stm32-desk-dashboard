@@ -38,6 +38,7 @@ enum class HostEvent {
     MediaChanged,     // what plays on the PC changed (ADR-008)
     NotificationsChanged,  // the toasts in the notification centre changed (ADR-009)
     SettingsChanged,  // setting files changed: read them again (#61, ADR-011)
+    SettingsRequest,  // the settings window changed a preference (text: the request JSON)
     HookRequest,      // a Claude Code permission request from the pipe (ticket, text)
     HookCancelled,    // its hook went away before an answer (ticket)
     Quit,
@@ -47,7 +48,7 @@ struct QueuedEvent {
     HostEvent event;
     Frame frame{};           // FrameReceived only
     std::uint64_t ticket = 0;  // HookRequest, HookCancelled
-    std::string text;        // HookRequest: the hook input
+    std::string text;        // HookRequest: the hook input; SettingsRequest: the request
 };
 
 class EventQueue {
@@ -69,6 +70,9 @@ public:
         }
         cv_.notify_one();
     }
+
+    // SettingsRequest: never merged.
+    void pushText(HostEvent event, std::string text) { pushHook(event, 0U, std::move(text)); }
 
     // HookRequest / HookCancelled: never merged.
     void pushHook(HostEvent event, std::uint64_t ticket, std::string text = {})

@@ -212,6 +212,30 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         }
     };
 
+    // What the settings window shows (ADR-011): published when it changes.
+    bool connected = false;
+    ServiceSnapshot published;
+    bool publishedOnce = false;
+    auto publishSnapshot = [&] {
+        if (!hooks.snapshot) {
+            return;
+        }
+        ServiceSnapshot s;
+        s.connected = connected;
+        if (connected) {
+            s.board = link.boardVersion();
+        }
+        s.settings = controller.preferences().settings();
+        for (const DeviceRegistry::Device& d : controller.registry().devices()) {
+            s.devices.push_back(SettingsDevice{d.endpoint.id, d.endpoint.name, d.alias, d.favorite});
+        }
+        if (!publishedOnce || s != published) {
+            published = s;
+            publishedOnce = true;
+            hooks.snapshot(published);
+        }
+    };
+
     controller.onPreferencesChanged();  // the stored order and aliases
     controller.setPreferencesChangedHandler([&store] { store.markChanged(); });
     controller.setVolumeLimitedHandler([&log](const VolumeLimited& v) { logVolumeLimited(v, log); });
@@ -271,6 +295,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         pictureService.onTick();
         dash.onTick(GetTickCount64());
         media.onTick(GetTickCount64());
+        publishSnapshot();
         if (!item) {
             continue;
         }
@@ -280,6 +305,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             router.onFrame(item->frame);
             break;
         case HostEvent::HidConnected:
+            connected = true;
             log("Controller connected: " + link.description());
             {
                 const BoardVersion v = link.boardVersion();
@@ -299,6 +325,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             }
             break;
         case HostEvent::HidDisconnected:
+            connected = false;
             log("Controller disconnected.");
             controller.onDisconnected();
             approvals.onDisconnected();  // nobody can answer: back to the terminal
@@ -331,6 +358,19 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             menu.reload();
             picture.reloadIfChanged();
             break;
+        case HostEvent::SettingsRequest: {
+            // The settings window (ADR-011): a preference, applied as if the
+            // board had changed it, then sent to the board and saved.
+            const std::optional<SettingsRequest> request = parseSettingsRequest(item->text);
+            if (request && isServiceRequest(request->kind) &&
+                applySettingsRequest(*request, controller.preferences())) {
+                controller.onPreferencesChanged();
+                store.markChanged();
+                reportLanguage();
+                publishSnapshot();
+            }
+            break;
+        }
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
             menu.reload();

@@ -10,6 +10,7 @@
 #include "EventQueue.h"
 #include "HostController.h"
 #include "PreferenceStore.h"
+#include "SettingsModel.h"
 #include "WinAudioSystem.h"
 #include "WinPreferenceFile.h"
 
@@ -22,6 +23,9 @@ struct HostServiceHooks {
     LogFn log;                                           // required
     std::function<void(bool connected)> connection;      // optional
     std::function<void(std::uint8_t language)> language; // optional: settings record's language
+    // optional: what the settings window shows of the service (ADR-011),
+    // called on the service thread whenever it changes
+    std::function<void(const ServiceSnapshot& snapshot)> snapshot;
 };
 
 // Load the preference file into @p store and log what happened. Returns

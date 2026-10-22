@@ -112,6 +112,35 @@ if(WIN32)
         target_link_options(dashboard-tray PRIVATE -municode)
     endif()
 
+    # The settings window (ADR-011): WebView2, with the SDK's static loader,
+    # an MSVC library; other compilers (MinGW) build the tray without it.
+    # The NuGet package is fetched once into the build folder and checked.
+    if(MSVC)
+        set(WEBVIEW2_VERSION 1.0.4129.50)
+        set(WEBVIEW2_SHA256 d3934f482d484b89fb4825df720c710664e1143a1e90f7b3a60794ef33f473d2)
+        set(WEBVIEW2_DIR ${CMAKE_BINARY_DIR}/_deps/webview2-${WEBVIEW2_VERSION})
+        if(NOT EXISTS ${WEBVIEW2_DIR}/build/native/include/WebView2.h)
+            set(webview2_zip ${CMAKE_BINARY_DIR}/_deps/webview2-${WEBVIEW2_VERSION}.zip)
+            file(DOWNLOAD https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/${WEBVIEW2_VERSION} ${webview2_zip}
+                 EXPECTED_HASH SHA256=${WEBVIEW2_SHA256} TLS_VERIFY ON)
+            file(ARCHIVE_EXTRACT INPUT ${webview2_zip} DESTINATION ${WEBVIEW2_DIR})
+        endif()
+        if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64" OR CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "ARM64")
+            set(webview2_arch arm64)
+        elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+            set(webview2_arch x64)
+        else()
+            set(webview2_arch x86)
+        endif()
+        add_library(webview2_loader STATIC IMPORTED)
+        set_target_properties(webview2_loader PROPERTIES
+            IMPORTED_LOCATION ${WEBVIEW2_DIR}/build/native/${webview2_arch}/WebView2LoaderStatic.lib
+            INTERFACE_INCLUDE_DIRECTORIES ${WEBVIEW2_DIR}/build/native/include)
+        target_sources(dashboard-tray PRIVATE Platform/Windows/WinSettingsWindow.cpp)
+        target_link_libraries(dashboard-tray PRIVATE webview2_loader version shlwapi)
+        target_compile_definitions(dashboard-tray PRIVATE DASHBOARD_SETTINGS_WINDOW=1)
+    endif()
+
     foreach(target host_media_win host_windows dashboard-host dashboard-tray)
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX /permissive- /utf-8)
