@@ -15,7 +15,7 @@ audio playback endpoint.
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ firmware/link (link_client.c)    │         │ App/HostController               │
-│   protocol v6, STM32 side        │         │   protocol v6, DeviceRegistry    │
+│   protocol v7, STM32 side        │         │   protocol v7, DeviceRegistry    │
 │            ▲ │                   │         │            ▲ │                   │
 │            │ ▼                   │         │            │ ▼                   │
 │ App/link_port.c, App/usb_link.c  │◄───────►│ Platform/Windows/WinHidLink      │
@@ -77,7 +77,7 @@ Responsible for:
 | Module | Hardware dependent | Role |
 |---|---|---|
 | `ui/` | no (LVGL only) | Rail and tabs (`ui_shell.c`); Dashboard tab: clock, 2×2 cards, generic detail, media strip; the prompt and the banner over every screen (`ui_dash.c`); Audio tab: device buttons, bottom strip (mute, volume slider, page arrows); waiting screen, settings, edit mode, notices |
-| `link/` | no (C, protocol codec) | `link_client.c`: protocol v6 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts. `dash_client.c`: dashboard records (cards, detail, prompt, banner, `TIME`, actions, now playing, status icons, picture; ADR-006 to ADR-010) |
+| `link/` | no (C, protocol codec) | `link_client.c`: protocol v7 audio commands, state machine: request the list, assemble it, apply `DEVICE_CHANGED`, send `SELECT_DEVICE`, volume and mute (rate limited), timeouts. `dash_client.c`: dashboard records (cards, detail, prompt, banner, `TIME`, actions, now playing, status icons, picture; ADR-006 to ADR-010) |
 | `App/usb_link.c` | yes | Vendor HID class (ADR-003); the ISR only queues received frames |
 | `App/link_port.c` | yes | Connects USB, `link/` and `ui/` in the UI task; decodes each frame once and gives it to the audio or the dashboard client |
 | `App/ui_port.c` | yes | LVGL on the LTDC (two SDRAM framebuffers, swap on VBLANK) and the FT5336 |
@@ -145,7 +145,7 @@ go to `docs/images/` once the UI has been checked on the board.
 ## Important design decisions
 
 - STM32 ↔ Windows: vendor USB HID, 64-byte reports, VID:PID `1209:0002`
-  (ADR-003); protocol v6 with 64-byte frames and CRC-16
+  (ADR-003); protocol v7 with 64-byte frames and CRC-16
   (`protocol/protocol.md`)
 - Host language: C++17
 - GUI: LVGL v9.5.0 (git submodule). The UI lives in `firmware/ui/`, depends

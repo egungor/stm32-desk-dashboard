@@ -1,4 +1,4 @@
-# Protocol (v6)
+# Protocol (v7)
 
 Authoritative description: [protocol/protocol.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/protocol/protocol.md).
 Both sides link the same C codec (`protocol/src/protocol.c`).
@@ -41,7 +41,7 @@ Every message is one 64-byte frame, which is exactly one HID report.
 | `0x28` | `ART_PART` | host → STM32 | one of 534 parts of a 120 × 120 RGB565 cover (v4) |
 | `0x29` | `BANNER_PART` | host → STM32 | a short banner over every screen: a new notification (v5) |
 | `0x2A` | `INDICATORS` | host → STM32 | status icons at the top right: icon, colour, number, the detail a tap opens (v6) |
-| `0x2B` | `PICTURE_PART` | host → STM32 | one of 682 parts of the 200 × 92 RGB565 picture (v6) |
+| `0x2B` | `PICTURE_PART` | host → STM32 | one of 4836 parts of the 480 × 272 RGB565 picture (v6; 200 × 92 until v7) |
 | `0x2C` | `PICTURE` | host → STM32 | the picture to show, 0 = none (v6) |
 | `0x30` | `GET_CARDS` | STM32 → host | time and all cards, please |
 | `0x31` | `OPEN_DETAIL` | STM32 → host | slot, previous / next |
