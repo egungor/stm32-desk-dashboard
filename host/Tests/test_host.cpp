@@ -28,8 +28,11 @@
 #include "MediaSession.h"
 #include "MenuData.h"
 #include "MenuImport.h"
+#include "MenuLists.h"
 #include "NotificationService.h"
 #include "NotificationSource.h"
+#include "PictureService.h"
+#include "PictureSource.h"
 #include "MenuService.h"
 #include "nlohmann/json.hpp"
 #include "PreferenceFile.h"
@@ -1431,7 +1434,7 @@ void testTrayText()
     CHECK(std::strcmp(trayText(TrayText::Exit, 1), "Exit") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 0), "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 7), trayText(TrayText::Exit, 0)) == 0);  // unknown: Turkish
-    for (int id = 0; id <= static_cast<int>(TrayText::HookSettingsCopied); ++id) {
+    for (int id = 0; id <= static_cast<int>(TrayText::EditFoodLists); ++id) {
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 0)) > 0);
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 1)) > 0);
     }
@@ -1543,14 +1546,16 @@ void testDashGetCards()
         m = r.sink.pop();
         CHECK(m.command == PROTO_CMD_CARD_CLEAR && m.u.slot == slot);
     }
+    m = r.sink.pop();  // then the status icons (ADR-010), none yet
+    CHECK(m.command == PROTO_CMD_INDICATORS && m.u.indicators.count == 0U);
     CHECK(r.sink.sent.empty());
 }
 
 void testDashCardUpdates()
 {
     DashRig r;
-    r.dash.onConnected();  // TIME + 8 clears
-    CHECK(r.sink.sent.size() == 1U + PROTO_MAX_CARDS);
+    r.dash.onConnected();  // TIME + 8 clears + INDICATORS
+    CHECK(r.sink.sent.size() == 2U + PROTO_MAX_CARDS);
     r.sink.sent.clear();
 
     // A long card goes out in parts, cut to 256 bytes; the same text again
@@ -1579,7 +1584,7 @@ void testDashCardUpdates()
     r.dash.setCard(1, "w");
     CHECK(r.sink.sent.empty());
     r.dash.onConnected();
-    CHECK(r.sink.sent.size() == 1U + PROTO_MAX_CARDS);
+    CHECK(r.sink.sent.size() == 2U + PROTO_MAX_CARDS);
 }
 
 void testDashDetailAndAction()
@@ -1697,7 +1702,7 @@ void testFrameRouter()
     audioRig.sink.sent.clear();
 
     router.onFrame(frameFor(PROTO_CMD_GET_CARDS, 2));
-    CHECK(dashSink.sent.size() == 1U + PROTO_MAX_CARDS && audioRig.sink.sent.empty());
+    CHECK(dashSink.sent.size() == 2U + PROTO_MAX_CARDS && audioRig.sink.sent.empty());
     dashSink.sent.clear();
 
     // An ERROR goes by ref_command.
@@ -1898,14 +1903,17 @@ void testWeatherCard()
     CHECK(!w.fetchDue(0).has_value() && !w.detail(at14).has_value());
 
     w.setLocation(WeatherLocation{"İstanbul", 41.0138, 28.9497});
-    CHECK(w.card(at14) == std::string("0") + sep + "İstanbul" + sep + "\nBekleniyor…");
+    CHECK(w.card(at14) == std::string("0") + sep + "İstanbul" + sep + "\nBekleniyor...");
     const std::optional<std::string> url = w.fetchDue(1000);
     CHECK(url.has_value() && url->find("latitude=41.0138") != std::string::npos);
     CHECK(!w.fetchDue(1000).has_value());  // still running
 
     CHECK(w.onFetched(2000, at14, *url, std::string(weather_samples::kForecast)));
     const std::string card = w.card(at14);
-    CHECK(card == std::string("3") + sep + "İstanbul" + sep + "\n18°  Parçalı bulutlu\n11° / 21° · Yağış %20\nRüzgâr 12 km/s");
+    // ADR-010: icon, place, no badge, the colour of "partly cloudy, day", L.
+    CHECK(card == std::string("3") + sep + "İstanbul" + sep + sep + "3D86C6" + sep + "L\n18°\n11° / 21°");
+    CHECK(std::string(weatherColour(1)) == "E59B2E" && std::string(weatherColour(10)) == "4A3B6B" &&
+          std::string(weatherColour(0)).empty() && std::string(weatherColour(11)).empty());
     CHECK(!w.fetchDue(2000 + WeatherCard::kRefreshMs - 1).has_value());
 
     const std::optional<std::string> detail = w.detail(at14);
@@ -1941,7 +1949,7 @@ void testWeatherCard()
     CHECK(later.has_value() && later->find("Today") != std::string::npos &&
           later->find(std::string("\n7") + sep + "Today" + sep + "13° / 17° · Rain 85%") != std::string::npos);
     CHECK(later.has_value() && later->find("\n#9 days\n") != std::string::npos);
-    CHECK(w.card(nextDay).find("13° / 17° · Rain 85%\nUpdated 14:00") != std::string::npos);
+    CHECK(w.card(nextDay).find("\n13° / 17°\nUpdated 14:00") != std::string::npos);
 
     // Same place renamed: no new fetch; another place: report dropped.
     w.setLocation(WeatherLocation{"Istanbul", 41.0138, 28.9497});
@@ -2074,11 +2082,10 @@ void testWeatherService()
     r.dash.setDetailHandler([&weather](std::uint8_t, std::int8_t arg) { return weather.detail(arg); });
     r.dash.onMessage(open);
     r.sink.sent.clear();
+    const std::string cardBefore = r.dash.card(0);
     weather.setLanguage(1);
-    CHECK(r.dash.card(0).find("Wind 12 km/h") != std::string::npos);
-    std::string sent = popRecord(r.sink, PROTO_CMD_CARD_PART);
-    CHECK(sent.find("Wind 12 km/h") != std::string::npos);
-    sent = popRecord(r.sink, PROTO_CMD_DETAIL_PART);
+    CHECK(r.dash.card(0) == cardBefore);  // the card has no words (ADR-010)
+    std::string sent = popRecord(r.sink, PROTO_CMD_DETAIL_PART);
     CHECK(sent.find("#10 days") != std::string::npos);
 
     // A failure after 30 minutes: stale note, logged.
@@ -2350,26 +2357,29 @@ void testMenuService()
     MemoryMenuFiles files;
     std::vector<std::string> logs;
     r.now = localTimeValue(2026, 10, 5, 9, 0, 0);  // Monday
-    MenuService menu(r.dash, files, [&r] { return r.now; }, [&logs](const std::string& l) { logs.push_back(l); });
-    const char sep = '\x1F';
+    MemoryFile lists;
+    MemoryFile warned;
+    MenuService menu(r.dash, files, lists, warned, [&r] { return r.now; },
+                     [&logs](const std::string& l) { logs.push_back(l); });
+    const std::string sep = "\x1F";
     std::uint64_t ms = 1000;
 
-    // No file for the month.
+    // No file for the month: no colour, no title (ADR-010).
     menu.onTick(ms);
-    CHECK(r.dash.card(1) == std::string("11") + sep + "Yemek" + sep + "\nMenü yüklenmedi\nTepside: Menü görüntülerini yükle…");
+    CHECK(r.dash.card(1) == "11" + sep + sep + sep + sep + "\nMenü yüklenmedi\nTepside: Menü görüntülerini yükle...");
 
     files.files["menu-2026-10"] = kMonthFile;
     menu.reload();
     menu.onTick(ms += 500);
-    CHECK(r.dash.card(1) == std::string("11") + sep + "Yemek" + sep +
-                                "\nKağıt kebabı\nTarhana çorba\nSalata bar: 6 çeşit");
+    // Main dish, soup, dessert; green without lists.
+    CHECK(r.dash.card(1) == "11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı\nTarhana çorba\nMeyve / fıstıklı baklava");
     CHECK(logs.size() == 1U && logs[0] == "Menu files changed.");  // the file appeared
 
     // Detail, then the next working days (6th: no entry in the file).
     std::optional<std::string> d = menu.detail(0);
-    CHECK(d.has_value() && d->rfind(std::string("Yemek") + sep + "5 Ekim Pazartesi" + sep + "n\n", 0) == 0);
-    CHECK(d->find(std::string("\n") + sep + "Ana yemek" + sep + "Kağıt kebabı") != std::string::npos);
-    CHECK(d->find(std::string("\n#Salata bar\n") + sep + sep + "Akdeniz salata · Havuç tarator") != std::string::npos);
+    CHECK(d.has_value() && d->rfind("Yemek" + sep + "5 Ekim Pazartesi" + sep + "n\n", 0) == 0);
+    CHECK(d->find("\n" + sep + "Ana yemek" + sep + "Kağıt kebabı\n") != std::string::npos);
+    CHECK(d->find("\n#Salata bar\n" + sep + sep + "Akdeniz salata · Havuç tarator") != std::string::npos);
     d = menu.detail(1);
     CHECK(d->find("6 Ekim Salı") != std::string::npos && d->find("Bu gün için menü yok") != std::string::npos);
     d = menu.detail(-1);
@@ -2382,11 +2392,10 @@ void testMenuService()
     CHECK(r.dash.card(1).find("\nResmi tatil") != std::string::npos);
     r.now = localTimeValue(2026, 10, 3, 12, 0, 0);  // Saturday
     menu.onTick(ms += 500);
-    CHECK(r.dash.card(1).rfind(std::string("11") + sep + "Yemek" + sep + "Pzt 5\nKağıt kebabı", 0) == 0);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + "Pzt 5" + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
     CHECK(MenuService::cardDay(daysFromCivil(2026, 10, 4)) == daysFromCivil(2026, 10, 5));
     menu.setLanguage(1);
-    CHECK(r.dash.card(1).rfind(std::string("11") + sep + "Menu" + sep + "Mon 5\n", 0) == 0);
-    CHECK(r.dash.card(1).find("Salad bar: 6 items") != std::string::npos);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + "Mon 5" + sep + "3E9B5F" + sep + "\n", 0) == 0);
     CHECK(menu.detail(0)->find("Monday 5 October") != std::string::npos);
 
     // A changed file is read again after a minute; the open detail follows.
@@ -2551,7 +2560,9 @@ void testApprovalService()
     // No board: no decision at once.
     approvals.onRequest(1, bash, ms);
     CHECK(replies.size() == 1U && replies[0] == std::make_pair(std::uint64_t{1}, HookAnswer::None));
-    CHECK(r.dash.card(3).find("kart yok") != std::string::npos);
+    CHECK(approvals.indicator().colour == PROTO_INDICATOR_NORMAL && approvals.indicator().number == 0U);
+    CHECK(approvals.indicator().icon == 13U && approvals.indicator().slot == 3U);
+    CHECK(r.dash.card(3).empty());  // no card any more (ADR-010)
 
     r.dash.onConnected();
     r.sink.sent.clear();
@@ -2560,7 +2571,7 @@ void testApprovalService()
     std::string shown = popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
     const std::uint8_t first = id;
     CHECK(shown.find("1/1") != std::string::npos && shown.find("60\n") != std::string::npos);
-    CHECK(r.dash.card(3).find("1 onay bekliyor") != std::string::npos);
+    CHECK(approvals.indicator().colour == PROTO_INDICATOR_RED && approvals.indicator().number == 1U);
 
     // A second request: the first is shown again as "1/2" with the time left.
     r.sink.sent.clear();
@@ -2627,13 +2638,13 @@ void testApprovalService()
         CHECK(replies[i].second == HookAnswer::None);
     }
 
-    // Card and detail.
-    CHECK(r.dash.card(3).find("Onay bekleyen yok") != std::string::npos);
+    // The icon: a timeout (request 6) since the list was opened: yellow;
+    // opening it makes it normal.
+    CHECK(approvals.indicator().colour == PROTO_INDICATOR_YELLOW && approvals.indicator().number == 0U);
     const std::optional<std::string> detail = approvals.detail();
     CHECK(detail.has_value() && detail->find("#Son kararlar") != std::string::npos);
     CHECK(detail->find("kart yok · npm test") != std::string::npos && detail->size() <= PROTO_DETAIL_MAX_BYTES);
-    approvals.setLanguage(1);
-    CHECK(r.dash.card(3).find("No approval waiting") != std::string::npos);
+    CHECK(approvals.indicator().colour == PROTO_INDICATOR_NORMAL);
     CHECK(!logs.empty());
 }
 
@@ -3097,18 +3108,22 @@ void testNotificationCardAndDetail()
 {
     NotifyRig r;
     const std::string sep = "\x1F";
-    // No list yet: an empty card, not an error.
-    CHECK(r.dash.card(2) == "12" + sep + "Bildirimler" + sep + "\nBildirim yok");
+    // No card (ADR-010); no list yet: the bell, no number, normal.
+    CHECK(r.dash.card(2).empty() && r.notify.summary() == "Bildirim yok");
+    ProtoIndicator bell = r.notify.indicator();
+    CHECK(bell.icon == 12U && bell.slot == 2U && bell.number == 0U && bell.colour == PROTO_INDICATOR_NORMAL);
 
     r.source.set({toast(4, "WhatsApp", "Ay\xC5\x9F" "e", "Ak\xC5\x9F" "am geliyor musun?", 1792593125U),
                   toast(3, "Outlook", "", "Toplant\xC4\xB1 notlar\xC4\xB1", 1792592000U),
                   toast(2, "Snipping Tool", "", ""),
                   toast(1, "Teams", "Ali", "dördüncü")});
     r.tick();
-    CHECK(r.dash.card(2) == "12" + sep + "Bildirimler" + sep + "4\nWhatsApp: Ay\xC5\x9F" "e\nOutlook: Toplant\xC4\xB1 notlar\xC4\xB1\nSnipping Tool");
+    CHECK(r.dash.card(2).empty() && r.notify.summary() == "4 bildirim; WhatsApp: Ay\xC5\x9F" "e");
+    bell = r.notify.indicator();
+    CHECK(bell.number == 4U && bell.colour == PROTO_INDICATOR_RED);  // not seen yet
 
     const std::optional<std::string> d = r.notify.detail();
-    CHECK(d.has_value());
+    CHECK(d.has_value() && r.notify.indicator().colour == PROTO_INDICATOR_NORMAL);  // the list showed them
     CHECK(d.value_or("") == "Bildirimler" + sep + "4 bildirim" + sep + "\n#WhatsApp \xC2\xB7 14:32\n" + sep +
                                 "Ay\xC5\x9F" "e" + sep + "Ak\xC5\x9F" "am geliyor musun?\n#Outlook \xC2\xB7 14:13\n" +
                                 sep + sep + "Toplant\xC4\xB1 notlar\xC4\xB1\n#Snipping Tool \xC2\xB7 14:32\n#Teams \xC2\xB7 14:32\n" +
@@ -3118,21 +3133,21 @@ void testNotificationCardAndDetail()
     r.notify.setLanguage(1);
     r.source.set({toast(5, "App\nX", "a\x1F" "b", "c\nd")});
     r.tick();
-    CHECK(r.dash.card(2) == "12" + sep + "Notifications" + sep + "1\nApp X: a b");
+    CHECK(r.notify.summary().rfind("1 notifications; App", 0) == 0U && r.notify.indicator().colour == PROTO_INDICATOR_RED);
     CHECK(r.notify.detail().value_or("").rfind("Notifications" + sep + "1 notifications", 0) == 0U);
 
     // Access off: the card and the detail say so.
     r.source.set({}, NotificationAccess::Denied);
     r.tick();
-    CHECK(r.dash.card(2) == "12" + sep + "Notifications" + sep + "\nNotification access is off");
+    CHECK(r.notify.summary() == "Notification access is off" && r.notify.indicator().number == 0U);
     CHECK(r.notify.detail().value_or("").find("Privacy & security") != std::string::npos);
     r.source.set({}, NotificationAccess::Failed);
     r.tick();
-    CHECK(r.dash.card(2) == "12" + sep + "Notifications" + sep + "\nCannot read notifications");
+    CHECK(r.notify.summary() == "Cannot read notifications");
     r.notify.setLanguage(0);
     r.source.set({});
     r.tick();
-    CHECK(r.dash.card(2) == "12" + sep + "Bildirimler" + sep + "\nBildirim yok");
+    CHECK(r.notify.summary() == "Bildirim yok" && r.notify.indicator().colour == PROTO_INDICATOR_NORMAL);
     CHECK(r.notify.detail().value_or("") == "Bildirimler" + sep + sep + "\n" + sep + sep + "Bildirim yok");
 }
 
@@ -3170,7 +3185,7 @@ void testNotificationDetailLimits()
         ++sections;
     }
     CHECK(sections == NotificationService::kDetailItems);
-    CHECK(r.dash.card(2).find("\x1F" "30\n") != std::string::npos);
+    CHECK(r.notify.indicator().number == 30U);
 }
 
 void testNotificationBanner()
@@ -3229,7 +3244,7 @@ void testNotificationBanner()
     r.source.set({toast(17, "Mail", "f", ""), toast(15, "Teams", "d", "")});
     r.tick(3000);
     CHECK(r.banners().empty());
-    CHECK(r.dash.card(2).find("Mail: f") != std::string::npos);
+    CHECK(r.notify.summary().find("Mail: f") != std::string::npos);
     CHECK(r.notify.stats().bannersQuiet == 1U);
     // Turned off again: the earlier toast does not come late.
     r.focus.accepts = true;
@@ -3273,6 +3288,295 @@ void testNotificationAccessBaseline()
     r.source.set({toast(3, "C", "c", ""), toast(1, "A", "a", ""), toast(2, "B", "b", "")});
     r.tick();
     CHECK(r.banners().size() == 1U);
+}
+
+// ------------------------------------------------------ dashboard redesign
+
+void testMenuLists()
+{
+    CHECK(turkishLower("KURU FASULYE") == "kuru fasulye");
+    CHECK(turkishLower("  İÇLİ   KÖFTE ") == "içli köfte");
+    CHECK(turkishLower("ILIK SÜT") == "\xC4\xB1l\xC4\xB1k süt");  // I -> ı
+    CHECK(turkishLower("ÇĞÖŞÜ Âşık") == "çğöşü âşık");
+
+    const MenuLists lists = parseMenuLists("\xEF\xBB\xBF# comment\n"
+                                           "[İSTEMİYORUM]\r\n"
+                                           "Kalem Börek\n"
+                                           "  \n"
+                                           "[sevmiyorum]\n"
+                                           "tarhana\n"
+                                           "[other]\n"
+                                           "ignored\n"
+                                           "[never]\n"
+                                           "bamya\n");
+    CHECK(lists.never == std::vector<std::string>({"kalem börek", "bamya"}));
+    CHECK(lists.dislike == std::vector<std::string>({"tarhana"}));
+    CHECK(parseMenuLists("").never.empty() && parseMenuLists(kMenuListsTemplate).never.empty());
+
+    CHECK(markOf(std::string("KALEM BÖREK"), lists) == DishMark::Never);
+    CHECK(markOf(std::string("Tarhana çorba"), lists) == DishMark::Dislike);
+    CHECK(markOf(std::string("Mercimek çorba"), lists) == DishMark::None);
+    CHECK(markOf(std::string(""), lists) == DishMark::None);
+    MenuDay day;
+    day.main = "Etli bamya";
+    day.soup = "Tarhana çorba";
+    CHECK(markOf(day, lists) == DishMark::Never);  // the worst
+    CHECK(dishesMarked(day, lists, DishMark::Dislike) == std::vector<std::string>({"Tarhana çorba"}));
+    day.main = "Pilav";
+    CHECK(markOf(day, lists) == DishMark::Dislike);
+    day.soup.clear();
+    day.saladBar = {"Tarhana salatası"};  // the salad bar does not count
+    CHECK(markOf(day, lists) == DishMark::None);
+}
+
+void testMenuColoursAndWarning()
+{
+    DashRig r;
+    MemoryMenuFiles files;
+    files.files["menu-2026-10"] = kMonthFile;
+    MemoryFile lists;
+    MemoryFile warned;
+    const std::string sep = "\x1F";
+    r.now = localTimeValue(2026, 10, 5, 7, 59, 0);  // Monday 5 October, 07:59
+    MenuService menu(r.dash, files, lists, warned, [&r] { return r.now; }, nullptr);
+    std::uint64_t ms = 1000;
+
+    // "Don't like" tarhana: yellow; then "never" kalem börek: orange.
+    lists.text = "[sevmiyorum]\ntarhana\n";
+    menu.onTick(ms);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "D9A520" + sep + "\n", 0) == 0U);
+    lists.text = "[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n";
+    menu.onTick(ms += MenuService::kFileIntervalMs);  // read again after a minute
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "E0702F" + sep + "\n", 0) == 0U);
+    const std::string d = menu.detail(0).value_or("");
+    CHECK(d.find(sep + "Yan yemek" + sep + "Kalem börek \xC2\xB7 istemiyorum\n") != std::string::npos);
+    CHECK(d.find(sep + "Çorba" + sep + "Tarhana çorba \xC2\xB7 sevmiyorum\n") != std::string::npos);
+    CHECK(d.find("Kağıt kebabı \xC2\xB7") == std::string::npos);
+
+    // The warning: not before 08:00, not without the board.
+    const std::optional<std::string> text = menu.warningFor(daysFromCivil(2026, 10, 5));
+    CHECK(text.has_value());
+    CHECK(text.value_or("") == "Bugünkü menüde" + sep + "5 Ekim Pazartesi" + sep + "\n11" + sep + "İstemiyorum" + sep +
+                                   "Kalem börek\n11" + sep + "Sevmiyorum" + sep + "Tarhana çorba\n!1" + sep + "Tamam");
+    CHECK(!menu.warningFor(daysFromCivil(2026, 10, 6)).has_value());   // no menu
+    CHECK(!menu.warningFor(daysFromCivil(2026, 10, 28)).has_value());  // holiday
+    menu.updateWarning(true);
+    CHECK(r.sink.sent.empty());
+    r.now = localTimeValue(2026, 10, 5, 8, 0, 0);
+    menu.updateWarning(true);
+    CHECK(r.sink.sent.empty());  // not synced
+    r.dash.onConnected();
+    r.sink.sent.clear();
+    menu.updateWarning(true);
+    std::uint8_t id = 0;
+    CHECK(popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id) == *text && id == MenuService::kWarningPromptId);
+    menu.updateWarning(true);
+    CHECK(r.sink.sent.empty());  // once
+
+    // A Claude Code request takes the screen; afterwards the warning comes back.
+    menu.updateWarning(false);
+    menu.updateWarning(true);
+    CHECK(popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id) == *text);
+
+    // Other actions are not the warning's; "Tamam" closes it for the day.
+    ProtoAction a{};
+    a.kind = PROTO_ACTION_PROMPT;
+    a.ref = 3;
+    a.action = 1;
+    CHECK(!menu.onAction(a));
+    a.ref = MenuService::kWarningPromptId;
+    CHECK(menu.onAction(a));
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_PROMPT_CLOSE && m.u.prompt_id == MenuService::kWarningPromptId);
+    CHECK(warned.text.value_or("") == "2026-10-05\n");
+    r.now = localTimeValue(2026, 10, 5, 13, 0, 0);
+    menu.updateWarning(true);
+    CHECK(r.sink.sent.empty());
+
+    // The next day, a tray restart (a new service) reads the file: Tuesday has
+    // no menu; and on a Saturday there is none.
+    MenuService again(r.dash, files, lists, warned, [&r] { return r.now; }, nullptr);
+    again.updateWarning(true);
+    CHECK(r.sink.sent.empty());  // already warned today (the file)
+    r.now = localTimeValue(2026, 10, 3, 9, 0, 0);
+    again.updateWarning(true);
+    CHECK(r.sink.sent.empty());
+}
+
+void testApprovalIndicatorAndIds()
+{
+    DashRig r;
+    std::vector<std::pair<std::uint64_t, HookAnswer>> replies;
+    ApprovalService approvals(r.dash, [&r] { return r.now; },
+                              [&replies](std::uint64_t t, HookAnswer a) { replies.emplace_back(t, a); }, nullptr);
+    const std::string bash = hookInput("Bash", {{"command", "npm test"}});
+    r.dash.onConnected();
+
+    // Allowed: green until the list is opened.
+    approvals.onRequest(1, bash, 0);
+    r.sink.sent.clear();
+    ProtoAction a{};
+    a.kind = PROTO_ACTION_PROMPT;
+    a.ref = 0;
+    a.action = 1;
+    CHECK(approvals.onAction(a, 10));
+    CHECK(approvals.indicator().colour == PROTO_INDICATOR_GREEN);
+    (void)approvals.detail();
+    CHECK(approvals.indicator().colour == PROTO_INDICATOR_NORMAL);
+    // Denied: stays normal.
+    approvals.onRequest(2, bash, 20);
+    a.ref = 1;
+    a.action = 2;
+    CHECK(approvals.onAction(a, 30) && approvals.indicator().colour == PROTO_INDICATOR_NORMAL);
+
+    // Prompt ids run 0..254: 255 is the menu warning's.
+    std::uint8_t last = 0;
+    for (std::uint64_t t = 3; t < 3 + 300; ++t) {
+        approvals.onRequest(t, bash, 40);
+        r.sink.sent.clear();
+        CHECK(approvals.waiting() == 1U);
+        std::uint8_t id = 0;
+        a.ref = 0;
+        // Find the shown id from the next prompt: answer every id once.
+        for (unsigned candidate = 0; candidate < 256U && approvals.waiting() == 1U; ++candidate) {
+            a.ref = static_cast<std::uint8_t>(candidate);
+            a.action = 2;
+            (void)approvals.onAction(a, 50);
+            id = a.ref;
+        }
+        CHECK(id != MenuService::kWarningPromptId);
+        last = id;
+    }
+    CHECK(last < MenuService::kWarningPromptId);
+}
+
+void testDashIndicators()
+{
+    DashRig r;
+    int cardsSent = 0;
+    r.dash.setCardsSentHandler([&cardsSent] { ++cardsSent; });
+    ProtoIndicators ind{};
+    ind.count = 2;
+    ind.items[0] = ProtoIndicator{12, PROTO_INDICATOR_RED, 3, 2};
+    ind.items[1] = ProtoIndicator{13, PROTO_INDICATOR_NORMAL, 0, 3};
+    r.dash.setIndicators(ind);  // kept, not sent before the board is synced
+    CHECK(r.sink.sent.empty() && cardsSent == 0);
+
+    r.dash.onConnected();
+    CHECK(cardsSent == 1);
+    ProtoMessage m{};
+    while (!r.sink.sent.empty() && (m = r.sink.pop()).command != PROTO_CMD_INDICATORS) {
+    }
+    CHECK(m.command == PROTO_CMD_INDICATORS && m.u.indicators.count == 2U && m.u.indicators.items[0].number == 3U);
+    CHECK(r.sink.sent.empty());
+
+    r.dash.setIndicators(ind);  // the same: nothing
+    CHECK(r.sink.sent.empty());
+    ind.items[0].colour = PROTO_INDICATOR_NORMAL;
+    r.dash.setIndicators(ind);
+    m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_INDICATORS && m.u.indicators.items[0].colour == PROTO_INDICATOR_NORMAL);
+    ind.count = 9;  // more than fit: cut to four
+    r.dash.setIndicators(ind);
+    CHECK(r.dash.indicators().count == PROTO_MAX_INDICATORS);
+    r.sink.sent.clear();
+    r.dash.onMessage(dashMessage(PROTO_CMD_GET_CARDS));
+    CHECK(cardsSent == 2);
+}
+
+void testCenterCrop()
+{
+    CropRect c = centerCrop(1000, 1000, 200, 92);  // square: cut top and bottom
+    CHECK(c.x == 0U && c.width == 1000U && c.height == 460U && c.y == 270U);
+    c = centerCrop(4000, 1000, 200, 92);  // very wide: cut left and right
+    CHECK(c.y == 0U && c.height == 1000U && c.width == 2173U && c.x == 913U);
+    c = centerCrop(200, 92, 200, 92);  // already right
+    CHECK(c.x == 0U && c.y == 0U && c.width == 200U && c.height == 92U);
+    c = centerCrop(0, 10, 200, 92);
+    CHECK(c.width == 0U && c.height == 0U);
+    c = centerCrop(1, 5000, 200, 92);
+    CHECK(c.width == 1U && c.height >= 1U);
+}
+
+struct FakePicture : IPictureSource {
+    PictureSnapshot snap;
+    PictureSnapshot snapshot() const override { return snap; }
+    void set(std::uint8_t fill)
+    {
+        snap.pixels = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES, fill);
+        ++snap.version;
+    }
+    void none()
+    {
+        snap.pixels.reset();
+        ++snap.version;
+    }
+};
+
+void testPictureService()
+{
+    FakeSink sink;
+    FakePicture source;
+    PictureService pic(sink, source);
+
+    // Nothing before the cards went out; then PICTURE 0 (no picture).
+    pic.onTick();
+    CHECK(sink.sent.empty());
+    pic.onRequest();
+    ProtoMessage m = sink.pop();
+    CHECK(m.command == PROTO_CMD_PICTURE && m.u.pic_id == PROTO_NO_PICTURE && sink.sent.empty() && !pic.sending());
+
+    // A picture: PICTURE with a new id, then the parts, kPartsPerTick per tick.
+    source.set(0x5A);
+    pic.onTick();
+    m = sink.pop();
+    CHECK(m.command == PROTO_CMD_PICTURE && m.u.pic_id == 1U && pic.picId() == 1U);
+    CHECK(sink.sent.size() == PictureService::kPartsPerTick && pic.sending());
+    std::vector<std::uint16_t> indices;
+    unsigned ticks = 0;
+    while (pic.sending() && ticks < 200U) {
+        while (!sink.sent.empty()) {
+            m = sink.pop();
+            CHECK(m.command == PROTO_CMD_PICTURE_PART && m.u.art.art_id == 1U);
+            indices.push_back(m.u.art.index);
+        }
+        pic.onTick();
+        ++ticks;
+    }
+    while (!sink.sent.empty()) {
+        indices.push_back(sink.pop().u.art.index);
+    }
+    CHECK(indices.size() == PROTO_PICTURE_PARTS && indices.back() == PROTO_PICTURE_PARTS - 1U);
+    CHECK(pic.stats().picturesSent == 1U && pic.stats().sendFailures == 0U);
+
+    // A new picture while one is being sent replaces it; a reconnect sends it again.
+    source.set(0x11);
+    pic.onTick();
+    CHECK(sink.pop().u.pic_id == 2U);
+    source.set(0x22);
+    sink.sent.clear();
+    pic.onTick();
+    m = sink.pop();
+    CHECK(m.command == PROTO_CMD_PICTURE && m.u.pic_id == 3U);
+    CHECK(sink.pop().u.art.index == 0U);
+    pic.onDisconnected();
+    sink.sent.clear();
+    pic.onTick();
+    CHECK(sink.sent.empty() && !pic.sending());
+    pic.onRequest();
+    m = sink.pop();
+    CHECK(m.command == PROTO_CMD_PICTURE && m.u.pic_id == 3U && pic.sending());
+
+    // Removed, or the wrong size: no picture.
+    source.none();
+    sink.sent.clear();
+    pic.onTick();
+    m = sink.pop();
+    CHECK(m.command == PROTO_CMD_PICTURE && m.u.pic_id == PROTO_NO_PICTURE && !pic.sending());
+    source.snap.pixels = std::make_shared<std::vector<std::uint8_t>>(100U, 0U);
+    ++source.snap.version;
+    pic.onTick();
+    CHECK(sink.pop().u.pic_id == PROTO_NO_PICTURE);
 }
 
 int main()
@@ -3356,6 +3660,12 @@ int main()
     testNotificationDetailLimits();
     testNotificationBanner();
     testNotificationAccessBaseline();
+    testMenuLists();
+    testMenuColoursAndWarning();
+    testApprovalIndicatorAndIds();
+    testDashIndicators();
+    testCenterCrop();
+    testPictureService();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

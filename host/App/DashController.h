@@ -1,4 +1,4 @@
-// Dashboard side of protocol v5 on the host (ADR-006; protocol.md,
+// Dashboard side of protocol v6 on the host (ADR-006; protocol.md,
 // "Dashboard records" and "Exchanges").
 //
 // Holds the text record of every card slot and sends it to the board:
@@ -61,6 +61,9 @@ public:
     using ActionFn = std::function<bool(const ProtoAction& action)>;
     // GET_MEDIA (ADR-008): the media side sends what plays.
     using MediaRequestFn = std::function<void()>;
+    // Every card went out (GET_CARDS or a new connection): the picture side
+    // sends PICTURE and its parts (ADR-010).
+    using CardsSentFn = std::function<void()>;
 
     static constexpr std::uint64_t kTimeIntervalMs = 10U * 60U * 1000U;
     static constexpr std::uint32_t kClockJumpSeconds = 2U;
@@ -97,6 +100,11 @@ public:
     // Close prompt @p id (PROMPT_CLOSE) and forget it.
     void closePrompt(std::uint8_t id);
 
+    // The status icons (INDICATORS, ADR-010). Sent at once if the board is
+    // synced and they changed; again after every GET_CARDS.
+    void setIndicators(const ProtoIndicators& indicators);
+    const ProtoIndicators& indicators() const { return indicators_; }
+
     // Show banner @p id on the board (BANNER_PART, ADR-009), cut to
     // PROTO_BANNER_MAX_BYTES. Sent only if the board is synced; never kept or
     // sent again (a banner is about now).
@@ -108,6 +116,7 @@ public:
     void setDetailHandler(DetailFn handler) { detail_ = std::move(handler); }
     void setActionHandler(ActionFn handler) { action_ = std::move(handler); }
     void setMediaRequestHandler(MediaRequestFn handler) { mediaRequest_ = std::move(handler); }
+    void setCardsSentHandler(CardsSentFn handler) { cardsSent_ = std::move(handler); }
 
     const Stats& stats() const { return stats_; }
 
@@ -122,6 +131,7 @@ private:
     void sendTime(std::optional<std::uint64_t> nowMs);
     bool sendDetail(std::uint8_t slot, std::int8_t arg);
     void sendRecord(std::uint8_t command, std::uint8_t id, std::uint8_t generation, const std::string& text);
+    void sendIndicators();
     void sendError(ProtoErrorCode code, std::uint8_t refCommand, std::uint8_t refSequence);
     void send(const ProtoMessage& msg);
 
@@ -130,6 +140,8 @@ private:
     DetailFn detail_;
     ActionFn action_;
     MediaRequestFn mediaRequest_;
+    CardsSentFn cardsSent_;
+    ProtoIndicators indicators_{};
     Stats stats_;
     std::array<Slot, PROTO_MAX_CARDS> cards_{};
     bool synced_ = false;

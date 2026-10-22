@@ -276,7 +276,8 @@ void ApprovalService::onRequest(std::uint64_t ticket, const std::string& input, 
     }
     Request r;
     r.ticket = ticket;
-    r.promptId = nextPromptId_++;
+    r.promptId = nextPromptId_;
+    nextPromptId_ = nextPromptId_ >= kMaxPromptId ? 0U : static_cast<std::uint8_t>(nextPromptId_ + 1U);
     r.deadlineMs = nowMs + kAnswerTimeoutMs;
     r.input = input;
     r.info = *info;
@@ -350,6 +351,7 @@ void ApprovalService::onTick(std::uint64_t nowMs)
         if (nowMs >= queue_[i].deadlineMs) {
             headGone = headGone || (i == 0U);
             answer(i, HookAnswer::None, texts(language_).resultTimeout);
+            timedOutUnseen_ = true;
             changed = true;
         } else {
             ++i;
@@ -377,6 +379,7 @@ bool ApprovalService::onAction(const ProtoAction& action, std::uint64_t nowMs)
         const bool head = (i == 0U);
         if (action.action == 1U && shownApprovable) {
             answer(i, HookAnswer::Allow, t.resultAllowed);
+            allowedUnseen_ = true;
         } else if (action.action == 2U) {
             answer(i, HookAnswer::Deny, t.resultDenied);
         } else {
@@ -411,25 +414,23 @@ void ApprovalService::cancelAll()
     publish();
 }
 
-std::string ApprovalService::card() const
+ProtoIndicator ApprovalService::indicator() const
 {
-    const Texts& t = texts(language_);
-    const std::size_t n = queue_.size();
-    std::string text = recordLine({"0", "Claude Code", n > 0U ? std::to_string(n) : std::string()});
-    text += "\n" + (n == 0U ? std::string(t.noneWaiting)
-                            : std::to_string(n) + (n == 1U ? t.waitingOne : t.waitingMany));
-    if (!history_.empty()) {
-        const Decision& d = history_.front();
-        text += "\n" + std::string(t.last) + d.result + " \xC2\xB7 " + d.tool;
-        if (!d.summary.empty()) {
-            text += "\n" + d.summary;
-        }
-    }
-    return text;
+    ProtoIndicator ind{};
+    ind.icon = kIcon;
+    ind.slot = kSlot;
+    ind.number = static_cast<std::uint8_t>(queue_.size() > 255U ? 255U : queue_.size());
+    ind.colour = !queue_.empty()   ? PROTO_INDICATOR_RED
+                 : timedOutUnseen_ ? PROTO_INDICATOR_YELLOW
+                 : allowedUnseen_  ? PROTO_INDICATOR_GREEN
+                                   : PROTO_INDICATOR_NORMAL;
+    return ind;
 }
 
-std::optional<std::string> ApprovalService::detail() const
+std::optional<std::string> ApprovalService::detail()
 {
+    timedOutUnseen_ = false;
+    allowedUnseen_ = false;
     const Texts& t = texts(language_);
     std::string text = recordLine({"Claude Code", t.detailSubtitle, ""});
     if (queue_.empty() && history_.empty()) {
@@ -453,7 +454,8 @@ std::optional<std::string> ApprovalService::detail() const
 
 void ApprovalService::publish()
 {
-    dash_.setCard(kSlot, card());
+    // No card any more (ADR-010): the status icon is read by the service
+    // loop (indicator()); an open list follows.
     dash_.refreshDetail(kSlot);
 }
 

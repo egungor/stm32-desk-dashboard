@@ -9,6 +9,8 @@
 //   Windows ile başlat          check mark; HKCU\...\Run (WinStartup)
 //   Menü görüntülerini yükle…   images -> Claude API -> menu-YYYY-MM.json (#20);
 //                               a balloon shows the summary
+//   Resim seç…                  the picture of the Dashboard's picture card (ADR-010)
+//   Yemek listelerini düzenle…  menu-lists.txt in Notepad (ADR-010)
 //   Claude Code hook ayarını kopyala
 //                               the settings.json snippet for this PC (#26)
 //   Ayarlar klasörünü aç        %APPDATA%\stm32-desk-dashboard
@@ -41,6 +43,8 @@
 #include "WinStartup.h"
 #include "ClaudeHook.h"
 #include "WinMenuImport.h"
+#include "MenuLists.h"
+#include "WinPicture.h"
 #include "WinStrings.h"
 #include "tray_resource.h"
 
@@ -59,6 +63,8 @@ enum MenuId : UINT {
     kMenuState = 1,
     kMenuStartup,
     kMenuLoadMenu,
+    kMenuPicture,
+    kMenuFoodLists,
     kMenuCopyHook,
     kMenuFolder,
     kMenuLog,
@@ -284,6 +290,54 @@ void onMenuImportDone()
                 !result.ok);
 }
 
+// The picture card (ADR-010): one image file; its path goes to picture.txt
+// and the service loop reads it.
+void choosePicture()
+{
+    std::vector<wchar_t> buffer(MAX_PATH * 4, L'\0');
+    std::wstring filter = text(TrayText::PictureFiles) + L" (*.jpg, *.png, *.bmp, *.gif, *.webp, *.heic)";
+    filter.push_back(L'\0');
+    filter += L"*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp;*.heic;*.tif;*.tiff";
+    filter.push_back(L'\0');
+    filter.push_back(L'\0');
+    const std::wstring title = text(TrayText::ChoosePicture);
+
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_app.window;
+    ofn.lpstrFilter = filter.c_str();
+    ofn.lpstrFile = buffer.data();
+    ofn.nMaxFile = static_cast<DWORD>(buffer.size());
+    ofn.lpstrTitle = title.c_str();
+    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    SetForegroundWindow(g_app.window);
+    if (!GetOpenFileNameW(&ofn)) {
+        return;
+    }
+    const std::string path = win::toUtf8(buffer.data());
+    if (!win::storePicturePath(path)) {
+        logLine("WARN: could not save picture.txt.");
+        return;
+    }
+    g_app.events.push(HostEvent::PictureChanged);
+}
+
+// menu-lists.txt (ADR-010) in the default editor; created with the
+// explanation when it does not exist yet.
+void editFoodLists()
+{
+    win::WinPreferenceFile lists(L"menu-lists");
+    if (!lists.ok()) {
+        return;
+    }
+    if (!lists.read() && !lists.write(kMenuListsTemplate)) {
+        logLine("WARN: could not create menu-lists.txt.");
+        return;
+    }
+    const std::wstring path = lists.directory() + L"\\menu-lists.txt";
+    (void)ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
 // The Claude Code hook snippet (ADR-007) on the clipboard: dashboard-host.exe
 // next to this program, exec form.
 void copyHookSettings(const std::wstring& trayExe)
@@ -329,6 +383,9 @@ void showMenu(POINT at)
     AppendMenuW(menu, MF_STRING | (win::startupEnabled(exe) ? MF_CHECKED : MF_UNCHECKED), kMenuStartup,
                 text(TrayText::StartWithWindows).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.importing ? MF_GRAYED : 0U), kMenuLoadMenu, text(TrayText::LoadMenu).c_str());
+    AppendMenuW(menu, MF_STRING, kMenuPicture, text(TrayText::ChoosePicture).c_str());
+    AppendMenuW(menu, MF_STRING | (g_app.dir.empty() ? MF_GRAYED : 0U), kMenuFoodLists,
+                text(TrayText::EditFoodLists).c_str());
     AppendMenuW(menu, MF_STRING, kMenuCopyHook, text(TrayText::CopyHookSettings).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.dir.empty() ? MF_GRAYED : 0U), kMenuFolder, text(TrayText::OpenFolder).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.log == nullptr ? MF_GRAYED : 0U), kMenuLog, text(TrayText::OpenLog).c_str());
@@ -356,6 +413,12 @@ void showMenu(POINT at)
     }
     case kMenuLoadMenu:
         loadMenuImages();
+        break;
+    case kMenuPicture:
+        choosePicture();
+        break;
+    case kMenuFoodLists:
+        editFoodLists();
         break;
     case kMenuCopyHook:
         copyHookSettings(exe);

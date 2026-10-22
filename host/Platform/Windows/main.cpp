@@ -40,6 +40,9 @@
 //                                      banner of the newest toast (ADR-009)
 //   dashboard-host notify focus      print whether Windows accepts pop-ups now
 //                                      (Do not disturb), at each change (Ctrl+C)
+//   dashboard-host picture [<file> | none]
+//                                      the picture card's file (ADR-010): print it
+//                                      and check that it loads, or set / remove it
 //   dashboard-host menu              print the menu card and today's detail
 //   dashboard-host menu import <image> [<image> ...]
 //                                      read menu images with the Claude API into
@@ -84,6 +87,7 @@
 #include "WinMediaSession.h"
 #include "WinNotificationListener.h"
 #include "WinNotificationProbe.h"
+#include "WinPicture.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
@@ -596,7 +600,9 @@ int cmdMenu(const std::vector<std::string>& args)
     const std::uint32_t now = localTimeValue(t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
     DashController dash(sink, [now] { return now; });
     win::WinMenuFiles files;
-    MenuService menu(dash, files, [now] { return now; }, printLine);
+    win::WinPreferenceFile lists(L"menu-lists");
+    win::WinPreferenceFile warned(L"menu-warned");
+    MenuService menu(dash, files, lists, warned, [now] { return now; }, printLine);
     const long today = static_cast<long>(now / 86400U);
     std::printf("Card:\n");
     printRecord(menu.card(today));
@@ -651,8 +657,9 @@ int cmdNotify(const std::vector<std::string>& args)
     notifications.onTick(GetTickCount64());
     const NotificationSnapshot snap = listener.snapshot();
     listener.stop();
-    std::printf("Card:\n");
-    printRecord(notifications.card());
+    const ProtoIndicator bell = notifications.indicator();
+    std::printf("Bell: %u, %s\n%s\n", static_cast<unsigned>(bell.number),
+                bell.colour == PROTO_INDICATOR_RED ? "not seen (red)" : "seen", notifications.summary().c_str());
     std::printf("\nDetail:\n");
     printRecord(notifications.detail().value_or(""));
     if (!snap.toasts.empty()) {
@@ -662,6 +669,29 @@ int cmdNotify(const std::vector<std::string>& args)
     std::printf("\nFocus: %s (banners %s)\n", win::describeFocusState().c_str(),
                 focus.acceptsPopups() ? "shown" : "not shown");
     return 0;
+}
+
+// The picture card's file (ADR-010).
+int cmdPicture(const std::vector<std::string>& args)
+{
+    if (args.size() == 3) {
+        const std::string path = args[2] == "none" ? std::string() : args[2];
+        if (!win::storePicturePath(path)) {
+            std::printf("FAIL: cannot write picture.txt.\n");
+            return 1;
+        }
+    } else if (args.size() != 2) {
+        return usage();
+    }
+    const std::optional<std::string> path = win::storedPicturePath();
+    if (!path) {
+        std::printf("No picture.\n");
+        return 0;
+    }
+    const win::PictureLoad loaded = win::loadPicture(win::toWide(*path));
+    const std::string state = loaded.pixels ? std::string("OK (200 x 92)") : "FAIL: " + loaded.error;
+    std::printf("%s: %s\n", path->c_str(), state.c_str());
+    return loaded.pixels ? 0 : 1;
 }
 
 int cmdMedia(const std::vector<std::string>& args)
@@ -756,7 +786,7 @@ int usage()
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
         "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
         "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n"
-        "                        notify | notify focus\n");
+        "                        notify | notify focus | picture [<file> | none]\n");
     return 2;
 }
 
@@ -811,6 +841,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "notify") {
         return cmdNotify(args);
+    }
+    if (cmd == "picture") {
+        return cmdPicture(args);
     }
 
     EventQueue events;

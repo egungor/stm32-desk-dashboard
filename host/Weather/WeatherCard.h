@@ -4,8 +4,9 @@
 // fetchDue() hands out (on another thread) and passes the result back to
 // onFetched().
 //
-//   card:   icon ␟ place ␟ \n 18° Parçalı bulutlu \n 11° / 21° · Yağış %20
-//           \n Rüzgâr 12 km/s     (or "Güncellendi 14:00" when stale)
+//   card:   icon ␟ place ␟ ␟ bg ␟ L \n 18° \n 11° / 21°   (ADR-010)
+//           ("Güncellendi 14:00" as a third line when stale; bg follows the
+//           weather, weatherColour())
 //   detail: Hava durumu ␟ place · 14:00 ␟ \n #Şimdi \n rows \n #10 gün \n
 //           one row per day: icon ␟ Bugün / Yarın / Cum 23 ␟ 11° / 21° · %20
 #pragma once
@@ -18,6 +19,10 @@
 #include "WeatherReport.h"
 
 namespace stm32_audio::host {
+
+// The card's background (ADR-010) for a weather icon (protocol.md "Icon"
+// 1-10), as RRGGBB; "" for anything else (the theme's colour).
+const char* weatherColour(int icon);
 
 class WeatherCard {
 public:

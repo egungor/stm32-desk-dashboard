@@ -163,6 +163,10 @@ void DashController::sendAll()
     for (std::uint8_t slot = 0; slot < PROTO_MAX_CARDS; ++slot) {
         sendCard(slot);
     }
+    sendIndicators();
+    if (cardsSent_) {
+        cardsSent_();
+    }
     if (prompt_) {
         sendRecord(PROTO_CMD_PROMPT_PART, prompt_->id, prompt_->generation, prompt_->text);
     }
@@ -191,6 +195,36 @@ void DashController::closePrompt(std::uint8_t id)
         msg.u.prompt_id = id;
         send(msg);
     }
+}
+
+void DashController::setIndicators(const ProtoIndicators& indicators)
+{
+    ProtoIndicators next{};
+    next.count = indicators.count > PROTO_MAX_INDICATORS ? PROTO_MAX_INDICATORS : indicators.count;
+    for (std::uint8_t i = 0; i < next.count; ++i) {
+        next.items[i] = indicators.items[i];
+    }
+    bool same = next.count == indicators_.count;
+    for (std::uint8_t i = 0; same && i < next.count; ++i) {
+        const ProtoIndicator& a = next.items[i];
+        const ProtoIndicator& b = indicators_.items[i];
+        same = a.icon == b.icon && a.colour == b.colour && a.number == b.number && a.slot == b.slot;
+    }
+    if (same) {
+        return;
+    }
+    indicators_ = next;
+    if (synced_) {
+        sendIndicators();
+    }
+}
+
+void DashController::sendIndicators()
+{
+    ProtoMessage msg{};
+    msg.command = PROTO_CMD_INDICATORS;
+    msg.u.indicators = indicators_;
+    send(msg);
 }
 
 void DashController::showBanner(std::uint8_t id, std::string text)
