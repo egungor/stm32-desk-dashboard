@@ -33,7 +33,7 @@ namespace stm32_audio::host::win {
 namespace {
 
 // Logs every frame, then hands it to the real transport. Of a cover's 534
-// ART_PARTs only the first and the last are logged.
+// ART_PARTs and PICTURE_PARTs only the first and the last are logged.
 class LoggingSink : public IFrameSink {
 public:
     LoggingSink(IFrameSink& next, const LogFn& log) : next_(next), log_(log) {}
@@ -43,8 +43,9 @@ public:
         ProtoMessage msg{};
         const bool decoded = Proto_Decode(frame.data(), &msg) == PROTO_OK;
         const bool sent = next_.sendFrame(frame);
-        if (decoded && msg.command == PROTO_CMD_ART_PART && msg.u.art.index != 0U &&
-            msg.u.art.index + 1U != PROTO_ART_PARTS && sent) {
+        const bool imagePart = msg.command == PROTO_CMD_ART_PART || msg.command == PROTO_CMD_PICTURE_PART;
+        const unsigned parts = msg.command == PROTO_CMD_ART_PART ? PROTO_ART_PARTS : PROTO_PICTURE_PARTS;
+        if (decoded && imagePart && msg.u.art.index != 0U && msg.u.art.index + 1U != parts && sent) {
             return sent;
         }
         log_(std::string("-> ") + (decoded ? describeMessage(msg) : std::string("(invalid frame)")) +

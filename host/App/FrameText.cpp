@@ -66,6 +66,12 @@ const char* commandName(std::uint8_t command)
         return "ART_PART";
     case PROTO_CMD_GET_MEDIA:
         return "GET_MEDIA";
+    case PROTO_CMD_INDICATORS:
+        return "INDICATORS";
+    case PROTO_CMD_PICTURE_PART:
+        return "PICTURE_PART";
+    case PROTO_CMD_PICTURE:
+        return "PICTURE";
     case PROTO_CMD_SEEK:
         return "SEEK";
     case PROTO_CMD_ERROR:
@@ -218,6 +224,16 @@ std::string describeMessage(const ProtoMessage& msg)
     case PROTO_CMD_ART_PART:
         out += " art=" + std::to_string(msg.u.art.art_id) + " part=" + std::to_string(msg.u.art.index + 1U) + "/" +
                std::to_string(PROTO_ART_PARTS);
+        break;
+    case PROTO_CMD_PICTURE_PART:
+        out += " pic=" + std::to_string(msg.u.art.art_id) + " part=" + std::to_string(msg.u.art.index + 1U) + "/" +
+               std::to_string(PROTO_PICTURE_PARTS);
+        break;
+    case PROTO_CMD_PICTURE:
+        out += " pic=" + std::to_string(msg.u.pic_id);
+        break;
+    case PROTO_CMD_INDICATORS:
+        out += " count=" + std::to_string(msg.u.indicators.count);
         break;
     case PROTO_CMD_DEVICE_CHANGED:
         out += " index=" + indexText(msg.u.device_index);
