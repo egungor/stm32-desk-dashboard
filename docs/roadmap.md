@@ -156,6 +156,7 @@ Requests of 2026-10-21 before v1.0.0 (media first, then notifications):
 - [x] Notifications 2. ADR-009 and protocol v5 (`BANNER_PART`, icon 12 bell); host `NotificationService` and `WinNotificationListener`; board banner over every screen; card slot 2 and its list (#34). Open: the Do not disturb check (`dashboard-host notify focus`) and the board check in `docs/hardware.md`
 
 - [ ] Dashboard redesign (#47, ADR-010, protocol v6): coloured cards with 40 px icons; a simpler weather card coloured by the weather; the menu card coloured by the owner's food lists and a morning warning; the bell and the Claude Code icon at the top right instead of their cards; the now-playing card; the picture card ("Resim seç…"). Open: the Windows and board checks in `docs/hardware.md`
+- [ ] Seek from the Music tab's progress bar (#55, ADR-008 amendment, protocol v7 `SEEK`). Open: the board check in `docs/hardware.md`
 - [ ] Full-screen picture (#53, ADR-010 amendment, protocol v7): the picture at 480 × 272, scaled down on the card; a tap on the card shows it full screen, a tap closes it. Open: the board check in `docs/hardware.md`
 
 After v1:

@@ -149,6 +149,21 @@ Rail order: Dashboard, **Music**, Audio, then settings. `startup_screen`
 0 Dashboard, 1 Audio (unchanged values), 2 Music. The Music tab and the
 Dashboard's media strip show the same state.
 
+### Amendment: seek from the progress bar (protocol version 7, #55)
+
+The owner asked to control the track from the Music tab's progress bar
+(2026-10-22). `MEDIA_STATE` `controls` gets bit 3, "seek" (the
+session's `IsPlaybackPositionEnabled`); `SEEK` (0x34, STM32 → host)
+carries the position in seconds. The bar becomes a slider that takes a
+tap or a drag only while bit 3 is set (a knob shows it; a 16 px larger
+touch area than the 6 px bar). On release the board shows the new
+position at once; the host calls `TryChangePlaybackPositionAsync` on
+the reader thread and counts from the new position for 3 s
+(`MediaService::kSeekGraceMs`), because players publish their timeline
+late, so no `MEDIA_STATE` pulls the bar back. An ERROR about `SEEK`
+makes the board show a notice and ask `GET_MEDIA`. It shares version 7
+with the full-screen picture (ADR-010, #53); neither was released.
+
 ## Alternatives
 
 - **Keep only media keys** and toggle the middle icon on each tap: the
