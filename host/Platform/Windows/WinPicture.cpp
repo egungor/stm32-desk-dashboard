@@ -143,6 +143,14 @@ PictureLoad loadPicture(const std::wstring& path)
         }
         ComPtr<IWICBitmapFrameDecode> frame;
         h = decoder->GetFrame(0, frame.put());
+        // Decode once into memory: the flip rotator reads its source a
+        // column at a time when it turns by 90 degrees, and on the JPEG
+        // decoder itself that decodes the file again for every row
+        // (minutes for a phone photo, #57).
+        ComPtr<IWICBitmap> decoded;
+        if (SUCCEEDED(h)) {
+            h = wic->CreateBitmapFromSource(frame.get(), WICBitmapCacheOnLoad, decoded.put());
+        }
         // Turn the picture upright first, so the crop is taken from the
         // picture as it is seen (a portrait phone photo stays portrait).
         ComPtr<IWICBitmapFlipRotator> upright;
@@ -150,7 +158,7 @@ PictureLoad loadPicture(const std::wstring& path)
             h = wic->CreateBitmapFlipRotator(upright.put());
         }
         if (SUCCEEDED(h)) {
-            h = upright->Initialize(frame.get(), uprightTransform(exifOrientation(frame.get())));
+            h = upright->Initialize(decoded.get(), uprightTransform(exifOrientation(frame.get())));
         }
         UINT width = 0;
         UINT height = 0;

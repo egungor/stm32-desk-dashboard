@@ -1740,6 +1740,16 @@ void testFrameTextDashboard()
     m.u.part.parts = 3;
     m.u.part.len = 53;
     CHECK(describeMessage(m) == "CARD_PART seq=0 id=2 gen=5 part=1/3 bytes=53");
+    {
+        ProtoMessage pic{};
+        pic.command = PROTO_CMD_PICTURE_PART;
+        pic.u.art.art_id = 3;
+        pic.u.art.index = 0;
+        CHECK(describeMessage(pic) == "PICTURE_PART seq=0 pic=3 part=1/" + std::to_string(PROTO_PICTURE_PARTS));
+        pic.command = PROTO_CMD_PICTURE;
+        pic.u.pic_id = 3;
+        CHECK(describeMessage(pic) == "PICTURE seq=0 pic=3");
+    }
     m = ProtoMessage{};
     m.command = PROTO_CMD_ACTION;
     m.u.action.kind = PROTO_ACTION_MEDIA;
