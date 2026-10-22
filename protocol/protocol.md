@@ -290,7 +290,7 @@ fit with "…" and never wraps a card line.
 | 10 | thunderstorm | bolt |
 | 11 | menu of the day | utensils |
 | 12 | notifications | bell |
-| 13 | Claude Code | robot |
+| 13 | Claude Code | the Claude symbol (#59; a robot before) |
 
 (Numbers are added here with the features that use them; 1–10: weather,
 #18; 11: menu, #20; 12: notifications, #34; 13: Claude Code, #47.) A detail row whose `icon` field is not empty keeps an icon column,

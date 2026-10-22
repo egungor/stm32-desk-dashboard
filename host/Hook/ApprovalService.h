@@ -48,7 +48,7 @@ struct ApprovalInfo {
     std::string tool;
     std::string project;  // last part of cwd
     std::vector<ApprovalRow> rows;
-    // One short line for the list (the detail of the robot icon, #49): the
+    // One short line for the list (the detail of the Claude icon, #49): the
     // description of a command (never the command itself), the file or the
     // URL of other tools; "" if there is none.
     std::string summary;
@@ -69,7 +69,7 @@ public:
     using LogFn = std::function<void(const std::string& line)>;
 
     static constexpr std::uint8_t kSlot = 3;  // ADR-006: 3 Claude Code (its detail)
-    static constexpr std::uint8_t kIcon = 13; // protocol.md "Icon": robot
+    static constexpr std::uint8_t kIcon = 13; // protocol.md "Icon": Claude Code
     // Prompt ids of requests: 0..kMaxPromptId (255 is the menu warning's).
     static constexpr std::uint8_t kMaxPromptId = 254;
     static constexpr std::uint64_t kAnswerTimeoutMs = 60000;
