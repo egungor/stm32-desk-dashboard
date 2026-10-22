@@ -28,6 +28,8 @@
 #include "MediaSession.h"
 #include "MenuData.h"
 #include "MenuImport.h"
+#include "NotificationService.h"
+#include "NotificationSource.h"
 #include "MenuService.h"
 #include "nlohmann/json.hpp"
 #include "PreferenceFile.h"
@@ -3005,6 +3007,274 @@ void testToastText()
     CHECK(unixFromFiletime(0) == 0);
 }
 
+// ------------------------------------------------------- notifications
+
+void testDashBanner()
+{
+    DashRig r;
+    r.dash.showBanner(1, "before sync");  // dropped: a banner is about now
+    CHECK(r.sink.sent.empty());
+    r.dash.onConnected();
+    r.sink.sent.clear();
+    std::uint8_t id = 0;
+    r.dash.showBanner(7, std::string(PROTO_BANNER_MAX_BYTES + 20U, 'b'));
+    CHECK(popRecord(r.sink, PROTO_CMD_BANNER_PART, &id).size() == PROTO_BANNER_MAX_BYTES && id == 7U);
+    CHECK(r.sink.sent.empty());
+    // Not sent again after a GET_CARDS.
+    r.dash.onMessage(dashMessage(PROTO_CMD_GET_CARDS));
+    bool banner = false;
+    while (!r.sink.sent.empty()) {
+        banner = banner || r.sink.pop().command == PROTO_CMD_BANNER_PART;
+    }
+    CHECK(!banner);
+}
+
+struct FakeNotifications : INotificationSource {
+    NotificationSnapshot snap;
+    NotificationSnapshot snapshot() const override { return snap; }
+    // Newest first, as the listener reader gives them.
+    void set(std::vector<Notification> toasts, NotificationAccess access = NotificationAccess::Allowed)
+    {
+        snap.access = access;
+        snap.toasts = std::move(toasts);
+        ++snap.version;
+    }
+};
+
+struct FakeFocus : IFocusState {
+    bool accepts = true;
+    bool acceptsPopups() const override { return accepts; }
+};
+
+Notification toast(std::uint32_t id, const std::string& app, const std::string& title, const std::string& body,
+                   std::uint32_t localTime = 1792593125U)  // 2026-10-21 14:32:05
+{
+    Notification n;
+    n.id = id;
+    n.app = app;
+    n.title = title;
+    n.body = body;
+    n.localTime = localTime;
+    return n;
+}
+
+struct NotifyRig {
+    FakeSink sink;
+    std::uint32_t now = 1792593125U;
+    DashController dash{sink, [this] { return now; }};
+    FakeNotifications source;
+    FakeFocus focus;
+    std::vector<std::string> log;
+    NotificationService notify{dash, source, focus, [this](const std::string& line) { log.push_back(line); }};
+    std::uint64_t ms = 10000;
+
+    void sync()
+    {
+        dash.onConnected();
+        sink.sent.clear();
+    }
+    void tick(std::uint64_t step = 500)
+    {
+        ms += step;
+        notify.onTick(ms);
+    }
+    // Banner records sent since the last call.
+    std::vector<std::string> banners()
+    {
+        std::vector<std::string> out;
+        while (!sink.sent.empty()) {
+            if (sink.sent.front().command == PROTO_CMD_BANNER_PART) {
+                out.push_back(popRecord(sink, PROTO_CMD_BANNER_PART));
+            } else {
+                sink.pop();
+            }
+        }
+        return out;
+    }
+};
+
+void testNotificationCardAndDetail()
+{
+    NotifyRig r;
+    const std::string sep = "\x1F";
+    // No list yet: an empty card, not an error.
+    CHECK(r.dash.card(2) == "12" + sep + "Bildirimler" + sep + "\nBildirim yok");
+
+    r.source.set({toast(4, "WhatsApp", "Ay\xC5\x9F" "e", "Ak\xC5\x9F" "am geliyor musun?", 1792593125U),
+                  toast(3, "Outlook", "", "Toplant\xC4\xB1 notlar\xC4\xB1", 1792592000U),
+                  toast(2, "Snipping Tool", "", ""),
+                  toast(1, "Teams", "Ali", "dördüncü")});
+    r.tick();
+    CHECK(r.dash.card(2) == "12" + sep + "Bildirimler" + sep + "4\nWhatsApp: Ay\xC5\x9F" "e\nOutlook: Toplant\xC4\xB1 notlar\xC4\xB1\nSnipping Tool");
+
+    const std::optional<std::string> d = r.notify.detail();
+    CHECK(d.has_value());
+    CHECK(d.value_or("") == "Bildirimler" + sep + "4 bildirim" + sep + "\n#WhatsApp \xC2\xB7 14:32\n" + sep +
+                                "Ay\xC5\x9F" "e" + sep + "Ak\xC5\x9F" "am geliyor musun?\n#Outlook \xC2\xB7 14:13\n" +
+                                sep + sep + "Toplant\xC4\xB1 notlar\xC4\xB1\n#Snipping Tool \xC2\xB7 14:32\n#Teams \xC2\xB7 14:32\n" +
+                                sep + "Ali" + sep + "dördüncü");
+
+    // English fixed words; field separators and line ends in texts are spaces.
+    r.notify.setLanguage(1);
+    r.source.set({toast(5, "App\nX", "a\x1F" "b", "c\nd")});
+    r.tick();
+    CHECK(r.dash.card(2) == "12" + sep + "Notifications" + sep + "1\nApp X: a b");
+    CHECK(r.notify.detail().value_or("").rfind("Notifications" + sep + "1 notifications", 0) == 0U);
+
+    // Access off: the card and the detail say so.
+    r.source.set({}, NotificationAccess::Denied);
+    r.tick();
+    CHECK(r.dash.card(2) == "12" + sep + "Notifications" + sep + "\nNotification access is off");
+    CHECK(r.notify.detail().value_or("").find("Privacy & security") != std::string::npos);
+    r.source.set({}, NotificationAccess::Failed);
+    r.tick();
+    CHECK(r.dash.card(2) == "12" + sep + "Notifications" + sep + "\nCannot read notifications");
+    r.notify.setLanguage(0);
+    r.source.set({});
+    r.tick();
+    CHECK(r.dash.card(2) == "12" + sep + "Bildirimler" + sep + "\nBildirim yok");
+    CHECK(r.notify.detail().value_or("") == "Bildirimler" + sep + sep + "\n" + sep + sep + "Bildirim yok");
+}
+
+void testNotificationDetailLimits()
+{
+    NotifyRig r;
+    std::vector<Notification> many;
+    for (std::uint32_t i = 40; i > 0; --i) {
+        many.push_back(toast(i, "App", "Title", std::string(300, 'x')));
+    }
+    r.source.set(many);
+    r.tick();
+    const std::string d = r.notify.detail().value_or("");
+    CHECK(d.size() <= PROTO_DETAIL_MAX_BYTES);
+    std::size_t sections = 0;
+    for (std::size_t pos = 0; (pos = d.find("\n#", pos)) != std::string::npos; ++pos) {
+        ++sections;
+    }
+    CHECK(sections >= 5U && sections <= NotificationService::kDetailItems);
+    CHECK(d.find(std::string(NotificationService::kDetailBodyBytes, 'x')) == std::string::npos);  // bodies cut
+    CHECK(d.find("\xE2\x80\xA6") != std::string::npos);
+    // The last section has its row: whole toasts only.
+    CHECK(d.rfind("\n#") < d.rfind("\n\x1F"));
+
+    // Twenty short ones fit.
+    many.clear();
+    for (std::uint32_t i = 30; i > 0; --i) {
+        many.push_back(toast(100 + i, "A", "t", "b"));
+    }
+    r.source.set(many);
+    r.tick();
+    const std::string d2 = r.notify.detail().value_or("");
+    sections = 0;
+    for (std::size_t pos = 0; (pos = d2.find("\n#", pos)) != std::string::npos; ++pos) {
+        ++sections;
+    }
+    CHECK(sections == NotificationService::kDetailItems);
+    CHECK(r.dash.card(2).find("\x1F" "30\n") != std::string::npos);
+}
+
+void testNotificationBanner()
+{
+    NotifyRig r;
+    const std::string sep = "\x1F";
+    r.sync();
+
+    // The first list after start: no banners for what was already there.
+    r.source.set({toast(10, "WhatsApp", "old", "")});
+    r.tick();
+    CHECK(r.banners().empty());
+
+    // A new toast: one banner, the record of ADR-009.
+    r.source.set({toast(11, "WhatsApp", "Ay\xC5\x9F" "e", "Ak\xC5\x9F" "am?"), toast(10, "WhatsApp", "old", "")});
+    r.tick();
+    std::vector<std::string> b = r.banners();
+    CHECK(b.size() == 1U);
+    CHECK(b.size() == 1U && b[0] == "12" + sep + "WhatsApp" + sep + "5" + sep + "2\nAy\xC5\x9F" "e\nAk\xC5\x9F" "am?");
+    CHECK(r.notify.stats().bannersSent == 1U);
+    // Removing one (dismissed on the PC) is no banner.
+    r.source.set({toast(11, "WhatsApp", "Ay\xC5\x9F" "e", "Ak\xC5\x9F" "am?")});
+    r.tick(3000);
+    CHECK(r.banners().empty());
+
+    // A burst within 2 s: the first at once, then only the newest of the rest.
+    r.source.set({toast(12, "Teams", "a", ""), toast(11, "WhatsApp", "x", "")});
+    r.tick(3000);
+    CHECK(r.banners().size() == 1U);
+    r.source.set({toast(13, "Teams", "b", ""), toast(12, "Teams", "a", ""), toast(11, "WhatsApp", "x", "")});
+    r.tick(500);
+    r.source.set({toast(14, "Outlook", "c", ""), toast(13, "Teams", "b", ""), toast(12, "Teams", "a", ""),
+                  toast(11, "WhatsApp", "x", "")});
+    r.tick(500);
+    CHECK(r.banners().empty());  // within 2 s of the last
+    r.tick(500);
+    CHECK(r.banners().empty());
+    r.tick(600);  // 2.1 s after the last banner
+    b = r.banners();
+    CHECK(b.size() == 1U && b[0].find("Outlook") != std::string::npos);
+    r.tick(5000);
+    CHECK(r.banners().empty());
+
+    // A toast dismissed before its turn is not shown.
+    r.source.set({toast(15, "Teams", "d", "")});
+    r.tick(100);  // within 2 s of the last? no: 5 s passed, so shown at once
+    CHECK(r.banners().size() == 1U);
+    r.source.set({toast(16, "Teams", "e", ""), toast(15, "Teams", "d", "")});
+    r.tick(100);
+    r.source.set({toast(15, "Teams", "d", "")});
+    r.tick(3000);
+    CHECK(r.banners().empty());
+
+    // Do not disturb: no banner, the card still changes.
+    r.focus.accepts = false;
+    r.source.set({toast(17, "Mail", "f", ""), toast(15, "Teams", "d", "")});
+    r.tick(3000);
+    CHECK(r.banners().empty());
+    CHECK(r.dash.card(2).find("Mail: f") != std::string::npos);
+    CHECK(r.notify.stats().bannersQuiet == 1U);
+    // Turned off again: the earlier toast does not come late.
+    r.focus.accepts = true;
+    r.tick(3000);
+    CHECK(r.banners().empty());
+
+    // Board not synced: dropped, not sent after the reconnect.
+    r.dash.onDisconnected();
+    r.notify.onDisconnected();
+    r.source.set({toast(18, "Mail", "g", ""), toast(17, "Mail", "f", ""), toast(15, "Teams", "d", "")});
+    r.tick(3000);
+    r.dash.onConnected();
+    r.tick(3000);
+    CHECK(r.banners().empty());
+
+    // No texts: only the app; the banner names no texts.
+    r.source.set({toast(19, "Snipping Tool", "", ""), toast(18, "Mail", "g", "")});
+    r.tick(3000);
+    b = r.banners();
+    CHECK(b.size() == 1U && b[0] == "12" + sep + "Snipping Tool" + sep + "5" + sep + "2");
+
+    // The log has app names, never the texts.
+    bool app = false;
+    for (const std::string& line : r.log) {
+        CHECK(line.find("Ay\xC5\x9F" "e") == std::string::npos && line.find("Mail: f") == std::string::npos);
+        app = app || line.find("WhatsApp") != std::string::npos;
+    }
+    CHECK(app);
+}
+
+void testNotificationAccessBaseline()
+{
+    NotifyRig r;
+    r.sync();
+    // Access off, then allowed: the first allowed list is not "new".
+    r.source.set({}, NotificationAccess::Denied);
+    r.tick();
+    r.source.set({toast(1, "A", "a", ""), toast(2, "B", "b", "")});
+    r.tick();
+    CHECK(r.banners().empty());
+    r.source.set({toast(3, "C", "c", ""), toast(1, "A", "a", ""), toast(2, "B", "b", "")});
+    r.tick();
+    CHECK(r.banners().size() == 1U);
+}
+
 int main()
 {
     testTruncateUtf8();
@@ -3081,6 +3351,11 @@ int main()
     testMediaServiceChanges();
     testMediaServiceActions();
     testToastText();
+    testDashBanner();
+    testNotificationCardAndDetail();
+    testNotificationDetailLimits();
+    testNotificationBanner();
+    testNotificationAccessBaseline();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

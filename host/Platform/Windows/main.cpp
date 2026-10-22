@@ -36,6 +36,10 @@
 //                                      notification listener and the
 //                                      notification database; last n toasts
 //   dashboard-host notify watch      print new toasts as they arrive (Ctrl+C)
+//   dashboard-host notify            the notifications card, its detail and the
+//                                      banner of the newest toast (ADR-009)
+//   dashboard-host notify focus      print whether Windows accepts pop-ups now
+//                                      (Do not disturb), at each change (Ctrl+C)
 //   dashboard-host menu              print the menu card and today's detail
 //   dashboard-host menu import <image> [<image> ...]
 //                                      read menu images with the Claude API into
@@ -71,12 +75,14 @@
 #include "MediaSession.h"
 #include "PreferenceStore.h"
 #include "MenuService.h"
+#include "NotificationService.h"
 #include "WeatherCard.h"
 #include "WeatherLocation.h"
 #include "WinAudioSystem.h"
 #include "WinHttpClient.h"
 #include "WinHookPipe.h"
 #include "WinMediaSession.h"
+#include "WinNotificationListener.h"
 #include "WinNotificationProbe.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
@@ -599,6 +605,65 @@ int cmdMenu(const std::vector<std::string>& args)
     return 0;
 }
 
+// The notifications card as the tray would send it (ADR-009), or the focus
+// state at each change.
+int cmdNotify(const std::vector<std::string>& args)
+{
+    if (args.size() == 3 && args[2] == "focus") {
+        std::printf("Turn Do not disturb on and off; Ctrl+C stops.\n");
+        std::string last;
+        for (;;) {
+            const std::string now = win::describeFocusState();
+            if (now != last) {
+                SYSTEMTIME t{};
+                GetLocalTime(&t);
+                std::printf("%02u:%02u:%02u  %s\n", static_cast<unsigned>(t.wHour), static_cast<unsigned>(t.wMinute),
+                            static_cast<unsigned>(t.wSecond), now.c_str());
+                std::fflush(stdout);
+                last = now;
+            }
+            Sleep(500);
+        }
+    }
+    if (args.size() != 2) {
+        return usage();
+    }
+
+    class NullSink : public IFrameSink {
+    public:
+        bool sendFrame(const Frame&) override { return true; }
+    } sink;
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    const std::uint32_t now = localTimeValue(t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    DashController dash(sink, [now] { return now; });
+    EventQueue events;
+    win::WinNotificationListener listener(events, printLine);
+    if (!listener.start()) {
+        std::printf("FAIL: cannot start the notification thread.\n");
+        return 1;
+    }
+    for (int i = 0; i < 60 && listener.snapshot().version == 0U; ++i) {
+        Sleep(50);
+    }
+    win::WinFocusState focus;
+    NotificationService notifications(dash, listener, focus, printLine);
+    notifications.onTick(GetTickCount64());
+    const NotificationSnapshot snap = listener.snapshot();
+    listener.stop();
+    std::printf("Card:\n");
+    printRecord(notifications.card());
+    std::printf("\nDetail:\n");
+    printRecord(notifications.detail().value_or(""));
+    if (!snap.toasts.empty()) {
+        std::printf("\nBanner of the newest:\n");
+        printRecord(notifications.banner(snap.toasts.front()));
+    }
+    std::printf("\nFocus: %s (banners %s)\n", win::describeFocusState().c_str(),
+                focus.acceptsPopups() ? "shown" : "not shown");
+    return 0;
+}
+
 int cmdMedia(const std::vector<std::string>& args)
 {
     std::optional<MediaKey> key;
@@ -690,7 +755,8 @@ int usage()
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
         "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
-        "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n");
+        "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n"
+        "                        notify | notify focus\n");
     return 2;
 }
 
@@ -742,6 +808,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "notify" && args.size() == 3 && args[2] == "watch") {
         return win::runNotificationWatch(printLine);
+    }
+    if (cmd == "notify") {
+        return cmdNotify(args);
     }
 
     EventQueue events;

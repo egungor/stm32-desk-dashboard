@@ -1,4 +1,4 @@
-// Dashboard side of protocol v4 on the host (ADR-006; protocol.md,
+// Dashboard side of protocol v5 on the host (ADR-006; protocol.md,
 // "Dashboard records" and "Exchanges").
 //
 // Holds the text record of every card slot and sends it to the board:
@@ -97,6 +97,11 @@ public:
     // Close prompt @p id (PROMPT_CLOSE) and forget it.
     void closePrompt(std::uint8_t id);
 
+    // Show banner @p id on the board (BANNER_PART, ADR-009), cut to
+    // PROTO_BANNER_MAX_BYTES. Sent only if the board is synced; never kept or
+    // sent again (a banner is about now).
+    void showBanner(std::uint8_t id, std::string text);
+
     // The board asked for the cards since it was connected: frames reach it.
     bool synced() const { return synced_; }
 
@@ -140,6 +145,7 @@ private:
     std::optional<Prompt> prompt_;
     std::uint8_t promptGeneration_ = 0;
     std::uint8_t detailGeneration_ = 0;
+    std::uint8_t bannerGeneration_ = 0;
 };
 
 }  // namespace stm32_audio::host

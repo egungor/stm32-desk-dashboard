@@ -193,6 +193,14 @@ void DashController::closePrompt(std::uint8_t id)
     }
 }
 
+void DashController::showBanner(std::uint8_t id, std::string text)
+{
+    if (!synced_) {
+        return;
+    }
+    sendRecord(PROTO_CMD_BANNER_PART, id, ++bannerGeneration_, cutUtf8(std::move(text), PROTO_BANNER_MAX_BYTES));
+}
+
 void DashController::sendCard(std::uint8_t slot)
 {
     const Slot& s = cards_[slot];

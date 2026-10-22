@@ -14,6 +14,7 @@
 #include "MediaKeys.h"
 #include "MediaService.h"
 #include "MenuService.h"
+#include "NotificationService.h"
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
@@ -23,6 +24,7 @@
 #include "WinMediaKeys.h"
 #include "WinMediaSession.h"
 #include "WinMenuImport.h"
+#include "WinNotificationListener.h"
 
 namespace stm32_audio::host::win {
 
@@ -158,13 +160,22 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     // Menu card and day detail (slot 1), from the month files (#20).
     WinMenuFiles menuFiles;
     MenuService menu(dash, menuFiles, localTimeNow, log);
+    // Notifications card, its list and the banners (slot 2, ADR-009): the
+    // notification listener, polled on its own thread.
+    WinNotificationListener notificationListener(events, log);
+    WinFocusState focus;
+    NotificationService notifications(dash, notificationListener, focus, log);
     dash.setDetailHandler(
-        [&weather, &menu, &approvals](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        [&weather, &menu, &approvals, &notifications](std::uint8_t slot,
+                                                      std::int8_t arg) -> std::optional<std::string> {
             if (slot == WeatherService::kSlot) {
                 return weather.detail(arg);
             }
             if (slot == MenuService::kSlot) {
                 return menu.detail(arg);
+            }
+            if (slot == NotificationService::kSlot && arg == 0) {
+                return notifications.detail();
             }
             if (slot == ApprovalService::kSlot && arg == 0) {
                 return approvals.detail();
@@ -209,6 +220,9 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     if (!mediaSession.start()) {
         log("WARN: cannot start the media session thread; the media strip uses media keys.");
     }
+    if (!notificationListener.start()) {
+        log("WARN: cannot start the notification thread; the notifications card stays empty.");
+    }
     approvals.onTick(GetTickCount64());  // the card
 
     for (;;) {
@@ -226,6 +240,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         menu.onTick(GetTickCount64());
         approvals.setLanguage(controller.preferences().settings().language);
         approvals.onTick(GetTickCount64());
+        notifications.setLanguage(controller.preferences().settings().language);
+        notifications.onTick(GetTickCount64());
         dash.onTick(GetTickCount64());
         media.onTick(GetTickCount64());
         if (!item) {
@@ -250,6 +266,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             controller.onDisconnected();
             approvals.onDisconnected();  // nobody can answer: back to the terminal
             dash.onDisconnected();
+            notifications.onDisconnected();
             media.onDisconnected();
             if (hooks.connection) {
                 hooks.connection(false);
@@ -262,7 +279,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             approvals.onCancelled(item->ticket, GetTickCount64());
             break;
         case HostEvent::MediaChanged:
-            break;  // media.onTick above took the new snapshot
+        case HostEvent::NotificationsChanged:
+            break;  // the onTicks above took the new snapshot
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
             menu.reload();
@@ -271,6 +289,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             approvals.cancelAll();
             hookPipe.stop();
             mediaSession.stop();
+            notificationListener.stop();
             link.stop();
             if (saving && !store.flush()) {
                 log("WARN: could not save " + file.location());
