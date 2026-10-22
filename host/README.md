@@ -58,7 +58,11 @@ host/
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
-│   └── MenuService.*       # card slot 1 and the day detail (‹ › by working day)
+│   ├── MenuLists.*         # menu-lists.txt: "never" / "don't like" dishes, Turkish case rules (ADR-010)
+│   └── MenuService.*       # card slot 1 (coloured by the lists), the day detail, the 08:00 warning
+├── Picture/                # the picture card (ADR-010, #47)
+│   ├── PictureSource.h     # IPictureSource: the 200 x 92 RGB565 picture, or none
+│   └── PictureService.*    # PICTURE and its PICTURE_PARTs after the cards
 ├── Weather/                # the weather card (#18)
 │   ├── WeatherReport.*     # Open-Meteo URL and answer, WMO code -> icon and text
 │   ├── WeatherLocation.*   # weather.txt, Open-Meteo geocoding
@@ -76,6 +80,7 @@ host/
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
 │   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
+│   ├── WinPicture.*        # picture.txt and the WIC import (centre crop, 200 x 92)
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
 │   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt, ...
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8
@@ -166,6 +171,10 @@ dashboard-host notify            the notifications card, its detail and the
                                    sends them (ADR-009)
 dashboard-host notify focus      whether Windows accepts pop-ups (Do not
                                    disturb), at every change (Ctrl+C stops)
+dashboard-host picture [<file> | none]
+                                   the picture card's file (ADR-010): check
+                                   that it loads, or set / remove it (the
+                                   tray picks it up within 5 s)
 dashboard-host menu              print the menu card and the day's detail
 dashboard-host menu import <image> [<image> ...]
                                    read menu images with the Claude API into

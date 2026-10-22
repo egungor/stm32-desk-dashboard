@@ -52,5 +52,6 @@ The STM32 shows **only** what the host reports. A tapped device is marked
 | [ADR-003](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-003-usb-hid-interface.md) | Vendor USB HID, `1209:0002`, 64-byte reports, registered from USER CODE |
 | [ADR-008](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-008-media-session-and-music-tab.md) | Now playing from the Windows media session, a 120 × 120 cover, the Music tab; protocol v4 |
 | [ADR-009](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-009-notifications.md) | Windows notifications: the fourth card, its list and a banner; protocol v5 |
+| [ADR-010](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/decisions/ADR-010-dashboard-redesign.md) | Dashboard redesign: coloured cards, status icons, now-playing and picture cards; protocol v6 |
 
 More: [docs/architecture.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/architecture.md).

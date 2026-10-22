@@ -34,6 +34,10 @@ spike (#33) is done; notifications (#34: ADR-009, protocol v5
 `BANNER_PART`, `host/Notify/NotificationService`,
 `Platform/Windows/WinNotificationListener`, the banner in `ui_dash.c`) are
 in code, their Windows and board checks are open (`docs/hardware.md`).
+Then the Dashboard redesign (#47: ADR-010, protocol v6 `INDICATORS`,
+`PICTURE`, `PICTURE_PART`, card colours; `host/Menu/MenuLists`,
+`host/Picture/PictureService`, `Platform/Windows/WinPicture`; the cards
+in `ui_dash.c`).
 Step 12 (#28): release preparation done, **no `v1.0.0` tag** yet. Done: steps 1–11 (Claude Code approvals: #26,
 `host/Hook/ApprovalService`, `Platform/Windows/WinHookPipe`, the prompt
 in `ui_dash.c`) and the test releases `v0.9.0-beta.1` (#22) and

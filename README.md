@@ -127,9 +127,13 @@ Done in code (verification status above):
 
 - tabs on a left rail: Dashboard and Audio, global settings in sections,
   the tab shown at start chosen in the settings;
-- Dashboard: clock and date from the PC, four cards (weather, menu of the
-  day, notifications, Claude Code), a detail view per card, media keys
-  `<< || >>` for the player on the PC;
+- Dashboard (ADR-010): clock and date from the PC; coloured cards for the
+  weather (coloured by the weather), the menu of the day (green, or
+  yellow / orange when a dish of your food lists is on it, with a warning
+  at 08:00), what plays now (with a small cover) and a picture you choose
+  in the tray menu; the notifications bell and the Claude Code icon at the
+  top right; a detail view per card and icon; media keys `<< || >>` for
+  the player on the PC;
 - weather for one location (Open-Meteo, no key): card and 10-day detail;
 - menu of the day read from menu images with the Claude API, card and
   day detail with the salad bar;
