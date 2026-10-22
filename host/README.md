@@ -309,20 +309,16 @@ and the settings window (left click):
 
 - the connection state ("Kumanda bağlı" / "Kumanda bekleniyor"), also
   in the icon's tooltip;
-- "Ayarlar…": the settings window (below);
-- "Windows ile başlat": a check mark when
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has the value
-  `STM32 Desk Dashboard` = `"<folder>\dashboard-tray.exe"` (current
-  user only, no administrator rights); a click adds or removes it;
-- "Menü görüntülerini yükle…": the menu import (#20, "Menu of the day"
-  above) on a background thread; a balloon shows the summary or the
-  error;
-- "Claude Code hook ayarını kopyala": the settings snippet (#26);
-- "Ayarlar klasörünü aç": `%APPDATA%\stm32-desk-dashboard`;
-- "Günlüğü aç": `host.log` in that folder: the same lines as `run`
+- "Ayarlar…": the settings window (below), also a left click on the icon;
+- "Günlüğü aç": `host.log` in the settings folder: the same lines as `run`
   prints, with the local time; above 1 MB at start it becomes
   `host.log.1`;
 - "Çıkış": stops the service (preferences saved) and removes the icon.
+
+Start with Windows (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
+value `STM32 Desk Dashboard`, current user only), the menu import, the
+picture, the food lists, the Claude Code hook snippet and the settings
+folder are in the settings window (#66).
 
 The menu and tooltip text follow the language in the board's settings
 record (Turkish or English). Logging off or shutting down Windows stops

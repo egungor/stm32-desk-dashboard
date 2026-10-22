@@ -8,17 +8,12 @@
 //   <state>                     "Kumanda bağlı" / "Kumanda bekleniyor" (greyed)
 //   Ayarlar…                    the settings window (ADR-011; also a left click
 //                               on the icon): every setting, the versions
-//   Windows ile başlat          check mark; HKCU\...\Run (WinStartup)
-//   Menü görüntülerini yükle…   images -> Claude API -> menu-YYYY-MM.json (#20);
-//                               a balloon shows the summary
-//   Resim seç…                  the picture of the Dashboard's picture card (ADR-010)
-//   Yemek listelerini düzenle…  menu-lists.txt in Notepad (ADR-010)
-//   Claude Code hook ayarını kopyala
-//                               the settings.json snippet for this PC (#26)
-//   Ayarlar klasörünü aç        %APPDATA%\stm32-desk-dashboard
 //   Günlüğü aç                  host.log
 //   Çıkış
 //
+// Everything else (start with Windows, menu images, picture, food lists,
+// the Claude Code hook, the settings folder) is in the settings window
+// (#66).
 // A right click shows the menu, a left click opens the settings window.
 // The text follows the language of the board's settings record. Only one
 // program serves the controller at a time (SingleInstance).
@@ -75,12 +70,6 @@ constexpr ULONGLONG kMaxLogBytes = 1024ULL * 1024ULL;
 enum MenuId : UINT {
     kMenuState = 1,
     kMenuSettings,
-    kMenuStartup,
-    kMenuLoadMenu,
-    kMenuPicture,
-    kMenuFoodLists,
-    kMenuCopyHook,
-    kMenuFolder,
     kMenuLog,
     kMenuExit,
 };
@@ -278,7 +267,7 @@ std::vector<std::wstring> chooseImages()
     return paths;
 }
 
-void loadMenuImages()
+[[maybe_unused]] void loadMenuImages()  // only the settings window starts it
 {
     if (g_app.importing) {
         return;
@@ -328,7 +317,7 @@ void onMenuImportDone()
 
 // The picture card (ADR-010): one image file; its path goes to picture.txt
 // and the service loop reads it.
-void choosePicture()
+[[maybe_unused]] void choosePicture()
 {
     std::vector<wchar_t> buffer(MAX_PATH * 4, L'\0');
     std::wstring filter = text(TrayText::PictureFiles) + L" (*.jpg, *.png, *.bmp, *.gif, *.webp, *.heic)";
@@ -359,25 +348,9 @@ void choosePicture()
     postState();
 }
 
-// menu-lists.txt (ADR-010) in the default editor; created with the
-// explanation when it does not exist yet.
-void editFoodLists()
-{
-    win::WinPreferenceFile lists(L"menu-lists");
-    if (!lists.ok()) {
-        return;
-    }
-    if (!lists.read() && !lists.write(kMenuListsTemplate)) {
-        logLine("WARN: could not create menu-lists.txt.");
-        return;
-    }
-    const std::wstring path = lists.directory() + L"\\menu-lists.txt";
-    (void)ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-
 // The Claude Code hook snippet (ADR-007) on the clipboard: dashboard-host.exe
 // next to this program, exec form.
-void copyHookSettings(const std::wstring& trayExe)
+[[maybe_unused]] void copyHookSettings(const std::wstring& trayExe)
 {
     const std::size_t slash = trayExe.find_last_of(L'\\');
     const std::wstring host = (slash == std::wstring::npos ? std::wstring() : trayExe.substr(0, slash + 1U)) +
@@ -594,7 +567,6 @@ void openSettings()
 
 void showMenu(POINT at)
 {
-    const std::wstring exe = win::trayProgramPath();
     HMENU menu = CreatePopupMenu();
     if (menu == nullptr) {
         return;
@@ -606,14 +578,6 @@ void showMenu(POINT at)
     AppendMenuW(menu, MF_STRING, kMenuSettings, text(TrayText::Settings).c_str());
     SetMenuDefaultItem(menu, kMenuSettings, FALSE);
 #endif
-    AppendMenuW(menu, MF_STRING | (win::startupEnabled(exe) ? MF_CHECKED : MF_UNCHECKED), kMenuStartup,
-                text(TrayText::StartWithWindows).c_str());
-    AppendMenuW(menu, MF_STRING | (g_app.importing ? MF_GRAYED : 0U), kMenuLoadMenu, text(TrayText::LoadMenu).c_str());
-    AppendMenuW(menu, MF_STRING, kMenuPicture, text(TrayText::ChoosePicture).c_str());
-    AppendMenuW(menu, MF_STRING | (g_app.dir.empty() ? MF_GRAYED : 0U), kMenuFoodLists,
-                text(TrayText::EditFoodLists).c_str());
-    AppendMenuW(menu, MF_STRING, kMenuCopyHook, text(TrayText::CopyHookSettings).c_str());
-    AppendMenuW(menu, MF_STRING | (g_app.dir.empty() ? MF_GRAYED : 0U), kMenuFolder, text(TrayText::OpenFolder).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.log == nullptr ? MF_GRAYED : 0U), kMenuLog, text(TrayText::OpenLog).c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuExit, text(TrayText::Exit).c_str());
@@ -627,35 +591,11 @@ void showMenu(POINT at)
     DestroyMenu(menu);
 
     switch (cmd) {
+#if DASHBOARD_SETTINGS_WINDOW
     case kMenuSettings:
         openSettings();
         break;
-    case kMenuStartup: {
-        const bool enable = !win::startupEnabled(exe);
-        if (win::setStartup(enable, exe)) {
-            logLine(std::string("Start with Windows: ") + (enable ? "on" : "off"));
-        } else {
-            MessageBoxW(g_app.window, text(TrayText::StartupFailed).c_str(), text(TrayText::Title).c_str(),
-                        MB_OK | MB_ICONWARNING);
-        }
-        postState();
-        break;
-    }
-    case kMenuLoadMenu:
-        loadMenuImages();
-        break;
-    case kMenuPicture:
-        choosePicture();
-        break;
-    case kMenuFoodLists:
-        editFoodLists();
-        break;
-    case kMenuCopyHook:
-        copyHookSettings(exe);
-        break;
-    case kMenuFolder:
-        (void)ShellExecuteW(nullptr, L"open", g_app.dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-        break;
+#endif
     case kMenuLog:
         (void)ShellExecuteW(nullptr, L"open", g_app.logPath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         break;
