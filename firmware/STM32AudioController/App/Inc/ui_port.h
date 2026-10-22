@@ -39,6 +39,12 @@ extern "C" {
 #define UI_PORT_ART_RX_ADDR   0xC0100000UL
 #define UI_PORT_ART_SHOW_ADDR 0xC0108000UL
 
+/** The picture card (ADR-010), after the covers: the picture being received
+ *  (dash_client.c) and the one shown (ui_dash.c), 36 800 bytes each
+ *  (PROTO_PICTURE_BYTES), 64 KB apart. */
+#define UI_PORT_PIC_RX_ADDR   0xC0110000UL
+#define UI_PORT_PIC_SHOW_ADDR 0xC0120000UL
+
 /**
  * @brief  Initialise LVGL, the display and (if @p touch_ok) the pointer
  *         input device.

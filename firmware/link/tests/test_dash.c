@@ -53,6 +53,10 @@ static struct
     const uint8_t *art;
     int     banner_calls;
     char    banner_text[PROTO_BANNER_MAX_BYTES + 1U];
+    int     ind_calls;
+    ProtoIndicators ind;
+    int     pic_calls;
+    const uint8_t *pic;
 } g;
 
 static bool fake_send(const uint8_t frame[PROTO_FRAME_SIZE], void *ctx)
@@ -144,14 +148,29 @@ static void fake_banner(const char *text, void *ctx)
     (void)snprintf(g.banner_text, sizeof(g.banner_text), "%s", text);
 }
 
+static void fake_indicators(const ProtoIndicators *ind, void *ctx)
+{
+    (void)ctx;
+    g.ind_calls++;
+    g.ind = *ind;
+}
+
+static void fake_picture(const uint8_t *pixels, void *ctx)
+{
+    (void)ctx;
+    g.pic_calls++;
+    g.pic = pixels;
+}
+
 static DashClient s_dash;
+static uint8_t s_pic_buf[PROTO_PICTURE_BYTES];
 static uint8_t s_art_buf[PROTO_ART_BYTES];
 
 static void reset(void)
 {
     static const DashCallbacks cb = { fake_send,  fake_card,  fake_detail, fake_notice, fake_time,
                                       fake_prompt, fake_close, NULL,        fake_media,  fake_state,
-                                      fake_art,   fake_banner };
+                                      fake_art,   fake_banner, fake_indicators, fake_picture };
 
     memset(&g, 0, sizeof(g));
     Dash_Init(&s_dash, &cb);
@@ -595,6 +614,109 @@ static void test_banner(void)
     CHECK(s_dash.banner_asm.active == 0U);
 }
 
+/* ---------------------------------------------- status icons and picture */
+
+static int count_sent(uint8_t command)
+{
+    int n = 0;
+
+    for (int i = 0; i < g.sent_count; i++)
+    {
+        n += (g.sent[i].command == command) ? 1 : 0;
+    }
+    return n;
+}
+
+static void feed_picture(uint8_t pic_id, uint32_t now)
+{
+    ProtoMessage msg = simple(PROTO_CMD_PICTURE);
+
+    msg.u.pic_id = pic_id;
+    Dash_OnMessage(&s_dash, &msg, now);
+}
+
+static void feed_picture_parts(uint8_t pic_id, uint8_t fill, uint16_t from, uint16_t to, uint32_t now)
+{
+    static uint8_t pixels[PROTO_PICTURE_BYTES];
+    ProtoMessage msg = simple(PROTO_CMD_PICTURE_PART);
+
+    memset(pixels, fill, sizeof(pixels));
+    for (uint16_t i = from; i < to; i++)
+    {
+        CHECK(Proto_PicturePart(pixels, pic_id, i, &msg.u.art) == 1);
+        Dash_OnMessage(&s_dash, &msg, now);
+    }
+}
+
+static void test_indicators_and_picture(void)
+{
+    ProtoMessage ind = simple(PROTO_CMD_INDICATORS);
+
+    reset();
+    Dash_SetPictureBuffer(&s_dash, s_pic_buf);
+    Dash_OnConnected(&s_dash, 0U);
+
+    /* INDICATORS go to the UI as they are. */
+    ind.u.indicators.count = 2U;
+    ind.u.indicators.items[0] = (ProtoIndicator){ 12U, PROTO_INDICATOR_RED, 3U, 2U };
+    ind.u.indicators.items[1] = (ProtoIndicator){ 13U, PROTO_INDICATOR_GREEN, 0U, 3U };
+    CHECK(Dash_Owns(&ind));
+    Dash_OnMessage(&s_dash, &ind, 10U);
+    CHECK(g.ind_calls == 1 && g.ind.count == 2U && g.ind.items[1].colour == PROTO_INDICATOR_GREEN);
+
+    /* PICTURE 0 while nothing is shown: nothing to tell. A picture: shown when complete. */
+    feed_picture(PROTO_NO_PICTURE, 20U);
+    CHECK(g.pic_calls == 0);
+    feed_picture(4U, 30U);
+    feed_picture_parts(4U, 0x5AU, 0U, PROTO_PICTURE_PARTS - 1U, 40U);
+    CHECK(g.pic_calls == 0);
+    feed_picture_parts(4U, 0x5AU, PROTO_PICTURE_PARTS - 1U, PROTO_PICTURE_PARTS, 50U);
+    CHECK(g.pic_calls == 1 && g.pic == s_pic_buf && s_pic_buf[100] == 0x5AU);
+
+    /* The same id again (e.g. after GET_CARDS): not collected again. */
+    feed_picture(4U, 60U);
+    feed_picture_parts(4U, 0x11U, 0U, PROTO_PICTURE_PARTS, 70U);
+    CHECK(g.pic_calls == 1 && s_pic_buf[100] == 0x5AU);
+
+    /* A lost part: GET_CARDS after the retry time; the rest completes it. */
+    g.sent_count = 0;
+    feed_picture(5U, 1000U);
+    feed_picture_parts(5U, 0x22U, 0U, 300U, 1010U);
+    feed_picture_parts(5U, 0x22U, 301U, PROTO_PICTURE_PARTS, 1020U);
+    Dash_Poll(&s_dash, 1020U + DASH_RETRY_MS - 1U);
+    CHECK(count_sent(PROTO_CMD_GET_CARDS) == 0);
+    Dash_Poll(&s_dash, 1020U + DASH_RETRY_MS);
+    CHECK(count_sent(PROTO_CMD_GET_CARDS) == 1);
+    feed_picture(5U, 2100U);
+    feed_picture_parts(5U, 0x22U, 300U, 301U, 2110U);
+    CHECK(g.pic_calls == 2 && s_pic_buf[100] == 0x22U);
+    Dash_Poll(&s_dash, 9000U);
+    CHECK(count_sent(PROTO_CMD_GET_CARDS) == 1);  /* nothing missing any more */
+
+    /* A cover's part is not a picture's; PICTURE 0 removes it. */
+    feed_picture(6U, 9100U);
+    {
+        static uint8_t art[PROTO_ART_BYTES];
+        ProtoMessage msg = simple(PROTO_CMD_ART_PART);
+
+        CHECK(Proto_ArtPart(art, 6U, 0U, &msg.u.art) == 1);
+        Dash_OnMessage(&s_dash, &msg, 9110U);
+    }
+    CHECK(g.pic_calls == 2);
+    feed_picture(PROTO_NO_PICTURE, 9200U);
+    CHECK(g.pic_calls == 3 && g.pic == NULL);
+
+    /* Without a buffer pictures are ignored. */
+    reset();
+    Dash_OnConnected(&s_dash, 0U);
+    feed_picture(7U, 10U);
+    feed_picture_parts(7U, 0x33U, 0U, PROTO_PICTURE_PARTS, 20U);
+    CHECK(g.pic_calls == 0);
+    g.sent_count = 0;
+    Dash_Poll(&s_dash, 5000U);
+    CHECK(count_sent(PROTO_CMD_GET_CARDS) == 0);
+}
+
 int main(void)
 {
     test_owns();
@@ -608,6 +730,7 @@ int main(void)
     test_prompt();
     test_media();
     test_banner();
+    test_indicators_and_picture();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

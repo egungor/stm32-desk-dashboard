@@ -1,8 +1,8 @@
 /**
  * @file    dash_client.h
- * @brief   STM32 side of the dashboard commands of protocol v5 (ADR-006,
- *          ADR-008, ADR-009; protocol/protocol.md, "Dashboard records",
- *          "Now playing", "Banner").
+ * @brief   STM32 side of the dashboard commands of protocol v6 (ADR-006,
+ *          ADR-008, ADR-009, ADR-010; protocol/protocol.md, "Dashboard
+ *          records", "Now playing", "Banner", "Status icons and picture").
  *
  * Hardware independent, like link_client.h: frames go out through a
  * callback; decoded dashboard messages come in through Dash_OnMessage()
@@ -41,6 +41,12 @@
  *     unless a prompt is shown (a banner never covers a prompt; it is
  *     dropped). A banner still incomplete DASH_RETRY_MS after its last part
  *     is dropped; it is never asked for again.
+ *   - Status icons and picture (ADR-010): INDICATORS goes to
+ *     show_indicators. The picture of the last PICTURE is collected into the
+ *     buffer given with Dash_SetPictureBuffer and handed to show_picture when
+ *     complete (NULL: PICTURE 0, no picture); a picture already shown is not
+ *     collected again; one still incomplete DASH_RETRY_MS after its last
+ *     part (or its PICTURE) makes the client send GET_CARDS.
  *
  * Sequence numbers: the client numbers its frames from a counter it is
  * given (Dash_SetSequenceCounter), so that it can share the audio
@@ -103,6 +109,12 @@ typedef struct
     /** A banner arrived (NUL-terminated record text); not while a prompt is
      *  shown. */
     void (*show_banner)(const char *text, void *ctx);
+    /* Status icons and picture (ADR-010), optional. */
+    /** INDICATORS arrived. */
+    void (*show_indicators)(const ProtoIndicators *indicators, void *ctx);
+    /** A complete picture (PROTO_PICTURE_BYTES of RGB565), or NULL: none.
+     *  The buffer is reused for the next picture: copy what is to be kept. */
+    void (*show_picture)(const uint8_t *pixels, void *ctx);
 } DashCallbacks;
 
 typedef struct
@@ -141,6 +153,10 @@ typedef struct
     uint8_t banner_buf[PROTO_BANNER_MAX_BYTES + 1U];
     uint32_t banner_part_ms;   /**< time of the last banner part */
 
+    ProtoArtAssembler pic_asm; /**< collects the picture into the caller's buffer */
+    uint32_t pic_part_ms;      /**< time of the last picture part or its PICTURE */
+    uint8_t pic_shown;         /**< id handed to show_picture, PROTO_NO_PICTURE if none */
+
     bool time_known;
     uint32_t time_base;        /**< local time of the last TIME */
     uint32_t time_base_ms;     /**< now_ms when it arrived */
@@ -161,6 +177,10 @@ void Dash_SetSequenceCounter(DashClient *dash, uint8_t *counter);
 /** The buffer covers are collected in (PROTO_ART_BYTES); without one,
  *  covers are ignored. */
 void Dash_SetArtBuffer(DashClient *dash, uint8_t *buffer);
+
+/** The buffer the picture is collected in (PROTO_PICTURE_BYTES); without
+ *  one, pictures are ignored. */
+void Dash_SetPictureBuffer(DashClient *dash, uint8_t *buffer);
 
 /** USB configured: ask for the cards (and the time) and what plays. */
 void Dash_OnConnected(DashClient *dash, uint32_t now_ms);

@@ -365,6 +365,48 @@ void Ui_SetTime(uint32_t local_time);
 /** UI_DASH_VIEW_* (for tests). */
 uint32_t Ui_DashView(void);
 
+/* ------------------------------------------- status icons, picture card */
+
+#define UI_MAX_INDICATORS 4U       /**< = PROTO_MAX_INDICATORS */
+#define UI_PICTURE_W      200U     /**< = PROTO_PICTURE_W, the card's size */
+#define UI_PICTURE_H      92U      /**< = PROTO_PICTURE_H */
+#define UI_PICTURE_BYTES  (UI_PICTURE_W * UI_PICTURE_H * 2U) /**< RGB565, = PROTO_PICTURE_BYTES */
+
+/** Indicator colours; values match PROTO_INDICATOR_*. */
+enum
+{
+    UI_INDICATOR_NORMAL = 0,
+    UI_INDICATOR_RED = 1,
+    UI_INDICATOR_YELLOW = 2,
+    UI_INDICATOR_GREEN = 3,
+};
+
+/** One status icon at the right of the clock strip (ADR-010). */
+typedef struct
+{
+    uint8_t icon;   /**< icon number (protocol.md "Icon") */
+    uint8_t colour; /**< UI_INDICATOR_* */
+    uint8_t number; /**< shown next to the icon, 0 = none, above 99 "99+" */
+    uint8_t slot;   /**< detail a tap opens (0-7), UI_DASH_NO_SLOT = none */
+} UiIndicator;
+
+/** The status icons, in their order (at most UI_MAX_INDICATORS; copied). */
+void Ui_SetIndicators(const UiIndicator *items, uint32_t count);
+
+/** Number of status icons shown (for tests). */
+uint32_t Ui_IndicatorCount(void);
+
+/** The buffer the shown picture is kept in (UI_PICTURE_BYTES; SDRAM on the
+ *  board). Without one the picture card shows its placeholder. */
+void Ui_SetPictureBuffer(uint8_t *buffer);
+
+/** The picture card's picture (UI_PICTURE_BYTES of RGB565, copied), or
+ *  NULL: the placeholder. */
+void Ui_SetPicture(const uint8_t *pixels);
+
+/** True while the picture card shows a picture (for tests). */
+bool Ui_PictureShown(void);
+
 /* ---------------------------------------------------------------- prompt */
 
 #define UI_PROMPT_BYTES 1024U   /**< = PROTO_PROMPT_MAX_BYTES */

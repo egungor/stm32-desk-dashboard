@@ -80,6 +80,7 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "M\xC3\xBCzik", /* TXT_SCREEN_MUSIC */
         "\xC5\x9Eu an \xC3\xA7" "alan bir \xC5\x9F" "ey yok", /* TXT_NOTHING_PLAYING */
         "Duraklat\xC4\xB1ld\xC4\xB1", /* TXT_MEDIA_PAUSED */
+        "Tepside: Resim se\xC3\xA7...", /* TXT_NO_PICTURE */
     },
     {
         "All", /* TXT_TAB_ALL */
@@ -154,6 +155,7 @@ static const char *const k_text[UI_LANGUAGE_COUNT][TXT_COUNT] = {
         "Music", /* TXT_SCREEN_MUSIC */
         "Nothing is playing", /* TXT_NOTHING_PLAYING */
         "Paused", /* TXT_MEDIA_PAUSED */
+        "Tray: Choose picture...", /* TXT_NO_PICTURE */
     },
 };
 

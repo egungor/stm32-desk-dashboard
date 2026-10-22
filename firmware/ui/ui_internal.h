@@ -66,6 +66,8 @@
 /* Menu of the day ("Icon" 11, #20) */
 #define SYM_UTENSILS   "\xEF\x8B\xA7" /* utensils */
 #define SYM_BELL       "\xEF\x83\xB3" /* bell (notifications, #34) */
+#define SYM_ROBOT      "\xEF\x95\x84" /* robot (Claude Code status, #47) */
+#define SYM_IMAGE      "\xEF\x80\xBE" /* image (picture card, #47; 40 px font) */
 /* Media controls and the Music tab (#32); play and pause also in ui_icons_40 */
 #define SYM_MUSIC      "\xEF\x80\x81" /* music */
 #define SYM_PLAY       "\xEF\x81\x8B" /* play */
@@ -252,6 +254,12 @@ typedef struct
     uint32_t       time_tick;          /**< lv_tick_get() when it was set */
     uint32_t       clock_shown;        /**< minute shown, to update once a minute */
     lv_timer_t    *clock_timer;        /**< created once in Ui_Init */
+    lv_obj_t      *ind_box;            /**< status icons in the clock strip */
+    UiIndicator    indicators[UI_MAX_INDICATORS];
+    uint32_t       ind_count;
+    uint8_t       *pic_buf;            /**< UI_PICTURE_BYTES (Ui_SetPictureBuffer) */
+    bool           pic_valid;          /**< pic_buf holds the shown picture */
+    lv_image_dsc_t pic_dsc;
 
     /* Prompt over every screen (ui_dash.c, ADR-007); kept over a rebuild. */
     char           prompt_text[UI_PROMPT_BYTES + 1U];
@@ -332,6 +340,7 @@ void ui_dash_build(void);           /**< build g_ui.dash_tab's content from the 
 void ui_dash_clock_tick(void);      /**< update the clock strip (timer, Ui_SetTime) */
 void ui_prompt_rebuild(void);       /**< build the shown prompt again (theme change) */
 void ui_prompt_tick(void);          /**< countdown (timer, once a second) */
+void ui_dash_music_render(void);    /**< the Dashboard's now-playing card (media changed) */
 void ui_banner_rebuild(void);       /**< build the shown banner again (theme change) */
 void ui_banner_tick(void);          /**< countdown and time-out (banner_timer) */
 void ui_banner_close(void);         /**< hide the banner (a prompt, a dark screen) */
