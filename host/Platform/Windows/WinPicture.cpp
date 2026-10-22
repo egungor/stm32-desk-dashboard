@@ -45,6 +45,56 @@ std::string hr(const char* what, HRESULT code)
     return text;
 }
 
+// The EXIF orientation of @p frame (1..8), 1 when it has none. Phone
+// photos keep their pixels as the sensor saw them and only store this tag.
+std::uint16_t exifOrientation(IWICBitmapFrameDecode* frame)
+{
+    ComPtr<IWICMetadataQueryReader> reader;
+    if (FAILED(frame->GetMetadataQueryReader(reader.put()))) {
+        return 1U;
+    }
+    static const wchar_t* const kQueries[] = {L"System.Photo.Orientation", L"/app1/ifd/{ushort=274}",
+                                              L"/ifd/{ushort=274}"};
+    for (const wchar_t* query : kQueries) {
+        PROPVARIANT value;
+        PropVariantInit(&value);
+        const HRESULT h = reader->GetMetadataByName(query, &value);
+        std::uint16_t orientation = 0U;
+        if (SUCCEEDED(h) && value.vt == VT_UI2) {
+            orientation = value.uiVal;
+        }
+        PropVariantClear(&value);
+        if (orientation >= 1U && orientation <= 8U) {
+            return orientation;
+        }
+    }
+    return 1U;
+}
+
+// The WIC transform that turns an image stored with EXIF @p orientation
+// upright (WIC rotates clockwise first, then flips).
+WICBitmapTransformOptions uprightTransform(std::uint16_t orientation)
+{
+    switch (orientation) {
+    case 2U:
+        return WICBitmapTransformFlipHorizontal;
+    case 3U:
+        return WICBitmapTransformRotate180;
+    case 4U:
+        return WICBitmapTransformFlipVertical;
+    case 5U:
+        return static_cast<WICBitmapTransformOptions>(WICBitmapTransformRotate90 | WICBitmapTransformFlipHorizontal);
+    case 6U:
+        return WICBitmapTransformRotate90;
+    case 7U:
+        return static_cast<WICBitmapTransformOptions>(WICBitmapTransformRotate270 | WICBitmapTransformFlipHorizontal);
+    case 8U:
+        return WICBitmapTransformRotate270;
+    default:
+        return WICBitmapTransformRotate0;
+    }
+}
+
 }  // namespace
 
 std::optional<std::string> storedPicturePath()
@@ -93,10 +143,19 @@ PictureLoad loadPicture(const std::wstring& path)
         }
         ComPtr<IWICBitmapFrameDecode> frame;
         h = decoder->GetFrame(0, frame.put());
+        // Turn the picture upright first, so the crop is taken from the
+        // picture as it is seen (a portrait phone photo stays portrait).
+        ComPtr<IWICBitmapFlipRotator> upright;
+        if (SUCCEEDED(h)) {
+            h = wic->CreateBitmapFlipRotator(upright.put());
+        }
+        if (SUCCEEDED(h)) {
+            h = upright->Initialize(frame.get(), uprightTransform(exifOrientation(frame.get())));
+        }
         UINT width = 0;
         UINT height = 0;
         if (SUCCEEDED(h)) {
-            h = frame->GetSize(&width, &height);
+            h = upright->GetSize(&width, &height);
         }
         if (FAILED(h) || width == 0U || height == 0U) {
             result.error = hr("decode", h);
@@ -108,7 +167,7 @@ PictureLoad loadPicture(const std::wstring& path)
         const WICRect rect = {static_cast<INT>(crop.x), static_cast<INT>(crop.y), static_cast<INT>(crop.width),
                               static_cast<INT>(crop.height)};
         if (SUCCEEDED(h)) {
-            h = clipper->Initialize(frame.get(), &rect);
+            h = clipper->Initialize(upright.get(), &rect);
         }
         ComPtr<IWICBitmapScaler> scaler;
         if (SUCCEEDED(h)) {
