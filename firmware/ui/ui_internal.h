@@ -187,6 +187,10 @@ typedef struct
     lv_obj_t      *dash_mute_btn;      /**< the same volume on the Dashboard's bottom strip */
     lv_obj_t      *dash_mute_icon;
     lv_obj_t      *dash_slider;
+    lv_obj_t      *music_mute_btn;     /**< and on the Music tab's right edge (#70) */
+    lv_obj_t      *music_mute_icon;
+    lv_obj_t      *music_slider;
+    lv_obj_t      *music_volume_label;
     lv_obj_t      *dash_volume_label;
     lv_obj_t      *prev_btn;
     lv_obj_t      *next_btn;

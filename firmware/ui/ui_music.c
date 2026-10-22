@@ -26,8 +26,10 @@
 #include "ui_internal.h"
 
 #define PAD_M      16
+#define VOL_W      56                                       /* volume column on the right (#70) */
+#define MAIN_W     (UI_CONTENT_W - VOL_W)                   /* 368: cover, texts, progress, controls */
 #define TEXT_X     (PAD_M + (int32_t)UI_ART_SIZE + PAD_M)  /* 152 */
-#define TEXT_W     (UI_CONTENT_W - TEXT_X - PAD_M)          /* 256 */
+#define TEXT_W     (MAIN_W - TEXT_X - PAD_M)                /* 200 */
 #define TIME_W     44
 #define PROGRESS_Y 156
 #define CTRL_Y     188
@@ -356,7 +358,7 @@ void ui_music_build(void)
     /* Progress: position, bar, duration. */
     row = ui_make_box(tab);
     lv_obj_set_pos(row, PAD_M, PROGRESS_Y - 10);  /* 40 px tall: room for the bar's touch area */
-    lv_obj_set_size(row, UI_CONTENT_W - (2 * PAD_M), 40);
+    lv_obj_set_size(row, MAIN_W - (2 * PAD_M), 40);
     g_ui.music_pos = ui_make_label(row, &ui_font_14, g_ui.pal.muted, "");
     lv_obj_align(g_ui.music_pos, LV_ALIGN_LEFT_MID, 0, 0);
     g_ui.music_dur = ui_make_label(row, &ui_font_14, g_ui.pal.muted, "");
@@ -364,7 +366,7 @@ void ui_music_build(void)
     /* A slider: tapped or dragged when the session can seek (#55); a
      * larger touch area than its 6 px, the knob only then. */
     g_ui.music_bar = lv_slider_create(row);
-    lv_obj_set_size(g_ui.music_bar, UI_CONTENT_W - (2 * PAD_M) - (2 * TIME_W) - 16, 6);
+    lv_obj_set_size(g_ui.music_bar, MAIN_W - (2 * PAD_M) - (2 * TIME_W) - 16, 6);
     lv_obj_align(g_ui.music_bar, LV_ALIGN_CENTER, 0, 0);
     lv_slider_set_range(g_ui.music_bar, 0, 1000);
     lv_obj_set_ext_click_area(g_ui.music_bar, 16);
@@ -380,7 +382,7 @@ void ui_music_build(void)
     /* Controls. */
     row = ui_make_box(tab);
     lv_obj_set_pos(row, 0, CTRL_Y);
-    lv_obj_set_size(row, UI_CONTENT_W, CTRL_H);
+    lv_obj_set_size(row, MAIN_W, CTRL_H);
     lv_obj_set_style_pad_column(row, 28, 0);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -388,6 +390,26 @@ void ui_music_build(void)
     g_ui.music_btns[1] = make_control(row, 84, 64, &ui_icons_40, SYM_PLAY, UI_MEDIA_PLAY_PAUSE, true,
                                       &g_ui.music_play_label);
     g_ui.music_btns[2] = make_control(row, 64, 52, &ui_font_22, SYM_FORWARD, UI_MEDIA_NEXT, false, NULL);
+
+    /* Volume of the Windows default output on the right edge (#70): the
+     * percentage, a vertical slider, the mute button; the same volume as
+     * the Audio tab and the Dashboard strip (ui.c render_audio). */
+    row = ui_make_box(tab);
+    lv_obj_set_pos(row, MAIN_W, 0);
+    lv_obj_set_size(row, VOL_W, UI_HEIGHT);
+    lv_obj_set_style_pad_ver(row, 12, 0);
+    lv_obj_set_style_pad_right(row, 8, 0);
+    lv_obj_set_style_pad_row(row, 12, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    g_ui.music_volume_label = ui_make_label(row, &ui_font_14, g_ui.pal.text, "--");
+    g_ui.music_slider = lv_slider_create(row);
+    lv_obj_set_width(g_ui.music_slider, 8);
+    lv_obj_set_flex_grow(g_ui.music_slider, 1);
+    lv_obj_remove_flag(g_ui.music_slider, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    ui_style_volume_slider(g_ui.music_slider);
+    g_ui.music_mute_btn = ui_make_small_button(row, 44, 40, SYM_VOLUME, &g_ui.music_mute_icon);
+    lv_obj_add_event_cb(g_ui.music_mute_btn, ui_on_mute_clicked, LV_EVENT_CLICKED, NULL);
 
     ui_media_render();
 }
