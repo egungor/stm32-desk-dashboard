@@ -33,7 +33,7 @@ protocol client and the real host controller against each other. USB, the
 LCD and Windows are models, with time simulated in 1 ms steps:
 
 - one 64-byte report per direction every 4 ms;
-- the STM32 receive queue (40 frames) and its overflow;
+- the STM32 receive queue (40 frames); when full the OUT endpoint holds the host off (NAK, #68) and the host gives up on a report after 1 s;
 - the STM32 UI loop (every 10 ms, 8 frames), which can be made "busy";
 - the host opening the board some time after it is plugged in.
 

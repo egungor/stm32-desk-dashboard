@@ -464,6 +464,26 @@ void LinkPort_Run(void)
     }
     Link_Poll(&s_link, now);
     Dash_Poll(&s_dash, now);
+
+    /* How often the receive queue held the host off (#68), at most once a
+     * second: a busy UI shows up here. */
+    {
+        static uint32_t s_logged_paused;
+        static uint32_t s_logged_dropped;
+        static uint32_t s_logged_ms;
+        UsbLinkStats stats;
+
+        UsbLink_GetStats(&stats);
+        if (((stats.rx_paused != s_logged_paused) || (stats.rx_dropped != s_logged_dropped)) &&
+            ((now - s_logged_ms) >= 1000U))
+        {
+            Log_Line("USB RX held_off=%lu dropped=%lu", (unsigned long)stats.rx_paused,
+                     (unsigned long)stats.rx_dropped);
+            s_logged_paused = stats.rx_paused;
+            s_logged_dropped = stats.rx_dropped;
+            s_logged_ms = now;
+        }
+    }
 }
 
 void LinkPort_ToggleFlip(void)

@@ -1676,6 +1676,19 @@ void testDashCardUpdates()
     CHECK(r.sink.sent.empty());
     r.dash.onConnected();
     CHECK(r.sink.sent.size() == 2U + PROTO_MAX_CARDS);
+    r.sink.sent.clear();
+
+    // A card that could not be written goes out again at the next tick
+    // (#68), until it is through; the others are not sent again.
+    r.sink.fail = true;
+    r.dash.setCard(0, "Ankara 18");
+    r.dash.onTick(1000);
+    CHECK(r.sink.sent.empty());
+    r.sink.fail = false;
+    r.dash.onTick(1500);
+    CHECK(popRecord(r.sink, PROTO_CMD_CARD_PART) == "Ankara 18" && r.sink.sent.empty());
+    r.dash.onTick(2000);
+    CHECK(r.sink.sent.empty());
 }
 
 void testDashDetailAndAction()

@@ -127,16 +127,17 @@ private:
     struct Slot {
         std::string text;
         std::uint8_t generation = 0;
+        bool unsent = false;  // a frame of the last version could not be written (#68)
     };
 
     void sendAll();
-    void sendCard(std::uint8_t slot);
+    bool sendCard(std::uint8_t slot);
     void sendTime(std::optional<std::uint64_t> nowMs);
     bool sendDetail(std::uint8_t slot, std::int8_t arg);
-    void sendRecord(std::uint8_t command, std::uint8_t id, std::uint8_t generation, const std::string& text);
+    bool sendRecord(std::uint8_t command, std::uint8_t id, std::uint8_t generation, const std::string& text);
     void sendIndicators();
     void sendError(ProtoErrorCode code, std::uint8_t refCommand, std::uint8_t refSequence);
-    void send(const ProtoMessage& msg);
+    bool send(const ProtoMessage& msg);
 
     IFrameSink& sink_;
     ClockFn clock_;

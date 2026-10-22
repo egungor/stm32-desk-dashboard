@@ -8,7 +8,9 @@
 // - USB: one 64-byte report per direction every kUsbIntervalMs (interrupt
 //   endpoints, ADR-003).
 // - STM32 receive queue: kFirmwareRxDepth frames (USB_LINK_RX_DEPTH); when
-//   it is full the USB interrupt drops the frame (App/Src/usb_link.c).
+//   it is full the OUT endpoint is not armed again (NAK, App/Src/usb_link.c,
+//   #68): the host's report waits; the host gives up on it after
+//   kHostWriteTimeoutMs (WinHidLink::kWriteTimeoutMs).
 // - STM32 UI loop: every kFirmwareLoopMs, at most kFirmwareFramesPerRun
 //   frames, then Link_Poll (App/Src/link_port.c). It can be "busy" (LVGL
 //   drawing) for a while.
@@ -61,6 +63,7 @@ const char* g_scenario = "";
 // Mirrors firmware/STM32AudioController (usb_link.h, link_port.c, app.c).
 constexpr unsigned kUsbIntervalMs = 4;  // bInterval 5 ms, rounded down by Windows
 constexpr std::size_t kFirmwareRxDepth = 40;
+constexpr unsigned kHostWriteTimeoutMs = 1000;
 constexpr unsigned kFirmwareLoopMs = 10;
 constexpr unsigned kFirmwareFramesPerRun = 8;
 constexpr unsigned kHostOpenDelayMs = 700;  // within one WinHidLink scan period
@@ -178,7 +181,8 @@ struct WireStats {
     std::vector<std::uint8_t> errorCodesToDevice;
     std::vector<std::uint8_t> sequencesToDevice;
     std::vector<std::uint8_t> sequencesToHost;
-    unsigned firmwareRxDropped = 0;
+    unsigned firmwareRxDropped = 0;   // frames the board threw away (none since #68)
+    unsigned hostWriteTimeouts = 0;   // reports the host gave up on (board held them off too long)
 
     unsigned count(const std::vector<std::uint8_t>& v, std::uint8_t cmd) const
     {
@@ -557,15 +561,21 @@ private:
 
         // USB, one report per direction per interval.
         if (cable_ && now % kUsbIntervalMs == 0) {
-            if (!hostOut_.empty()) {
+            if (!hostOut_.empty() && firmwareRx_.size() < kFirmwareRxDepth) {
                 const Frame f = hostOut_.front();
                 hostOut_.pop_front();
+                nakSince_.reset();
                 note(f, wire.toDevice, wire.errorCodesToDevice);
                 wire.sequencesToDevice.push_back(f[3]);
-                if (firmwareRx_.size() < kFirmwareRxDepth) {
-                    firmwareRx_.push_back(f);
-                } else {
-                    ++wire.firmwareRxDropped;  // usb_link.c: rx_dropped
+                firmwareRx_.push_back(f);
+            } else if (!hostOut_.empty()) {
+                // Queue full: the endpoint NAKs, the report waits.
+                if (!nakSince_) {
+                    nakSince_ = now;
+                } else if (now - *nakSince_ >= kHostWriteTimeoutMs) {
+                    hostOut_.pop_front();  // WriteFile timed out: CancelIoEx
+                    ++wire.hostWriteTimeouts;
+                    nakSince_.reset();
                 }
             }
             if (!firmwareTx_.empty()) {
@@ -614,6 +624,7 @@ private:
     bool firmwareConfigured_ = false;
     std::uint32_t firmwareNextRun_ = 0;
     std::uint32_t firmwareBusyUntil_ = 0;
+    std::optional<std::uint32_t> nakSince_;  // the head report has been NAKed since
     std::vector<std::uint8_t> pictureRx_ = std::vector<std::uint8_t>(PROTO_PICTURE_BYTES);  // SDRAM on the board
     std::deque<Frame> hostOut_;
     std::deque<Frame> firmwareRx_;
@@ -1115,18 +1126,18 @@ void testBoardBusyDuringLongList()
     CHECK(r.screen.devices.size() == 29);
 
     // Two devices arrive one after the other (two lists, 61 frames) while
-    // the board is busy for 400 ms: the queue overflows and the second
-    // list loses its tail. The board asks again 1 s after the last entry.
+    // the board is busy for 400 ms: the queue fills, the endpoint holds
+    // the host off (#68) and nothing is lost; no new request is needed.
     const unsigned requests = r.wire.count(r.wire.toHost, PROTO_CMD_GET_DEVICE_LIST);
     r.firmwareBusy(400);
     r.windowsAdd(endpoint("{usb2}", "USB DAC", FormFactor::DigitalOutput));
     r.windowsAdd(endpoint("{usb3}", "Dock", FormFactor::Speakers));
     r.windowsSetDefault("{usb2}");
     r.run(600);
-    CHECK(r.wire.firmwareRxDropped > 0);
+    CHECK(r.wire.firmwareRxDropped == 0 && r.wire.hostWriteTimeouts == 0);
     CHECK(!r.screen.waiting);
     r.run(2000);
-    CHECK(r.wire.count(r.wire.toHost, PROTO_CMD_GET_DEVICE_LIST) == requests + 1);
+    CHECK(r.wire.count(r.wire.toHost, PROTO_CMD_GET_DEVICE_LIST) == requests);
     CHECK(r.inSync());
     CHECK(r.screen.devices.size() == 31);
     CHECK(r.screen.active == *r.shownIdOf("USB DAC"));
@@ -1604,6 +1615,46 @@ struct FakePictureSource : IPictureSource {
     PictureSnapshot snapshot() const override { return snap; }
 };
 
+// A card changes while the picture streams and the board's UI is busy
+// (#68: the weather card stayed "Bekleniyor"): the full receive queue holds
+// the host off instead of losing the card's frame.
+void testCardDuringPicture()
+{
+    g_scenario = "card during the picture";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    FakePictureSource source;
+    source.snap.pixels = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES, std::uint8_t{0x24});
+    source.snap.version = 1;
+    PictureService picture(r.hostSink, source);
+    r.dash->setCardsSentHandler([&picture] { picture.onRequest(); });
+    r.dash->setCard(0, "0\x1F" "Ankara\x1F\n" "Bekleniyor...");
+    r.plugIn();
+    for (int i = 0; i < 100; ++i) {
+        picture.onTick();
+        r.run(10);
+    }
+    // Let what is queued go out, then the board's UI is busy (a redraw)
+    // while more picture parts and the forecast arrive: its receive queue
+    // fills before the card's frame (with the old dropping queue the card
+    // was lost here).
+    r.run(4000);
+    r.firmwareBusy(900);
+    for (int i = 0; i < 10; ++i) {
+        picture.onTick();  // 80 parts at once
+    }
+    r.dash->setCard(0, "3\x1F" "Ankara\x1F\x1F" "3D86C6\x1FL\n18\xC2\xB0");
+    for (int i = 0; i < 3000 && r.screen.picturesShown == 0; ++i) {
+        picture.onTick();
+        r.dash->onTick(r.now);
+        r.run(10);
+    }
+    CHECK(r.screen.picturesShown == 1);
+    CHECK(r.screen.cards[0] == r.dash->card(0));
+    CHECK(r.wire.firmwareRxDropped == 0);
+}
+
 void testPictureOnBoard()
 {
     g_scenario = "picture on the board";
@@ -1671,6 +1722,7 @@ int main()
     testApprovalOnBoard();
     testNotificationsOnBoard();
     testPictureOnBoard();
+    testCardDuringPicture();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();

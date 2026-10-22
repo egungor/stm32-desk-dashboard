@@ -7,6 +7,8 @@
  * (host -> device), no report ID; each report is one protocol frame.
  *
  * Received frames are copied into a FreeRTOS queue by the USB interrupt;
+ * while it is full the OUT endpoint is not armed, so the host waits (NAK)
+ * instead of frames being lost (#68);
  * the application task takes them with UsbLink_Receive(). UsbLink_Send()
  * is called from the same task. Nothing here blocks in interrupt context
  * or allocates memory.
@@ -33,7 +35,8 @@ extern "C" {
 typedef struct
 {
     uint32_t rx_frames;
-    uint32_t rx_dropped;  /**< queue full or wrong length */
+    uint32_t rx_dropped;  /**< wrong length (a full queue holds the host off instead, #68) */
+    uint32_t rx_paused;   /**< times the queue was full and the host was held off */
     uint32_t tx_frames;
     uint32_t tx_timeouts;
 } UsbLinkStats;
