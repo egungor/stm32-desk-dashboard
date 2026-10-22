@@ -97,8 +97,18 @@ static void render_progress(void)
     lv_obj_remove_flag(g_ui.music_bar, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(g_ui.music_pos, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(g_ui.music_dur, LV_OBJ_FLAG_HIDDEN);
+    {
+        const bool seekable = (g_ui.media_controls & UI_MEDIA_CAN_SEEK) != 0U;
+
+        lv_obj_set_flag(g_ui.music_bar, LV_OBJ_FLAG_CLICKABLE, seekable);
+        lv_obj_set_style_opa(g_ui.music_bar, seekable ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_KNOB);
+    }
+    if (lv_slider_is_dragged(g_ui.music_bar))
+    {
+        return;  /* the finger holds the bar and its time (on_bar_event) */
+    }
     /* Per mille, so a long track still moves smoothly. */
-    lv_bar_set_value(g_ui.music_bar, (int32_t)(((uint64_t)pos * 1000U) / g_ui.media_duration), LV_ANIM_OFF);
+    lv_slider_set_value(g_ui.music_bar, (int32_t)(((uint64_t)pos * 1000U) / g_ui.media_duration), LV_ANIM_OFF);
     set_time_text(g_ui.music_pos, pos);
     set_time_text(g_ui.music_dur, g_ui.media_duration);
 }
@@ -227,6 +237,45 @@ void ui_media_tick(void)
     }
 }
 
+/* The progress bar (#55): while the finger moves it shows the time under
+ * it; on release the track jumps there (SEEK). The bar keeps the new
+ * position at once and counts on from it; the host's next MEDIA_STATE
+ * corrects it if the player did not follow. */
+static uint32_t bar_seconds(void)
+{
+    return (uint32_t)(((uint64_t)(uint32_t)lv_slider_get_value(g_ui.music_bar) * g_ui.media_duration) / 1000U);
+}
+
+static void on_bar_event(lv_event_t *e)
+{
+    const lv_event_code_t code = lv_event_get_code(e);
+
+    if ((g_ui.media_duration == 0U) || ((g_ui.media_controls & UI_MEDIA_CAN_SEEK) == 0U))
+    {
+        return;
+    }
+    if (code == LV_EVENT_VALUE_CHANGED)
+    {
+        set_time_text(g_ui.music_pos, bar_seconds());
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        const uint32_t seconds = bar_seconds();
+
+        g_ui.media_position = seconds;
+        g_ui.media_tick = lv_tick_get();
+        if (g_ui.dash.seek != NULL)
+        {
+            g_ui.dash.seek(seconds, g_ui.dash_user);
+        }
+        render_progress();
+    }
+    else
+    {
+        /* other events: nothing */
+    }
+}
+
 void ui_on_media_clicked(lv_event_t *e)
 {
     const uint8_t action = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
@@ -306,16 +355,24 @@ void ui_music_build(void)
 
     /* Progress: position, bar, duration. */
     row = ui_make_box(tab);
-    lv_obj_set_pos(row, PAD_M, PROGRESS_Y);
-    lv_obj_set_size(row, UI_CONTENT_W - (2 * PAD_M), 20);
+    lv_obj_set_pos(row, PAD_M, PROGRESS_Y - 10);  /* 40 px tall: room for the bar's touch area */
+    lv_obj_set_size(row, UI_CONTENT_W - (2 * PAD_M), 40);
     g_ui.music_pos = ui_make_label(row, &ui_font_14, g_ui.pal.muted, "");
     lv_obj_align(g_ui.music_pos, LV_ALIGN_LEFT_MID, 0, 0);
     g_ui.music_dur = ui_make_label(row, &ui_font_14, g_ui.pal.muted, "");
     lv_obj_align(g_ui.music_dur, LV_ALIGN_RIGHT_MID, 0, 0);
-    g_ui.music_bar = lv_bar_create(row);
+    /* A slider: tapped or dragged when the session can seek (#55); a
+     * larger touch area than its 6 px, the knob only then. */
+    g_ui.music_bar = lv_slider_create(row);
     lv_obj_set_size(g_ui.music_bar, UI_CONTENT_W - (2 * PAD_M) - (2 * TIME_W) - 16, 6);
     lv_obj_align(g_ui.music_bar, LV_ALIGN_CENTER, 0, 0);
-    lv_bar_set_range(g_ui.music_bar, 0, 1000);
+    lv_slider_set_range(g_ui.music_bar, 0, 1000);
+    lv_obj_set_ext_click_area(g_ui.music_bar, 16);
+    lv_obj_remove_flag(g_ui.music_bar, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_set_style_bg_color(g_ui.music_bar, ui_color(g_ui.pal.accent), LV_PART_KNOB);
+    lv_obj_set_style_pad_all(g_ui.music_bar, 4, LV_PART_KNOB);
+    lv_obj_set_style_shadow_width(g_ui.music_bar, 0, LV_PART_KNOB);
+    lv_obj_add_event_cb(g_ui.music_bar, on_bar_event, LV_EVENT_ALL, NULL);
     lv_obj_set_style_bg_color(g_ui.music_bar, ui_color(g_ui.pal.track), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(g_ui.music_bar, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(g_ui.music_bar, ui_color(g_ui.pal.accent), LV_PART_INDICATOR);

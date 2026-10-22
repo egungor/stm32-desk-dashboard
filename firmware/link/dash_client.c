@@ -304,6 +304,11 @@ static void on_error(DashClient *dash, const ProtoError *error)
     {
         notify(dash, DASH_NOTICE_ACTION_FAILED);
     }
+    else if (error->ref_command == PROTO_CMD_SEEK)
+    {
+        notify(dash, DASH_NOTICE_ACTION_FAILED);
+        send_get_media(dash);  /* the bar moved already: the real position */
+    }
     else
     {
         /* About a frame of ours the host could not read: nothing to undo. */
@@ -548,6 +553,20 @@ bool Dash_Action(DashClient *dash, uint8_t kind, uint8_t ref, uint8_t action)
     msg.u.action.kind = kind;
     msg.u.action.ref = ref;
     msg.u.action.action = action;
+    return send_message(dash, &msg);
+}
+
+bool Dash_Seek(DashClient *dash, uint32_t seconds)
+{
+    ProtoMessage msg;
+
+    if (!dash->connected)
+    {
+        return false;
+    }
+    memset(&msg, 0, sizeof(msg));
+    msg.command = PROTO_CMD_SEEK;
+    msg.u.seek_s = seconds;
     return send_message(dash, &msg);
 }
 

@@ -60,7 +60,8 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   music note without one), title (two lines), artist, album, app ("·
   Duraklatıldı" when paused), a progress bar with position and duration
   (counted on once a second while playing, `ui_media_tick`, up to the
-  duration), and previous / play-pause / next, disabled when the session
+  duration; when the session can seek, `UI_MEDIA_CAN_SEEK`, it has a knob
+  and a tap or a drag jumps there: `UiDashHandlers.seek`, #55), and previous / play-pause / next, disabled when the session
   does not take them. Without a media session the tab says so and the
   controls stay enabled (the host sends media keys then). State and texts
   are kept in `g_ui` over a rebuild (about 0.6 KB).

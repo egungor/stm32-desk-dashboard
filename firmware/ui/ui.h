@@ -329,7 +329,9 @@ enum
  * Requests from the Dashboard tab. open_detail: a card was tapped (arg 0)
  * or previous / next in its detail (arg -1 / +1); close_detail: the back
  * button; action: a detail button (its action number); media: the media
- * strip (UI_MEDIA_*); prompt_action: a button of the prompt. All optional.
+ * strip (UI_MEDIA_*); prompt_action: a button of the prompt; seek: the
+ * Music tab's progress bar was tapped or dragged (seconds from the start
+ * of the track). All optional.
  */
 typedef struct
 {
@@ -339,6 +341,7 @@ typedef struct
     void (*media)(uint8_t action, void *user);
     /** A button of the shown prompt @p id (Ui_ShowPrompt). */
     void (*prompt_action)(uint8_t id, uint8_t action, void *user);
+    void (*seek)(uint32_t seconds, void *user);
 } UiDashHandlers;
 
 /** Set the dashboard handlers (copied). */
@@ -472,6 +475,7 @@ enum
 #define UI_MEDIA_CAN_PREVIOUS   0x01U
 #define UI_MEDIA_CAN_PLAY_PAUSE 0x02U
 #define UI_MEDIA_CAN_NEXT       0x04U
+#define UI_MEDIA_CAN_SEEK       0x08U /**< the progress bar can be dragged */
 
 /** The buffer the shown cover is kept in (UI_ART_BYTES); without one no
  *  cover is shown. The firmware passes SDRAM. */

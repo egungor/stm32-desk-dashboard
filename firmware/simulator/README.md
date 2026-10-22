@@ -66,6 +66,7 @@ argument):
 | `90-dashboard-strip-muted.png` | Dashboard bottom strip (#32): media controls on the left, volume muted on the right |
 | `91-music-none.png` | Music tab, nothing playing |
 | `92-music-playing.png`, `92-music-playing-later.png` | Music tab: cover (a test gradient), texts, progress at 1:23 and 10 s later |
+| `92-music-seekable.png` | The session can seek (#55): the progress bar has a knob and takes taps |
 | `93-music-paused.png` | Paused, long Turkish title, no cover and no duration, only play/pause enabled |
 | `94-dashboard-playing.png` | Dashboard strip while playing: pause in the middle |
 | `95-music-light.png` | Music tab in the light theme after a rebuild |

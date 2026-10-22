@@ -388,6 +388,16 @@ static void test_action_and_time(void)
     Dash_OnMessage(&s_dash, &err, 100U);
     CHECK(g.notices[DASH_NOTICE_ACTION_FAILED] == 1);
 
+    /* SEEK (v7): sent as is; an ERROR about it is a notice and GET_MEDIA. */
+    g.sent_count = 0;
+    CHECK(Dash_Seek(&s_dash, 177U));
+    CHECK(g.sent_count == 1 && g.sent[0].command == PROTO_CMD_SEEK && g.sent[0].u.seek_s == 177U);
+    err.u.error.ref_command = PROTO_CMD_SEEK;
+    Dash_OnMessage(&s_dash, &err, 200U);
+    CHECK(g.notices[DASH_NOTICE_ACTION_FAILED] == 2);
+    CHECK(g.sent_count == 2 && g.sent[1].command == PROTO_CMD_GET_MEDIA);
+    g.sent_count = 1;
+
     time.u.local_time = 1792593125U;
     Dash_OnMessage(&s_dash, &time, 0xFFFFFC18U); /* the tick wraps */
     CHECK(g.time_calls == 1 && g.time == 1792593125U);
@@ -397,6 +407,7 @@ static void test_action_and_time(void)
     /* After a disconnect nothing is sent. */
     Dash_OnDisconnected(&s_dash);
     CHECK(!Dash_Action(&s_dash, PROTO_ACTION_MEDIA, 0U, PROTO_MEDIA_NEXT));
+    CHECK(!Dash_Seek(&s_dash, 10U));
     Dash_Poll(&s_dash, 0U);
     CHECK(g.sent_count == 1);
 }
