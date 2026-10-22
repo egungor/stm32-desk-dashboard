@@ -95,8 +95,11 @@ tagged test toasts (no other notification arrived during the run):
 N6, the owner: with the Snipping Tool's notifications turned off, its
 screenshot toast appeared in neither way.
 
-N4 (Do not disturb): the toast did not show; whether it was still in the
-listener and the database is being asked.
+N4, the owner, with Do not disturb on: Windows showed no pop-up, but
+both test toasts (ids 45668, 45669) were in the listener and in the
+database as usual. So Do not disturb only hides Windows' own pop-up; if
+the board is to stay quiet too, the host has to learn the state itself
+(open point for the ADR, e.g. `SHQueryUserNotificationState`).
 
 **Result:** way 1, `UserNotificationListener` polled every 500 ms, is
 enough: documented, no package identity, no administrator rights; app
