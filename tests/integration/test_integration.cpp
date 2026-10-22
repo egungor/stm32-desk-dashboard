@@ -1620,7 +1620,8 @@ void testPictureOnBoard()
     PictureService picture(r.hostSink, source);
     r.dash->setCardsSentHandler([&picture] { picture.onRequest(); });
     r.plugIn();
-    for (int i = 0; i < 1500 && r.screen.picturesShown == 0; ++i) {
+    // 4836 parts at one report per kUsbIntervalMs: about 20 s.
+    for (int i = 0; i < 3000 && r.screen.picturesShown == 0; ++i) {
         picture.onTick();
         r.run(10);
     }
@@ -1630,7 +1631,7 @@ void testPictureOnBoard()
     auto other = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES, std::uint8_t{0x42});
     source.snap.pixels = other;
     ++source.snap.version;
-    for (int i = 0; i < 1500 && r.screen.picturesShown == 1; ++i) {
+    for (int i = 0; i < 3000 && r.screen.picturesShown == 1; ++i) {
         picture.onTick();
         r.run(10);
     }

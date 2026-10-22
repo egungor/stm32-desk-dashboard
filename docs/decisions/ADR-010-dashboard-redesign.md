@@ -170,8 +170,9 @@ first: no new command, no wait on a tap.
   A tap on the card shows it 1:1 on `lv_layer_top()`, below a prompt
   or a banner; a tap closes it, as do no picture, the waiting screen
   and a rebuild (theme change).
-- A picture takes about 7 times as many frames: a few seconds at the
-  USB full speed frame rate, after the cards (it does not hold them up).
+- A picture takes about 7 times as many frames: about 20 s at one report
+  per 4 ms (bInterval 5 ms, ADR-003), after the cards (it does not hold
+  them up). It is sent again on every connect.
 
 ## Alternatives
 

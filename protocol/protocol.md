@@ -425,8 +425,8 @@ in version 6), RGB565 as the cover: 261 120 bytes in 4 836
 `PICTURE_PART`s with the layout of `ART_PART` (`pic_id` 1–255, `index`
 u16 0–4835, 54 data bytes; 30 in part 4835; a part of another length is
 `BAD_PAYLOAD`). The picture card shows it scaled down and cropped at the
-edges; a tap on the card shows it full screen. At the USB full speed
-frame rate a picture takes a few seconds. `PICTURE` (one byte, `pic_id`) names
+edges; a tap on the card shows it full screen. At one report per 4 ms
+(bInterval 5 ms, ADR-003) a picture takes about 20 s. `PICTURE` (one byte, `pic_id`) names
 the picture to show; 0 = none (the card shows a placeholder). The board
 collects the parts of the last `PICTURE`'s id (in any order; repeats
 ignored; parts of another id dropped) and shows it when all have arrived;
