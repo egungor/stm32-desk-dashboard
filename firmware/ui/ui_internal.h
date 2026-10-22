@@ -66,7 +66,7 @@
 /* Menu of the day ("Icon" 11, #20) */
 #define SYM_UTENSILS   "\xEF\x8B\xA7" /* utensils */
 #define SYM_BELL       "\xEF\x83\xB3" /* bell (notifications, #34) */
-#define SYM_ROBOT      "\xEF\x95\x84" /* robot (Claude Code status, #47) */
+#define SYM_CLAUDE     "\xEF\x95\x84" /* the Claude symbol (Claude Code status, #59; tools/fonts) */
 #define SYM_IMAGE      "\xEF\x80\xBE" /* image (picture card, #47; 40 px font) */
 /* Media controls and the Music tab (#32); play and pause also in ui_icons_40 */
 #define SYM_MUSIC      "\xEF\x80\x81" /* music */
