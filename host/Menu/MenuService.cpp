@@ -190,7 +190,8 @@ std::string MenuService::card(long today)
     const DishMark mark = markOf(*entry, lists_);
     const char* bg = mark == DishMark::Never ? kColourNever : mark == DishMark::Dislike ? kColourDislike : kColourOk;
     std::string text = recordLine({head, "", badge, bg, ""});
-    for (const std::string* dish : {entry->main.empty() ? &entry->side : &entry->main, &entry->soup, &entry->dessert}) {
+    const std::string dessert = withoutFruit(entry->dessert);  // #49: no "Meyve /"
+    for (const std::string* dish : {entry->main.empty() ? &entry->side : &entry->main, &entry->soup, &dessert}) {
         if (!dish->empty()) {
             text += "\n" + recordLine({*dish});
         }

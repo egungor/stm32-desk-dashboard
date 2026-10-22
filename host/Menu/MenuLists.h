@@ -46,6 +46,11 @@ DishMark markOf(const MenuDay& day, const MenuLists& lists);
 // The dishes of @p day with the mark @p mark, in the order of the day.
 std::vector<std::string> dishesMarked(const MenuDay& day, const MenuLists& lists, DishMark mark);
 
+// The dessert without the fruit option (#49): "Meyve / Fıstıklı baklava"
+// -> "Fıstıklı baklava"; "Meyve" alone -> "". The parts are separated by
+// "/"; a part that is fruit ("meyve", "mevsim meyvesi", ...) is left out.
+std::string withoutFruit(const std::string& dessert);
+
 // The text a new menu-lists.txt starts with.
 extern const char* const kMenuListsTemplate;
 
