@@ -27,6 +27,7 @@
 #include "WinMenuImport.h"
 #include "WinNotificationListener.h"
 #include "WinPicture.h"
+#include "WinSettingsSignal.h"
 
 namespace stm32_audio::host::win {
 
@@ -166,6 +167,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     NotificationService notifications(dash, notificationListener, focus, log);
     // The picture card (ADR-010): the file chosen in the tray menu.
     WinPicture picture(log);
+    SettingsWatcher settingsWatcher(events);
     PictureService pictureService(sink, picture);
     dash.setCardsSentHandler([&pictureService] { pictureService.onRequest(); });
     // The media controls (strip and Music tab) and the prompts' buttons: the
@@ -232,6 +234,10 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     if (!mediaSession.start()) {
         log("WARN: cannot start the media session thread; the media strip uses media keys.");
     }
+    picture.reload();
+    if (!settingsWatcher.start()) {
+        log("WARN: cannot watch for settings changes; restart the program after changing them.");
+    }
     if (!notificationListener.start()) {
         log("WARN: cannot start the notification thread; the notifications card stays empty.");
     }
@@ -242,9 +248,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         const std::optional<QueuedEvent> item =
             events.pop(media.sendingArt() || pictureService.sending() ? std::chrono::milliseconds(0)
                                                                        : std::chrono::milliseconds(500));
-        if (saving && store.poll(GetTickCount64())) {
-            log("Preferences reloaded from " + file.location());
-            controller.onPreferencesChanged();
+        if (saving) {
+            store.onTick(GetTickCount64());  // save what the board changed
         }
         reportLanguage();
         weather.setLanguage(controller.preferences().settings().language);
@@ -263,7 +268,6 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             indicators.items[1] = approvals.indicator();
             dash.setIndicators(indicators);
         }
-        picture.poll(GetTickCount64());
         pictureService.onTick();
         dash.onTick(GetTickCount64());
         media.onTick(GetTickCount64());
@@ -305,8 +309,17 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::MediaChanged:
         case HostEvent::NotificationsChanged:
             break;  // the onTicks above took the new snapshot
-        case HostEvent::PictureChanged:
-            picture.reload();
+        case HostEvent::SettingsChanged:
+            // The settings window or a console tool wrote setting files
+            // (#61); nothing reads them otherwise.
+            log("Settings changed; reading the setting files again.");
+            if (saving && store.reload()) {
+                log("Preferences reloaded from " + file.location());
+                controller.onPreferencesChanged();
+            }
+            weather.reload();
+            menu.reload();
+            picture.reloadIfChanged();
             break;
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
@@ -315,6 +328,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::Quit: {
             approvals.cancelAll();
             hookPipe.stop();
+            settingsWatcher.stop();
             mediaSession.stop();
             notificationListener.stop();
             link.stop();

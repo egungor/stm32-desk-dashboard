@@ -88,6 +88,7 @@
 #include "WinNotificationListener.h"
 #include "WinNotificationProbe.h"
 #include "WinPicture.h"
+#include "WinSettingsSignal.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
@@ -261,6 +262,7 @@ int cmdAlias(win::WinAudioSystem& audio, const std::vector<std::string>& args)
         std::printf("FAIL: could not write %s\n", file.location().c_str());
         return 1;
     }
+    (void)win::notifySettingsChanged();  // a running tray reads the file again (#61)
     const DevicePreferences* p = prefs.device(e.id);
     if (p == nullptr || p->alias.empty()) {
         std::printf("OK: \"%s\" has no alias.\n", e.name.c_str());
@@ -349,6 +351,7 @@ int saveWeatherLocation(const WeatherLocation& location)
         std::printf("FAIL: could not write %s\n", file.location().c_str());
         return 1;
     }
+    (void)win::notifySettingsChanged();
     std::printf("OK: weather location \"%s\" (%.4f, %.4f) saved in %s\n", location.name.c_str(),
                 location.latitude, location.longitude, file.location().c_str());
     return 0;
@@ -583,6 +586,9 @@ int cmdMenu(const std::vector<std::string>& args)
                     static_cast<unsigned long>(paths.size()));
         std::fflush(stdout);
         const MenuImportResult result = win::importMenuFiles(paths, 0);
+        if (result.ok) {
+            (void)win::notifySettingsChanged();
+        }
         std::printf("%s%s\n", result.ok ? "OK: " : "FAIL: ", result.message.c_str());
         return result.ok ? 0 : 1;
     }
@@ -680,6 +686,7 @@ int cmdPicture(const std::vector<std::string>& args)
             std::printf("FAIL: cannot write picture.txt.\n");
             return 1;
         }
+        (void)win::notifySettingsChanged();
     } else if (args.size() != 2) {
         return usage();
     }

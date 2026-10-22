@@ -234,14 +234,9 @@ void WinPicture::reload()
     }
 }
 
-void WinPicture::poll(std::uint64_t nowMs)
+void WinPicture::reloadIfChanged()
 {
-    if (polledMs_ && nowMs - *polledMs_ < kPollMs) {
-        return;
-    }
-    const bool first = !polledMs_;
-    polledMs_ = nowMs;
-    if (first || storedPicturePath() != path_) {
+    if (storedPicturePath() != path_) {
         reload();
     }
 }

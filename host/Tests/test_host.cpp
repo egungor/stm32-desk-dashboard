@@ -1031,46 +1031,47 @@ void testPreferenceStore()
     PreferenceStore store(file, prefs);
 
     CHECK(store.load() == PreferenceStore::LoadResult::Missing);
-    CHECK(!store.poll(0));
-    CHECK(file.writes == 0);
+    store.onTick(0);
+    CHECK(file.writes == 0 && !store.reload());
 
     // Changes are written at most once per second.
     (void)prefs.setAlias("a", "A");
     store.markChanged();
-    CHECK(!store.poll(100));
+    store.onTick(100);
     CHECK(file.writes == 1);
     (void)prefs.setAlias("a", "B");
     store.markChanged();
-    CHECK(!store.poll(600));
+    store.onTick(600);
     CHECK(file.writes == 1 && store.dirty());
-    CHECK(!store.poll(1100));
+    store.onTick(1100);
     CHECK(file.writes == 2 && !store.dirty());
     CHECK(file.content->find("alias\tB") != std::string::npos);
 
-    // Another program replaced the file: reloaded at the next check, and
-    // the file wins over unsaved changes.
+    // Another program replaced the file and said so (SettingsChanged,
+    // #61): reload() takes it, and the file wins over unsaved changes.
+    // Nothing reads the file without that.
     Preferences other;
     (void)other.setAlias("a", "From CLI");
     file.content = serializePreferences(other);
     (void)prefs.setFavorite("a", true);
     store.markChanged();
-    CHECK(store.poll(2200));
+    CHECK(store.reload());
     CHECK(prefs.device("a")->alias == "From CLI" && !prefs.device("a")->favorite);
     CHECK(!store.dirty());
-    CHECK(!store.poll(3300));  // no change since
+    CHECK(!store.reload());  // no change since
 
     // Our own writes do not count as external changes.
     (void)prefs.setFavorite("a", true);
     store.markChanged();
-    CHECK(!store.poll(4400));
-    CHECK(!store.poll(5500));
+    store.onTick(4400);
+    CHECK(!store.reload());
     CHECK(prefs.device("a")->favorite);
 
     // A write failure keeps the change for the next try; flush reports it.
     file.failWrite = true;
     (void)prefs.setFavorite("a", false);
     store.markChanged();
-    (void)store.poll(6600);
+    store.onTick(6600);
     CHECK(store.dirty() && store.writeFailures() == 1);
     CHECK(!store.flush());
     file.failWrite = false;
@@ -1086,9 +1087,10 @@ void testPreferenceStore()
     CHECK(badStore.load() == PreferenceStore::LoadResult::Unreadable);
     CHECK(bad.kept == std::string("garbage"));
     CHECK(fresh.device("z") == nullptr);
-    // ... and is not retried every second.
-    CHECK(!badStore.poll(0));
-    CHECK(!badStore.poll(2000));
+    // ... and a reload does not take it either.
+    CHECK(!badStore.reload());
+    bad.content = "still garbage";
+    CHECK(!badStore.reload() && fresh.device("z") == nullptr);
 }
 
 void testVolumeLimit()
@@ -2066,12 +2068,12 @@ void testWeatherService()
     CHECK(r.dash.card(0).find("Konum ayarlanmadı") != std::string::npos && http.calls == 0);
     CHECK(!weather.detail(0).has_value());
 
-    // The file appears; it is read again after a minute.
+    // The file appears; it is read when the settings say so (#61).
     file.text = "name=İstanbul\nlatitude=41.0138\nlongitude=28.9497\n";
     ms += 1000;
     weather.onTick(ms);
-    CHECK(r.dash.card(0).find("Konum") != std::string::npos);
-    ms += WeatherService::kFileIntervalMs;
+    CHECK(r.dash.card(0).find("Konum") != std::string::npos);  // not read again by itself
+    weather.reload();
     auto waitForCard = [&](const char* text) {
         for (int i = 0; i < 400 && r.dash.card(0).find(text) == std::string::npos; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -2107,7 +2109,7 @@ void testWeatherService()
 
     // A broken file: warning, back to the hint.
     file.text = "latitude=x";
-    ms += WeatherService::kFileIntervalMs;
+    weather.reload();
     weather.onTick(ms);
     CHECK(r.dash.card(0).find("No location set") != std::string::npos);
     CHECK(logs.back() == "WARN: weather.txt has no valid latitude and longitude.");
@@ -2419,7 +2421,8 @@ void testMenuService()
                                                                     std::string("Kağıt kebabı").size(), "Hünkar beğendi");
     menu.onTick(ms += 500);
     CHECK(r.sink.sent.empty());  // not yet
-    menu.onTick(ms += MenuService::kFileIntervalMs);
+    menu.reload();
+    menu.onTick(ms += 500);
     CHECK(!logs.empty() && logs.back() == "Menu files changed.");
     const std::string detailSent = popRecord(r.sink, PROTO_CMD_DETAIL_PART);
     CHECK(detailSent.find("Hünkar beğendi") != std::string::npos);
@@ -3447,7 +3450,8 @@ void testMenuColoursAndWarning()
     menu.onTick(ms);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "D9A520" + sep + "\n", 0) == 0U);
     lists.text = "[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n";
-    menu.onTick(ms += MenuService::kFileIntervalMs);  // read again after a minute
+    menu.reload();  // the settings window saved the lists (#61)
+    menu.onTick(ms += 500);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "E0702F" + sep + "\n", 0) == 0U);
     const std::string d = menu.detail(0).value_or("");
     CHECK(d.find(sep + "Yan yemek" + sep + "Kalem börek \xC2\xB7 istemiyorum\n") != std::string::npos);

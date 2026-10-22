@@ -319,7 +319,7 @@ void choosePicture()
         logLine("WARN: could not save picture.txt.");
         return;
     }
-    g_app.events.push(HostEvent::PictureChanged);
+    g_app.events.push(HostEvent::SettingsChanged);
 }
 
 // menu-lists.txt (ADR-010) in the default editor; created with the

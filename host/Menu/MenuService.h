@@ -35,7 +35,6 @@ public:
 
     static constexpr std::uint8_t kSlot = 1;  // ADR-006: 1 menu
     static constexpr int kIcon = 11;          // protocol.md "Icon": utensils
-    static constexpr std::uint64_t kFileIntervalMs = 60U * 1000U;
     static constexpr std::uint8_t kWarningPromptId = 255;  // Claude Code prompts use 0..254
     static constexpr unsigned kWarningHour = 8;
     // Card backgrounds (ADR-010).
@@ -52,8 +51,9 @@ public:
     // Call regularly (e.g. every 500 ms) with a monotonic clock.
     void onTick(std::uint64_t nowMs);
 
-    // The files changed (an import): read them at the next tick.
-    void reload() { readMs_.reset(); }
+    // The month files or menu-lists.txt changed (an import, the settings
+    // window, #61): read them at the next tick. Not read otherwise.
+    void reload() { read_ = false; }
 
     // OPEN_DETAIL on kSlot: arg 0 the card's day, -1 / +1 the previous /
     // next working day from the one shown.
@@ -96,7 +96,7 @@ private:
     DashController::ClockFn clock_;
     LogFn log_;
     std::uint8_t language_ = 0;
-    std::optional<std::uint64_t> readMs_;
+    bool read_ = false;
     std::map<std::string, std::optional<std::string>> texts_;   // file name -> text
     std::map<std::string, std::optional<MenuMonth>> months_;    // file name -> parsed
     long detailDay_ = 0;

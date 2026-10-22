@@ -87,6 +87,7 @@ if(WIN32)
         Platform/Windows/WinMenuImport.cpp
         Platform/Windows/WinPicture.cpp
         Platform/Windows/WinPreferenceFile.cpp
+        Platform/Windows/WinSettingsSignal.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
