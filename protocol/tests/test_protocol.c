@@ -67,7 +67,7 @@ static void test_crc_check_value(void)
 static void test_header_and_golden_frame(void)
 {
     /* Byte-exact example documented in protocol.md. */
-    static const uint8_t expected_head[] = { 0xA5, 0x06, 0x03, 0x2A, 0x02, 0x05, 0x02 };
+    static const uint8_t expected_head[] = { 0xA5, 0x07, 0x03, 0x2A, 0x02, 0x05, 0x02 };
     ProtoMessage m = simple(PROTO_CMD_SELECT_DEVICE, 0x2AU);
     uint8_t frame[PROTO_FRAME_SIZE];
 
@@ -79,8 +79,8 @@ static void test_header_and_golden_frame(void)
     {
         CHECK(frame[i] == 0U);
     }
-    CHECK(frame[62] == 0x3BU);
-    CHECK(frame[63] == 0x72U);
+    CHECK(frame[62] == 0x8BU);
+    CHECK(frame[63] == 0x2BU);
 }
 
 static void test_round_trip_simple(void)
@@ -1095,15 +1095,15 @@ static void test_banner_record(void)
 
 /* ------------------------------------------------- version 6 (ADR-010) */
 
-static void test_v5_frame_rejected(void)
+static void test_v6_frame_rejected(void)
 {
     ProtoMessage m = simple(PROTO_CMD_GET_CARDS, 1U);
     ProtoMessage out;
     uint8_t frame[PROTO_FRAME_SIZE];
 
     CHECK(Proto_Encode(&m, frame) == PROTO_OK);
-    CHECK(frame[1] == 6U);
-    frame[1] = 5U; /* a version 5 frame (notifications, #34) */
+    CHECK(frame[1] == 7U);
+    frame[1] = 6U; /* a version 6 frame (200 x 92 picture, #47) */
     reseal(frame);
     CHECK(Proto_Decode(frame, &out) == PROTO_ERR_VERSION);
 }
@@ -1167,9 +1167,9 @@ static void test_picture(void)
     uint8_t frame[PROTO_FRAME_SIZE];
     ProtoAsmResult r = PROTO_ASM_PARTIAL;
 
-    CHECK(PROTO_PICTURE_BYTES == 36800U && PROTO_PICTURE_PARTS == 682U);
-    CHECK(Proto_PicturePartBytes(0U) == 54U && Proto_PicturePartBytes(681U) == 26U &&
-          Proto_PicturePartBytes(682U) == 0U);
+    CHECK(PROTO_PICTURE_BYTES == 261120U && PROTO_PICTURE_PARTS == 4836U);
+    CHECK(Proto_PicturePartBytes(0U) == 54U && Proto_PicturePartBytes(4835U) == 30U &&
+          Proto_PicturePartBytes(4836U) == 0U);
 
     /* PICTURE: one byte, any id (0 = none). */
     in.u.pic_id = 7U;
@@ -1179,26 +1179,26 @@ static void test_picture(void)
     reseal(frame);
     CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
 
-    /* PICTURE_PART: the last part has 26 bytes; a cover's last length is wrong here. */
+    /* PICTURE_PART: the last part has 30 bytes; a cover's last length is wrong here. */
     for (uint32_t i = 0U; i < sizeof(pic); i++)
     {
         pic[i] = (uint8_t)(i * 7U);
     }
     in = simple(PROTO_CMD_PICTURE_PART, 5U);
-    CHECK(Proto_PicturePart(pic, 7U, 681U, &in.u.art) && in.u.art.len == 26U);
-    CHECK(Proto_Encode(&in, frame) == PROTO_OK && frame[2] == 0x2BU && frame[4] == 29U);
-    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.art.index == 681U && out.u.art.len == 26U);
+    CHECK(Proto_PicturePart(pic, 7U, 4835U, &in.u.art) && in.u.art.len == 30U);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK && frame[2] == 0x2BU && frame[4] == 33U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.art.index == 4835U && out.u.art.len == 30U);
     CHECK(!Proto_PicturePart(pic, PROTO_NO_PICTURE, 0U, &in.u.art));
-    CHECK(!Proto_PicturePart(pic, 7U, 682U, &in.u.art));
+    CHECK(!Proto_PicturePart(pic, 7U, 4836U, &in.u.art));
     CHECK(Proto_ArtPart(pic, 7U, 533U, &in.u.art)); /* a cover's last part: 18 bytes */
     in.command = PROTO_CMD_PICTURE_PART;
     CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
-    /* Index 534..681 only exist for the picture. */
+    /* Index 534..4835 only exist for the picture. */
     CHECK(Proto_PicturePart(pic, 7U, 600U, &in.u.art));
     in.command = PROTO_CMD_ART_PART;
     CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
 
-    /* The assembler collects all 682 parts, in any order. */
+    /* The assembler collects all 4836 parts, in any order. */
     Proto_PictureAssemblerInit(&a, got);
     Proto_ArtAssemblerStart(&a, 7U);
     for (uint16_t i = PROTO_PICTURE_PARTS; i > 0U; i--)
@@ -1243,7 +1243,7 @@ int main(void)
     test_art_parts();
     test_v4_frame_rejected();
     test_banner_record();
-    test_v5_frame_rejected();
+    test_v6_frame_rejected();
     test_indicators();
     test_picture();
 
