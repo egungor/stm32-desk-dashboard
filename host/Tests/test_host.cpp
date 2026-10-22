@@ -1095,7 +1095,7 @@ void testSettingsModel()
     const std::string json = settingsStateJson(s);
     CHECK(json.find(R"("type":"state")") != std::string::npos);
     CHECK(json.find(R"("theme":1)") != std::string::npos);
-    CHECK(json.find(R"("name":"Hoparlör (DAC)")") != std::string::npos);
+    CHECK(json.find(R"x("name":"Hoparlör (DAC)")x") != std::string::npos);
     CHECK(json.find(R"("weather":null)") != std::string::npos);
     CHECK(json.find(R"("picture":"C:\\Fotoğraflar\\a.jpg")") != std::string::npos);
     CHECK(noticeJson(false, "x") == R"({"ok":false,"text":"x","type":"notice"})");
