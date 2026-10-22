@@ -1,6 +1,7 @@
 // IPictureSource on Windows (ADR-010): the picture chosen in the tray menu
 // ("Resim seç…"), whose path is kept in picture.txt in the settings folder.
-// The file is read with WIC, the largest centred 200:92 rectangle is cut
+// The file is read with WIC and turned upright by its EXIF orientation
+// (phone photos), then the largest centred 200:92 rectangle is cut
 // out (centerCrop: no distortion, the edges are cut) and scaled to
 // 200 x 92, then turned into RGB565.
 //
