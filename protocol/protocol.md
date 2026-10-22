@@ -2,15 +2,17 @@
 
 ## Status
 
-**Protocol version 4.** Version 2 (audio: device list, selection,
+**Protocol version 5.** Version 2 (audio: device list, selection,
 volume, mute, preferences and settings; ADR-004) plus the dashboard of
 version 3: time, cards, details, prompts and actions sent as chunked
 text records, and one more byte in the settings record
 (`startup_screen`); plus, in version 4, what plays now: a media record,
-the playback state and a small cover (ADR-008). Design:
+the playback state and a small cover (ADR-008); plus, in version 5, a
+short banner over every screen (notifications, ADR-009). Design:
 `docs/decisions/ADR-006-cards-and-protocol-v3.md`,
-`docs/decisions/ADR-005-tabbed-shell-and-global-settings.md` and
-`docs/decisions/ADR-008-media-session-and-music-tab.md`.
+`docs/decisions/ADR-005-tabbed-shell-and-global-settings.md`,
+`docs/decisions/ADR-008-media-session-and-music-tab.md` and
+`docs/decisions/ADR-009-notifications.md`.
 
 This document is the source of truth for communication between the STM32
 firmware and the Windows host application. The reference implementation
@@ -44,6 +46,7 @@ Timing, applied by the STM32:
 | A card, detail or prompt record stays incomplete | 1000 ms after its last part → `GET_CARDS` (card) or `OPEN_DETAIL` again (detail); an incomplete prompt is dropped |
 | No complete detail after `OPEN_DETAIL`, and no `ERROR` | 2000 ms → notice, the board stays on the dashboard |
 | The media record or the cover of the last `MEDIA_STATE` stays incomplete | 1000 ms after its last part → `GET_MEDIA` |
+| A banner record stays incomplete | 1000 ms after its last part → dropped (a banner is never requested again) |
 | `VOLUME_CHANGED` during a local volume change | not shown until 300 ms after the last `SET_VOLUME`; then the host's value is shown |
 
 The host does not time out; it answers requests and reports changes.
@@ -68,7 +71,7 @@ All frames are 64 bytes. Multi-byte fields are little endian.
 | Offset | Size | Field | Value |
 |---|---|---|---|
 | 0 | 1 | magic | `0xA5` |
-| 1 | 1 | version | `4` |
+| 1 | 1 | version | `5` |
 | 2 | 1 | command | see message set |
 | 3 | 1 | sequence | sender's counter, incremented per frame sent, wraps 255 → 0 |
 | 4 | 1 | length | payload bytes, 0–57 |
@@ -87,9 +90,9 @@ Senders must zero the padding. Receivers do not check it beyond the CRC.
 `SELECT_DEVICE` with sequence `0x2A`, `generation` = 5, `device_index` = 2:
 
 ```text
-offset 0..6:   A5 04 03 2A 02 05 02
+offset 0..6:   A5 05 03 2A 02 05 02
 offset 7..61:  00 (55 bytes)
-offset 62..63: 5B C1            (CRC 0xC15B)
+offset 62..63: EB 98            (CRC 0x98EB)
 ```
 
 ## Message set
@@ -119,6 +122,7 @@ offset 62..63: 5B C1            (CRC 0xC15B)
 | `0x26` | `MEDIA_PART` | Host → STM32 | part header (`id` = 0) + media record text (version 4, below) |
 | `0x27` | `MEDIA_STATE` | Host → STM32 | playback state, 11 bytes (version 4, below) |
 | `0x28` | `ART_PART` | Host → STM32 | `art_id`, `index` (u16) + cover data (version 4, below) |
+| `0x29` | `BANNER_PART` | Host → STM32 | part header (`id` = banner id 0–255) + banner record text (version 5, below) |
 | `0x30` | `GET_CARDS` | STM32 → Host | none |
 | `0x31` | `OPEN_DETAIL` | STM32 → Host | `slot` (0–7), `arg` (int8: 0 default, −1 previous, +1 next) |
 | `0x32` | `ACTION` | STM32 → Host | `kind`, `ref`, `action` (below) |
@@ -268,22 +272,24 @@ fit with "…" and never wraps a card line.
 | 9 | snow | snowflake |
 | 10 | thunderstorm | bolt |
 | 11 | menu of the day | utensils |
+| 12 | notifications | bell |
 
 (Numbers are added here with the features that use them; 1–10: weather,
-#18; 11: menu, #20.) A detail row whose `icon` field is not empty keeps an icon column,
+#18; 11: menu, #20; 12: notifications, #34.) A detail row whose `icon` field is not empty keeps an icon column,
 also for 0, so that labels of rows with and without an icon line up; a
 row with an empty field has no column.
 
 ### Part header
 
-`CARD_PART`, `DETAIL_PART`, `PROMPT_PART` and `MEDIA_PART` start with:
+`CARD_PART`, `DETAIL_PART`, `PROMPT_PART`, `MEDIA_PART` and
+`BANNER_PART` start with:
 
 | Byte | Field | Value |
 |---|---|---|
-| 0 | `id` | card slot 0–7 (card, detail), prompt id 0–255, or 0 (media) |
+| 0 | `id` | card slot 0–7 (card, detail), prompt or banner id 0–255, or 0 (media) |
 | 1 | `generation` | changed by the host for every new version of the record |
 | 2 | `part` | 0 … `parts` − 1 |
-| 3 | `parts` | 1–5 (card), 1–39 (detail), 1–20 (prompt), 1–10 (media) |
+| 3 | `parts` | 1–5 (card), 1–39 (detail), 1–20 (prompt), 1–10 (media), 1–5 (banner) |
 | 4 … | data | part `n` holds record bytes `53·n` … ; every part but the last has 53 bytes |
 
 - The last part has 1–53 bytes; only an empty record (`parts` = 1) has
@@ -350,6 +356,33 @@ bytes, sent as 534 `ART_PART`s:
   2.7 s at the 5 ms interval. A new `art_id` replaces a cover still
   being sent.
 
+## Banner (version 5)
+
+A short strip over the top of every screen (ADR-009): an icon, a title,
+up to two text lines and a countdown. The host uses it for a new
+notification; the board does not know that.
+
+`BANNER_PART` carries one text record (the rules of "Record text" and
+"Part header"), at most 256 bytes:
+
+- line 1: `icon` ␟ `title` ␟ `seconds` ␟ `slot`;
+- lines 2–3: text lines; further lines are ignored.
+
+| Field | Value |
+|---|---|
+| `icon` | a number of the icon table; 0 or empty = none |
+| `seconds` | how long it stays, decimal 1–30; empty, 0 or above 30 = 5 |
+| `slot` | card slot 0–7 whose detail a tap opens (as a tap on that card); empty or another value = a tap only closes the banner |
+
+- A newer banner (another `id` or `generation`) replaces the one shown
+  and starts its countdown again.
+- A banner never covers a prompt: while a prompt is shown, the board
+  drops banners; a prompt that appears closes a shown banner.
+- A banner does not wake a dark screen (screen timeout, ADR-004) and is
+  not shown on it.
+- There is no answer and no `ACTION`; a tap opens the detail with
+  `OPEN_DETAIL slot, 0` as a card does.
+
 ### `ACTION`
 
 | `kind` | `ref` | `action` |
@@ -386,6 +419,8 @@ or `PROMPT_CLOSE`. The host answers an `ACTION` it cannot carry out with
 | User taps a detail button or the media strip | STM32 → `ACTION` |
 | Host needs a decision (ADR-007) | Host → `PROMPT_PART`s; the board shows the prompt over every screen and wakes a dark screen |
 | User answers the prompt | STM32 → `ACTION kind 1`; Host → `PROMPT_CLOSE` |
+| Something new for a short notice (a notification, ADR-009) | Host → `BANNER_PART`s; the board shows the banner unless a prompt is shown or the screen is dark |
+| User taps a banner with a `slot` | STM32 → `OPEN_DETAIL slot, 0` (as a card tap) |
 | The prompt is answered elsewhere or times out | Host → `PROMPT_CLOSE` |
 
 The board shows one prompt at a time; the host keeps further prompts
@@ -408,7 +443,7 @@ Retries and timeouts: see "Transport".
 A receiver checks, in this order, and stops at the first failure:
 
 1. magic is `0xA5`;
-2. version is `4`;
+2. version is `5`;
 3. CRC matches;
 4. length ≤ 57;
 5. command is known;
@@ -419,7 +454,7 @@ A rejected frame is dropped. The receiver may answer with `ERROR`:
 | Code | Name | Meaning |
 |---|---|---|
 | `0x01` | `BAD_FRAME` | magic, CRC or length wrong |
-| `0x02` | `UNSUPPORTED_VERSION` | version is not 4 |
+| `0x02` | `UNSUPPORTED_VERSION` | version is not 5 |
 | `0x03` | `UNKNOWN_COMMAND` | command code not in the message set |
 | `0x04` | `BAD_PAYLOAD` | payload length or a field value invalid |
 | `0x05` | `UNKNOWN_DEVICE` | `device_index` not in the current list |
@@ -449,3 +484,4 @@ A receiver rejects frames of any other version (`UNSUPPORTED_VERSION`).
 | 2 | ADR-004: `DEVICE_ALIAS`, `SET_ALIAS`, `SET_FAVORITE`, `MOVE_DEVICE`, `SETTINGS`, `SET_SETTINGS`; favorite and alias flags in `DEVICE_LIST`; list in the user's order; `generation` in `SELECT_DEVICE`. |
 | 3 | ADR-005, ADR-006: `TIME`, `CARD_PART`, `CARD_CLEAR`, `DETAIL_PART`, `PROMPT_PART`, `PROMPT_CLOSE`, `GET_CARDS`, `OPEN_DETAIL`, `ACTION`; chunked text records; settings record 12 bytes (`startup_screen`). stm32-desk-dashboard only; the audio controller stays on version 2. |
 | 4 | ADR-008: `MEDIA_PART`, `MEDIA_STATE`, `ART_PART`, `GET_MEDIA` (now playing, 120 × 120 RGB565 cover); `startup_screen` 2 = Music. |
+| 5 | ADR-009: `BANNER_PART` (a short banner over every screen, used for new notifications); icon 12 = bell. |

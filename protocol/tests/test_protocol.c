@@ -1,6 +1,6 @@
 /**
  * @file    test_protocol.c
- * @brief   Unit tests for the protocol codec, version 4 (no test framework).
+ * @brief   Unit tests for the protocol codec, version 5 (no test framework).
  */
 #include "protocol.h"
 
@@ -67,7 +67,7 @@ static void test_crc_check_value(void)
 static void test_header_and_golden_frame(void)
 {
     /* Byte-exact example documented in protocol.md. */
-    static const uint8_t expected_head[] = { 0xA5, 0x04, 0x03, 0x2A, 0x02, 0x05, 0x02 };
+    static const uint8_t expected_head[] = { 0xA5, 0x05, 0x03, 0x2A, 0x02, 0x05, 0x02 };
     ProtoMessage m = simple(PROTO_CMD_SELECT_DEVICE, 0x2AU);
     uint8_t frame[PROTO_FRAME_SIZE];
 
@@ -79,8 +79,8 @@ static void test_header_and_golden_frame(void)
     {
         CHECK(frame[i] == 0U);
     }
-    CHECK(frame[62] == 0x5BU);
-    CHECK(frame[63] == 0xC1U);
+    CHECK(frame[62] == 0xEBU);
+    CHECK(frame[63] == 0x98U);
 }
 
 static void test_round_trip_simple(void)
@@ -831,7 +831,7 @@ static void test_v3_frame_rejected(void)
     uint8_t frame[PROTO_FRAME_SIZE];
 
     CHECK(Proto_Encode(&m, frame) == PROTO_OK);
-    CHECK(frame[1] == 4U);
+    CHECK(frame[1] == PROTO_VERSION);
     frame[1] = 3U; /* a version 3 frame (v0.9.0-beta.2 and before) */
     reseal(frame);
     CHECK(Proto_Decode(frame, &out) == PROTO_ERR_VERSION);
@@ -1033,6 +1033,66 @@ static void test_art_parts(void)
     CHECK(Proto_ArtAssemblerAdd(&a, &in.u.art) == PROTO_ASM_OVERFLOW);
 }
 
+/* ------------------------------------------------- version 5 (ADR-009) */
+
+static void test_v4_frame_rejected(void)
+{
+    ProtoMessage m = simple(PROTO_CMD_GET_MEDIA, 1U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    CHECK(Proto_Encode(&m, frame) == PROTO_OK);
+    CHECK(frame[1] == 5U);
+    frame[1] = 4U; /* a version 4 frame (media, #30-#32) */
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_VERSION);
+}
+
+static void test_banner_record(void)
+{
+    static const char text[] = "12\x1F" "WhatsApp\x1F" "5\x1F" "2\n" "Ay\xC5\x9F" "e\n" "Ak\xC5\x9F" "am geliyor musun? Saat yedide kapÄ±nÄ±n Ã¶nÃ¼nde olalÄ±m.";
+    static uint8_t big[PROTO_BANNER_MAX_BYTES + 1U];
+    uint8_t buffer[PROTO_BANNER_MAX_BYTES + 1U];
+    ProtoAssembler a;
+    ProtoMessage in = simple(PROTO_CMD_BANNER_PART, 2U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    CHECK(Proto_RecordMaxBytes(PROTO_CMD_BANNER_PART) == PROTO_BANNER_MAX_BYTES);
+    CHECK(Proto_RecordPartCount(PROTO_BANNER_MAX_BYTES) == PROTO_BANNER_MAX_PARTS);
+
+    /* Banner ids span 0-255, like prompt ids (not card slots). */
+    CHECK(Proto_RecordPart((const uint8_t *)text, (uint16_t)strlen(text), 200U, 7U, 0U, &in.u.part));
+    CHECK(in.u.part.parts == 2U);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[2] == 0x29U && frame[5] == 200U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.command == PROTO_CMD_BANNER_PART);
+    Proto_AssemblerInit(&a, buffer, PROTO_BANNER_MAX_BYTES);
+    CHECK(Proto_AssemblerAdd(&a, &out.u.part) == PROTO_ASM_PARTIAL);
+    CHECK(Proto_RecordPart((const uint8_t *)text, (uint16_t)strlen(text), 200U, 7U, 1U, &in.u.part));
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK);
+    CHECK(Proto_AssemblerAdd(&a, &out.u.part) == PROTO_ASM_COMPLETE);
+    CHECK(strcmp((const char *)buffer, text) == 0);
+
+    /* A full record fits in 5 parts; a byte more does not. */
+    memset(big, 'x', sizeof(big));
+    for (uint8_t part = 0U; part < PROTO_BANNER_MAX_PARTS; part++)
+    {
+        CHECK(Proto_RecordPart(big, PROTO_BANNER_MAX_BYTES, 255U, 8U, part, &in.u.part));
+        CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    }
+    CHECK(Proto_RecordPart(big, PROTO_BANNER_MAX_BYTES + 1U, 255U, 9U, PROTO_BANNER_MAX_PARTS - 1U, &in.u.part));
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    /* parts above 5 on the wire is a bad payload. */
+    CHECK(Proto_RecordPart(big, 53U, 1U, 1U, 0U, &in.u.part));
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    frame[8] = (uint8_t)(PROTO_BANNER_MAX_PARTS + 1U);
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+}
+
 int main(void)
 {
     test_crc_check_value();
@@ -1056,6 +1116,8 @@ int main(void)
     test_media_state();
     test_media_record();
     test_art_parts();
+    test_v4_frame_rejected();
+    test_banner_record();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

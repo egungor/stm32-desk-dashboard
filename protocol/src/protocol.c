@@ -1,6 +1,6 @@
 /**
  * @file    protocol.c
- * @brief   STM32 <-> Windows host protocol, version 4 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 5 (see protocol/protocol.md).
  */
 #include "protocol.h"
 
@@ -66,6 +66,7 @@ static int is_known_command(uint8_t command)
     case PROTO_CMD_MEDIA_PART:
     case PROTO_CMD_MEDIA_STATE:
     case PROTO_CMD_ART_PART:
+    case PROTO_CMD_BANNER_PART:
     case PROTO_CMD_GET_CARDS:
     case PROTO_CMD_OPEN_DETAIL:
     case PROTO_CMD_ACTION:
@@ -248,6 +249,8 @@ static uint8_t max_parts_of(uint8_t command)
         return (uint8_t)PROTO_PROMPT_MAX_PARTS;
     case PROTO_CMD_MEDIA_PART:
         return (uint8_t)PROTO_MEDIA_MAX_PARTS;
+    case PROTO_CMD_BANNER_PART:
+        return (uint8_t)PROTO_BANNER_MAX_PARTS;
     default:
         return 0U;
     }
@@ -265,6 +268,8 @@ uint16_t Proto_RecordMaxBytes(uint8_t command)
         return (uint16_t)PROTO_PROMPT_MAX_BYTES;
     case PROTO_CMD_MEDIA_PART:
         return (uint16_t)PROTO_MEDIA_MAX_BYTES;
+    case PROTO_CMD_BANNER_PART:
+        return (uint16_t)PROTO_BANNER_MAX_BYTES;
     default:
         return 0U;
     }
@@ -286,7 +291,8 @@ static int is_valid_part(uint8_t command, const ProtoRecordPart *p)
     {
         return 0; /* one media record */
     }
-    if ((command != PROTO_CMD_PROMPT_PART) && (p->id >= PROTO_MAX_CARDS))
+    if ((command != PROTO_CMD_PROMPT_PART) && (command != PROTO_CMD_BANNER_PART) &&
+        (p->id >= PROTO_MAX_CARDS))
     {
         return 0;
     }
@@ -690,6 +696,7 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
     case PROTO_CMD_DETAIL_PART:
     case PROTO_CMD_PROMPT_PART:
     case PROTO_CMD_MEDIA_PART:
+    case PROTO_CMD_BANNER_PART:
     {
         const ProtoRecordPart *p = &msg->u.part;
 
@@ -950,6 +957,7 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
     case PROTO_CMD_DETAIL_PART:
     case PROTO_CMD_PROMPT_PART:
     case PROTO_CMD_MEDIA_PART:
+    case PROTO_CMD_BANNER_PART:
     {
         ProtoRecordPart *p = &msg->u.part;
 
