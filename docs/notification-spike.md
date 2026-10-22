@@ -76,7 +76,37 @@ N1, 2026-10-22, the owner's PC (Windows 11, host from `main` `471519c`):
 - **Way 2 works too:** the live database opened read-only next to the notification service. The tables match the query (`Notification`: `Id`, `HandlerId`, `Type`, `Payload`, `ArrivalTime`, …; `NotificationHandler`: `RecordId`, `PrimaryId`, …), and the same WhatsApp toast was there with its text (`PrimaryId` `5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App`, the package's AppUserModelID).
 - Both saw the same single toast.
 
-Leaning: way 1 (documented, gives the app's display name and the texts, maybe an event), way 2 only if N2–N6 show a gap. Open: N2–N6, with the listener's texts and delay (`notify watch`, updated after N1).
+N2, the owner, with test toasts from Windows PowerShell (`ToastText02`):
+the listener gives the display name ("Windows PowerShell") and both
+`<text>` lines intact (Turkish letters, an em dash); the database has the
+same ids (45655–45658) and times, but only the AppUserModelID as the
+app.
+
+N3 and N5, `notify watch` run by Claude Code on the owner's PC with two
+tagged test toasts (no other notification arrived during the run):
+
+| | Result |
+|---|---|
+| `NotificationChanged` | `FAIL 0x80070490` (element not found): an unpackaged program cannot subscribe; the listener has to be polled |
+| `[listener]` delay | 131 ms and 504 ms (polled every 500 ms) |
+| `[database]` delay | 147 ms and 1058 ms (read every 1 s) |
+| Removed from the history (`ToastNotificationManager.History.Remove`, as dismissing in the notification centre) | `[listener] gone id=45663` at the next poll |
+
+N6, the owner: with the Snipping Tool's notifications turned off, its
+screenshot toast appeared in neither way.
+
+N4, the owner, with Do not disturb on: Windows showed no pop-up, but
+both test toasts (ids 45668, 45669) were in the listener and in the
+database as usual. So Do not disturb only hides Windows' own pop-up; if
+the board is to stay quiet too, the host has to learn the state itself
+(open point for the ADR, e.g. `SHQueryUserNotificationState`).
+
+**Result:** way 1, `UserNotificationListener` polled every 500 ms, is
+enough: documented, no package identity, no administrator rights; app
+names, texts and removals; Windows itself leaves out apps whose
+notifications are turned off. Way 2 (the undocumented database) and way 3
+(a sparse package) are not needed. These are the inputs of the ADR of
+#34.
 
 ## Report
 
