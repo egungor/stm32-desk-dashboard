@@ -38,6 +38,13 @@ public:
     void post(const std::string& json);
 
     bool isOpen() const { return window_ != nullptr; }
+    // Serve @p folder to the page as https://<host>/ (ADR-012: the
+    // pictures' previews). Call before show().
+    void mapFolder(const std::wstring& host, const std::wstring& folder)
+    {
+        mapHost_ = host;
+        mapFolder_ = folder;
+    }
     void setTitle(const std::wstring& title);
 
 private:
@@ -50,6 +57,8 @@ private:
     MessageFn onMessage_;
     HWND window_ = nullptr;
     std::wstring html_;
+    std::wstring mapHost_;
+    std::wstring mapFolder_;
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller_;
     Microsoft::WRL::ComPtr<ICoreWebView2> webview_;
     bool pageReady_ = false;

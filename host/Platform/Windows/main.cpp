@@ -681,24 +681,39 @@ int cmdNotify(const std::vector<std::string>& args)
 // The picture card's file (ADR-010).
 int cmdPicture(const std::vector<std::string>& args)
 {
-    if (args.size() == 3) {
-        const std::string path = args[2] == "none" ? std::string() : args[2];
-        if (!win::storePicturePath(path)) {
-            std::printf("FAIL: cannot write picture.txt.\n");
+    // picture add <file>: into the library (ADR-012); a running tray reads it.
+    if (args.size() == 4 && args[2] == "add") {
+        PictureLibrary library = win::readPictureLibrary().value_or(PictureLibrary());
+        std::string error;
+        const std::optional<LibraryPicture> added = win::addLibraryPicture(library, win::toWide(args[3]), error);
+        if (!added || !win::writePictureLibrary(library)) {
+            std::printf("FAIL: %s\n", added ? "cannot write pictures.json" : error.c_str());
             return 1;
         }
         (void)win::notifySettingsChanged();
-    } else if (args.size() != 2) {
-        return usage();
-    }
-    const std::optional<std::string> path = win::storedPicturePath();
-    if (!path) {
-        std::printf("No picture.\n");
+        std::printf("OK: %s added as %s.\n", args[3].c_str(), added->id.c_str());
         return 0;
     }
-    const win::PictureLoad loaded = win::loadPicture(win::toWide(*path));
-    const std::string state = loaded.pixels ? std::string("OK (480 x 272)") : "FAIL: " + loaded.error;
-    std::printf("%s: %s\n", path->c_str(), state.c_str());
+    if (args.size() != 2) {
+        return usage();
+    }
+    // picture: the library, and the shown picture read as the board gets it.
+    const PictureLibrary library = win::readPictureLibrary().value_or(PictureLibrary());
+    const std::string current = win::readCurrentPicture();
+    std::printf("Shuffle: %s, every %u min, %s\n", library.shuffle.enabled ? "on" : "off", library.shuffle.minutes,
+                library.shuffle.random ? "random" : "in order");
+    for (const LibraryPicture& p : library.pictures) {
+        std::printf("%s %-5s %s (%ux%u)%s\n", p.id == current ? "*" : " ", p.id.c_str(), p.name.c_str(), p.width,
+                    p.height, p.shuffle ? "" : " [not in the shuffle]");
+    }
+    const LibraryPicture* shown = findPicture(library, current);
+    if (shown == nullptr) {
+        std::printf("No picture shown%s.\n", library.pictures.empty() ? " (the library is empty)" : "");
+        return 0;
+    }
+    const win::PictureLoad loaded =
+        win::loadPicture(win::picturesDirectory() + L"\\" + win::toWide(shown->file), shown->crop);
+    std::printf("%s: %s\n", shown->id.c_str(), loaded.pixels ? "OK (480 x 272)" : ("FAIL: " + loaded.error).c_str());
     return loaded.pixels ? 0 : 1;
 }
 
@@ -812,7 +827,7 @@ int usage()
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
         "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
         "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n"
-        "                        notify | notify focus | picture [<file> | none] | version\n");
+        "                        notify | notify focus | picture [add <file>] | version\n");
     return 2;
 }
 

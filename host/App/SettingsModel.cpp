@@ -60,7 +60,8 @@ std::optional<double> numberOf(const json& j, const char* key)
 
 bool ServiceSnapshot::operator==(const ServiceSnapshot& o) const
 {
-    if (connected != o.connected || board.firmware != o.board.firmware || board.protocol != o.board.protocol ||
+    if (connected != o.connected || picture != o.picture || board.firmware != o.board.firmware ||
+        board.protocol != o.board.protocol ||
         !sameSettings(settings, o.settings) || devices.size() != o.devices.size()) {
         return false;
     }
@@ -74,7 +75,7 @@ bool ServiceSnapshot::operator==(const ServiceSnapshot& o) const
     return true;
 }
 
-std::string settingsStateJson(const SettingsState& s)
+std::string settingsStateJson(const SettingsState& s, const std::string& previewBase)
 {
     json settings = json::object();
     for (const auto& [name, value] : settingValues(s.service.settings)) {
@@ -83,6 +84,16 @@ std::string settingsStateJson(const SettingsState& s)
     json devices = json::array();
     for (const SettingsDevice& d : s.service.devices) {
         devices.push_back(deviceJson(d));
+    }
+    json pictures = json::array();
+    for (const LibraryPicture& p : s.pictures.pictures) {
+        pictures.push_back(json{{"id", p.id},
+                                {"name", p.name},
+                                {"width", p.width},
+                                {"height", p.height},
+                                {"crop", json{{"x", p.crop.x}, {"y", p.crop.y}, {"w", p.crop.w}, {"h", p.crop.h}}},
+                                {"shuffle", p.shuffle},
+                                {"preview", previewBase + "previews/" + p.id + ".jpg"}});
     }
     json weather = nullptr;
     if (s.weather) {
@@ -98,7 +109,11 @@ std::string settingsStateJson(const SettingsState& s)
         {"settings", settings},
         {"devices", devices},
         {"weather", weather},
-        {"picture", s.picture},
+        {"pictures", pictures},
+        {"shuffle", json{{"enabled", s.pictures.shuffle.enabled},
+                         {"minutes", s.pictures.shuffle.minutes},
+                         {"random", s.pictures.shuffle.random}}},
+        {"currentPicture", s.service.picture},
         {"foodLists", s.foodLists},
         {"claudeKeySet", s.claudeKeySet},
         {"claudeModel", s.claudeModel},
@@ -225,10 +240,48 @@ std::optional<SettingsRequest> parseSettingsRequest(const std::string& text)
         }
         r.kind = SettingsRequestKind::Startup;
         r.value = *value;
-    } else if (c == "pictureChoose") {
-        r.kind = SettingsRequestKind::PictureChoose;
-    } else if (c == "pictureClear") {
-        r.kind = SettingsRequestKind::PictureClear;
+    } else if (c == "picturesAdd") {
+        r.kind = SettingsRequestKind::PicturesAdd;
+    } else if (c == "pictureRemove" || c == "pictureShow" || c == "pictureInclude" || c == "pictureCrop") {
+        const std::optional<std::string> id = stringOf(j, "id");
+        if (!id || id->size() > 16U || (id->empty() && c != "pictureShow")) {
+            return std::nullopt;
+        }
+        r.name = *id;
+        if (c == "pictureRemove") {
+            r.kind = SettingsRequestKind::PictureRemove;
+        } else if (c == "pictureShow") {
+            r.kind = SettingsRequestKind::PictureShow;
+        } else if (c == "pictureInclude") {
+            const std::optional<unsigned> value = smallNumberOf(j, "value");
+            if (!value || *value > 1U) {
+                return std::nullopt;
+            }
+            r.kind = SettingsRequestKind::PictureInclude;
+            r.value = *value;
+        } else {
+            const std::optional<double> x = numberOf(j, "x");
+            const std::optional<double> y = numberOf(j, "y");
+            const std::optional<double> w = numberOf(j, "w");
+            const std::optional<double> h = numberOf(j, "h");
+            if (!x || !y || !w || !h) {
+                return std::nullopt;
+            }
+            r.kind = SettingsRequestKind::PictureCrop;
+            r.crop = NormRect{*x, *y, *w, *h};  // checked against the photo's size by the tray
+        }
+    } else if (c == "pictureShuffle") {
+        const auto enabled = j.find("enabled");
+        const auto random = j.find("random");
+        const std::optional<double> minutes = numberOf(j, "minutes");
+        if (enabled == j.end() || !enabled->is_boolean() || random == j.end() || !random->is_boolean() ||
+            !minutes || *minutes < kMinShuffleMinutes || *minutes > kMaxShuffleMinutes) {
+            return std::nullopt;
+        }
+        r.kind = SettingsRequestKind::PictureShuffle;
+        r.shuffle.enabled = enabled->get<bool>();
+        r.shuffle.random = random->get<bool>();
+        r.shuffle.minutes = static_cast<unsigned>(*minutes);
     } else if (c == "menuImport") {
         r.kind = SettingsRequestKind::MenuImport;
     } else if (c == "copyHook") {

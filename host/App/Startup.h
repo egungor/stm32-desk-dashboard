@@ -43,6 +43,8 @@ enum class TrayText {
     WebViewMissing,    // message box when the WebView2 Runtime is missing
     SettingsSaved,     // settings window notice after a file was saved
     SettingsNotSaved,  // settings window notice when a file could not be saved
+    AddPictures,       // file dialog title: photos for the picture card (ADR-012)
+    PicturesNotAdded,  // settings window notice: these photos could not be read
 };
 
 const char* trayText(TrayText id, std::uint8_t language);

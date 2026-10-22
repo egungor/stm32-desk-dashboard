@@ -226,6 +226,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             s.board = link.boardVersion();
         }
         s.settings = controller.preferences().settings();
+        s.picture = picture.currentId();
         for (const DeviceRegistry::Device& d : controller.registry().devices()) {
             s.devices.push_back(SettingsDevice{d.endpoint.id, d.endpoint.name, d.alias, d.favorite});
         }
@@ -292,6 +293,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             indicators.items[1] = approvals.indicator();
             dash.setIndicators(indicators);
         }
+        picture.onTick(GetTickCount64());  // the shuffle (ADR-012)
         pictureService.onTick();
         dash.onTick(GetTickCount64());
         media.onTick(GetTickCount64());
@@ -362,8 +364,15 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             // The settings window (ADR-011): a preference, applied as if the
             // board had changed it, then sent to the board and saved.
             const std::optional<SettingsRequest> request = parseSettingsRequest(item->text);
-            if (request && isServiceRequest(request->kind) &&
-                applySettingsRequest(*request, controller.preferences())) {
+            if (request && request->kind == SettingsRequestKind::PictureShow) {
+                // The picture the window chose (ADR-012); the card changes
+                // when all its parts have arrived.
+                if (!picture.show(request->name, GetTickCount64())) {
+                    log("WARN: settings window: no picture " + request->name + ".");
+                }
+                publishSnapshot();
+            } else if (request && isServiceRequest(request->kind) &&
+                       applySettingsRequest(*request, controller.preferences())) {
                 controller.onPreferencesChanged();
                 store.markChanged();
                 reportLanguage();

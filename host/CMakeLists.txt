@@ -39,6 +39,7 @@ add_library(host_core STATIC
     Media/MediaCover.cpp
     Media/MediaService.cpp
     Notify/NotificationService.cpp
+    Picture/PictureLibrary.cpp
     Picture/PictureService.cpp
     Notify/ToastText.cpp
     Menu/MenuData.cpp

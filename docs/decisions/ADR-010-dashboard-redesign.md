@@ -9,7 +9,8 @@ chosen from the tray menu ("Resim seç…").
 
 Amended by issue #53 (2026-10-22): protocol version 7 sends the picture
 at the screen's size and a tap on the picture card shows it full screen
-("Amendment: full-screen picture" below).
+("Amendment: full-screen picture" below). ADR-012 (#72) replaces the
+single picture with a library, a shuffle and a crop.
 
 ## Context
 
