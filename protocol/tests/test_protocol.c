@@ -535,6 +535,17 @@ static void test_time_and_small_commands(void)
     reseal(frame);
     CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
 
+    /* SEEK (version 7): u32 seconds, little endian, as TIME. */
+    in = simple(PROTO_CMD_SEEK, 8U);
+    in.u.seek_s = 0x00010203UL;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[2] == 0x34U && frame[4] == 4U && frame[5] == 0x03U && frame[6] == 0x02U && frame[7] == 0x01U &&
+          frame[8] == 0x00U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.command == PROTO_CMD_SEEK && out.u.seek_s == 0x00010203UL);
+    frame[4] = 5U;
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+
     in = simple(PROTO_CMD_GET_CARDS, 4U);
     CHECK(Proto_Encode(&in, frame) == PROTO_OK);
     CHECK(frame[4] == 0U);
@@ -872,7 +883,9 @@ static void test_media_state(void)
     in.u.media.status = PROTO_MEDIA_STATUS_COUNT;
     CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
     in.u.media.status = PROTO_MEDIA_STATUS_PAUSED;
-    in.u.media.controls = 0x08U;
+    in.u.media.controls = PROTO_MEDIA_CAN_SEEK; /* version 7 */
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    in.u.media.controls = 0x10U;
     CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
     in.u.media.controls = 0U;
     CHECK(Proto_Encode(&in, frame) == PROTO_OK);

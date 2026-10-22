@@ -11,7 +11,8 @@ the playback state and a small cover (ADR-008); plus, in version 5, a
 short banner over every screen (notifications, ADR-009); plus, in
 version 6, coloured cards, status icons and a picture (ADR-010); and, in
 version 7, the picture at the screen's size, so a tap can show it full
-screen (ADR-010, #53). Design:
+screen (ADR-010, #53), and `SEEK` from the Music tab's progress bar
+(ADR-008, #55). Design:
 `docs/decisions/ADR-006-cards-and-protocol-v3.md`,
 `docs/decisions/ADR-005-tabbed-shell-and-global-settings.md`,
 `docs/decisions/ADR-008-media-session-and-music-tab.md`,
@@ -135,6 +136,7 @@ offset 62..63: 8B 2B            (CRC 0x2B8B)
 | `0x31` | `OPEN_DETAIL` | STM32 → Host | `slot` (0–7), `arg` (int8: 0 default, −1 previous, +1 next) |
 | `0x32` | `ACTION` | STM32 → Host | `kind`, `ref`, `action` (below) |
 | `0x33` | `GET_MEDIA` | STM32 → Host | none (version 4) |
+| `0x34` | `SEEK` | STM32 → Host | `position` u32: seconds from the start of the track (version 7, below) |
 | `0x7F` | `ERROR` | Either | `code`, `ref_command`, `ref_sequence` (1 byte each) |
 
 Volume and mute refer to the current default playback device. After
@@ -338,7 +340,7 @@ fields are allowed.
 | Byte | Field | Value |
 |---|---|---|
 | 0 | `status` | 0 no media session, 1 stopped, 2 playing, 3 paused |
-| 1 | `controls` | bit 0 previous, bit 1 play/pause, bit 2 next: the session takes them; other bits 0 |
+| 1 | `controls` | bit 0 previous, bit 1 play/pause, bit 2 next, bit 3 seek (version 7): the session takes them; other bits 0 |
 | 2 | `art_id` | 0 no cover; 1–255 the cover sent in `ART_PART`s with this id |
 | 3–6 | `position` | u32, seconds from the start of the track |
 | 7–10 | `duration` | u32, seconds; 0 = unknown. When not 0, `position` ≤ `duration` |
@@ -348,6 +350,19 @@ record. While `status` is 2 the board counts `position` on by itself;
 the host sends a new `MEDIA_STATE` when the status, the controls, the
 cover, the duration or the track change, when the position jumps, and
 every 30 s while playing.
+
+### `SEEK` (version 7)
+
+Four bytes, `position` u32 little endian: jump to this many seconds from
+the start of the playing track (the board sends it when the user taps or
+drags the Music tab's progress bar, only while `controls` bit 3 is set).
+No answer: the board shows the new position at once and counts on from
+it; the host asks the player to jump (a position beyond `duration` is
+cut to it) and for 3 s keeps counting from the new position, so a late
+timeline does not pull the bar back; afterwards the usual `MEDIA_STATE`
+rules correct the bar if the player did not follow. Without a media
+session, or when it cannot seek, the host answers `ERROR
+OPERATION_FAILED`; the board then shows a notice and sends `GET_MEDIA`.
 
 ### Cover
 
@@ -465,6 +480,7 @@ or `PROMPT_CLOSE`. The host answers an `ACTION` it cannot carry out with
 | Every 10 minutes, and when Windows' time or time zone changes | Host → `TIME` |
 | Firmware starts or USB (re)connects (now playing) | STM32 → `GET_MEDIA`; Host → `MEDIA_PART`s, `MEDIA_STATE`, then the cover's `ART_PART`s if `art_id` is not 0 |
 | What plays changes on the PC | Host → `MEDIA_PART`s if the texts changed, `MEDIA_STATE`, then the `ART_PART`s of a new cover |
+| User taps or drags the Music tab's progress bar | STM32 → `SEEK`; Host → nothing, or `ERROR OPERATION_FAILED` (STM32 → `GET_MEDIA`) |
 | A card changes | Host → its `CARD_PART`s with a new `generation`, or `CARD_CLEAR` |
 | User taps a card | STM32 → `OPEN_DETAIL slot, 0`; Host → `DETAIL_PART`s, or `ERROR OPERATION_FAILED` (no detail for that slot) |
 | User taps ‹ / › in a detail | STM32 → `OPEN_DETAIL slot, −1 / +1`; Host → the new detail |
@@ -539,3 +555,4 @@ A receiver rejects frames of any other version (`UNSUPPORTED_VERSION`).
 | 4 | ADR-008: `MEDIA_PART`, `MEDIA_STATE`, `ART_PART`, `GET_MEDIA` (now playing, 120 × 120 RGB565 cover); `startup_screen` 2 = Music. |
 | 5 | ADR-009: `BANNER_PART` (a short banner over every screen, used for new notifications); icon 12 = bell. |
 | 6 | ADR-010: `INDICATORS`, `PICTURE`, `PICTURE_PART` (200 × 92 RGB565); card record fields `bg` and `flags`; icon 13 = robot. |
+| 7 | ADR-010 amendment: the picture at 480 × 272 (#53). ADR-008 amendment: `SEEK`, `MEDIA_STATE` `controls` bit 3 (#55). |

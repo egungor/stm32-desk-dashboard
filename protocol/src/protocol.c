@@ -74,6 +74,7 @@ static int is_known_command(uint8_t command)
     case PROTO_CMD_OPEN_DETAIL:
     case PROTO_CMD_ACTION:
     case PROTO_CMD_GET_MEDIA:
+    case PROTO_CMD_SEEK:
     case PROTO_CMD_ERROR:
         return 1;
     default:
@@ -746,8 +747,9 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
     }
 
     case PROTO_CMD_TIME:
+    case PROTO_CMD_SEEK:
     {
-        const uint32_t t = msg->u.local_time;
+        const uint32_t t = (msg->command == PROTO_CMD_TIME) ? msg->u.local_time : msg->u.seek_s;
 
         payload[0] = (uint8_t)(t & 0xFFU);
         payload[1] = (uint8_t)((t >> 8) & 0xFFU);
@@ -1033,13 +1035,26 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
     }
 
     case PROTO_CMD_TIME:
+    case PROTO_CMD_SEEK:
+    {
+        uint32_t t;
+
         if (len != 4U)
         {
             return 0;
         }
-        msg->u.local_time = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) |
-                            ((uint32_t)payload[2] << 16) | ((uint32_t)payload[3] << 24);
+        t = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) | ((uint32_t)payload[2] << 16) |
+            ((uint32_t)payload[3] << 24);
+        if (msg->command == PROTO_CMD_TIME)
+        {
+            msg->u.local_time = t;
+        }
+        else
+        {
+            msg->u.seek_s = t;
+        }
         return 1;
+    }
 
     case PROTO_CMD_CARD_PART:
     case PROTO_CMD_DETAIL_PART:
