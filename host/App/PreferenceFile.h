@@ -15,12 +15,21 @@
 
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "Preferences.h"
 
 namespace stm32_audio::host {
 
 std::string serializePreferences(const Preferences& prefs);
+
+// The settings record's fields by the file's names, in protocol.md order
+// (also the settings window's names, ADR-011).
+std::vector<std::pair<std::string, unsigned>> settingValues(const ProtoSettings& settings);
+// Set field @p name; false if the name is unknown or @p value > 255 (the
+// range of the field is Proto_SettingsValid's).
+bool setSettingValue(ProtoSettings& settings, const std::string& name, unsigned value);
 
 // Parse @p text into @p prefs (replaced completely). Returns false, and
 // leaves @p prefs unchanged, if the text is not a preference file of a

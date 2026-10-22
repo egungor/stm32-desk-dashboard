@@ -32,6 +32,7 @@ add_library(host_core STATIC
     App/PreferenceFile.cpp
     App/PreferenceStore.cpp
     App/Preferences.cpp
+    App/SettingsModel.cpp
     App/Startup.cpp
     Hook/ApprovalService.cpp
     Hook/ClaudeHook.cpp

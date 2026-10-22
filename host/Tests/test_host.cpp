@@ -21,6 +21,7 @@
 #include "FrameRouter.h"
 #include "FrameText.h"
 #include "HidMatch.h"
+#include "SettingsModel.h"
 #include "HostController.h"
 #include "MediaCover.h"
 #include "MediaKeys.h"
@@ -1037,6 +1038,79 @@ void testBoardVersion()
     CHECK(v.firmware.empty() && v.protocol == 0U);
     v = parseBoardVersion("");
     CHECK(v.firmware.empty() && v.protocol == 0U);
+}
+
+// The settings window's requests and state (ADR-011, #61).
+void testSettingsModel()
+{
+    // Requests: well formed and in range, or nothing.
+    std::optional<SettingsRequest> r = parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":1})");
+    CHECK(r && r->kind == SettingsRequestKind::Setting && r->name == "theme" && r->value == 1U);
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":7})"));    // no such theme
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"colour","value":1})"));   // no such field
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":"1"})"));  // not a number
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"screen_timeout","value":61})"));
+    CHECK(parseSettingsRequest(R"({"cmd":"setting","name":"screen_timeout","value":60})"));
+    CHECK(!parseSettingsRequest("not json"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"format c:"})"));
+    CHECK(!parseSettingsRequest(R"(["get"])"));
+    r = parseSettingsRequest(R"({"cmd":"alias","id":"e1","alias":"Hoparlör"})");
+    CHECK(r && r->kind == SettingsRequestKind::Alias && r->name == "e1" && r->text == "Hoparlör");
+    CHECK(!parseSettingsRequest(R"({"cmd":"favorite","id":"e1","value":2})"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"order","ids":["a","a"]})"));  // twice
+    CHECK(!parseSettingsRequest(R"({"cmd":"order","ids":[]})"));
+    r = parseSettingsRequest(R"({"cmd":"weatherSet","name":"Ankara","latitude":39.93,"longitude":32.86})");
+    CHECK(r && r->kind == SettingsRequestKind::WeatherSet && r->location.name == "Ankara");
+    CHECK(!parseSettingsRequest(R"({"cmd":"weatherSet","name":"x","latitude":95,"longitude":32})"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"claudeKey","key":"a\nmodel=x"})"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"weatherSearch","query":""})"));
+    r = parseSettingsRequest(R"({"cmd":"startup","value":1})");
+    CHECK(r && r->kind == SettingsRequestKind::Startup && r->value == 1U && !isServiceRequest(r->kind));
+
+    // Applied to the preferences: only real changes count.
+    Preferences prefs;
+    prefs.setOrder({"a", "b", "c"});
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":1})"), prefs));
+    CHECK(prefs.settings().theme == 1U);
+    CHECK(!applySettingsRequest(*parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":1})"), prefs));
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"alias","id":"b","alias":"DAC"})"), prefs));
+    CHECK(prefs.device("b") && prefs.device("b")->alias == "DAC");
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"favorite","id":"b","value":1})"), prefs));
+    CHECK(prefs.device("b")->favorite);
+    // Order: the shown devices first, a stored one not shown (c) after them.
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"order","ids":["b","a"]})"), prefs));
+    CHECK(prefs.order() == std::vector<std::string>({"b", "a", "c"}));
+    CHECK(!applySettingsRequest(*parseSettingsRequest(R"({"cmd":"order","ids":["b","a"]})"), prefs));
+    CHECK(!applySettingsRequest(*parseSettingsRequest(R"({"cmd":"startup","value":1})"), prefs));
+
+    // The state for the page.
+    SettingsState s;
+    s.hostVersion = "1.2.3";
+    s.service.connected = true;
+    s.service.board.firmware = "1.2.3";
+    s.service.board.protocol = PROTO_VERSION;
+    s.service.settings = prefs.settings();
+    s.service.devices.push_back(SettingsDevice{"b", "Hoparlör (DAC)", "DAC", true});
+    s.picture = "C:\\Fotoğraflar\\a.jpg";
+    const std::string json = settingsStateJson(s);
+    CHECK(json.find(R"("type":"state")") != std::string::npos);
+    CHECK(json.find(R"("theme":1)") != std::string::npos);
+    CHECK(json.find(R"("name":"Hoparlör (DAC)")") != std::string::npos);
+    CHECK(json.find(R"("weather":null)") != std::string::npos);
+    CHECK(json.find(R"("picture":"C:\\Fotoğraflar\\a.jpg")") != std::string::npos);
+    CHECK(noticeJson(false, "x") == R"({"ok":false,"text":"x","type":"notice"})");
+
+    // Snapshots compare by content.
+    ServiceSnapshot a = s.service;
+    CHECK(a == s.service);
+    a.devices[0].alias = "Other";
+    CHECK(a != s.service);
+
+    // claude.txt keeps its model when the key changes; "" removes the key.
+    CHECK(claudeFileWithKey(std::nullopt, "sk-1") == "api_key=sk-1\n");
+    CHECK(claudeFileWithKey(std::string("api_key=old\r\nmodel=m\n"), "sk-2") == "api_key=sk-2\nmodel=m\n");
+    CHECK(claudeFileWithKey(std::string("model=m\n"), "sk-3") == "api_key=sk-3\nmodel=m\n");
+    CHECK(claudeFileWithKey(std::string("api_key=old\nmodel=m\n"), "") == "model=m\n");
 }
 
 void testPreferenceStore()
@@ -3766,6 +3840,7 @@ int main()
     testPreferenceFileRoundTrip();
     testPreferenceFileDamaged();
     testBoardVersion();
+    testSettingsModel();
     testPreferenceStore();
     testVolumeLimit();
     testVolumeLimitOnSelect();
