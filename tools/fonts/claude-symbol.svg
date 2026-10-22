@@ -1,0 +1,16 @@
+<?xml version="1.0" standalone="no"?>
+<!-- The Claude symbol (Anthropic) as one glyph at U+F544, the code point
+     of Font Awesome's robot that it replaces ("Icon" 13, #59). Source:
+     https://commons.wikimedia.org/wiki/File:Claude_AI_symbol.svg (CC0 on
+     Commons; the symbol is a trademark of Anthropic). The path is the
+     original's, mirrored for the font's y-up axis: y' = 87.5 - y.
+     tools/gen-ui-fonts.sh turns it into a TTF with svg2ttf. -->
+<svg xmlns="http://www.w3.org/2000/svg">
+<defs>
+<font id="claude-symbol" horiz-adv-x="100">
+<font-face font-family="Claude Symbol" units-per-em="100" ascent="87.5" descent="-12.5"/>
+<missing-glyph horiz-adv-x="100"/>
+<glyph glyph-name="claude" unicode="&#xF544;" horiz-adv-x="100" d="M19.6 21 l19.7 11 l0.3 1 l-0.3 0.5 h-1 l-3.3 0.2 l-11.2 0.3 L14 34.5 l-9.5 0.5 l-2.4 0.5 L0 38.5 l0.2 1.5 l2 1.3 l2.9 -0.2 l6.3 -0.5 l9.5 -0.6 l6.9 -0.4 L38 38.4 h1.6 l0.2 0.7 l-0.5 0.4 l-0.4 0.4 L29 46.5 l-10.6 7 l-5.6 4.1 l-3 2 l-1.5 2 l-0.6 4.2 l2.7 3 l3.7 -0.3 l0.9 -0.2 l3.7 -2.9 l8 -6.1 L37 51.5 l1.5 -1.2 l0.6 0.4 l0.1 0.3 l-0.7 1.1 L33 62.5 l-6 10.4 l-2.7 4.3 l-0.7 2.6 c-0.3 1 -0.4 2 -0.4 3 l3 4.2 L28 87.5 l4.2 -0.6 L33.8 85.5 l2.6 -6 l4.1 -9.3 L47 57.6 l2 -3.8 l1 -3.4 l0.3 -1 h0.7 v0.5 l0.5 7.2 l1 8.7 l1 11.2 l0.3 3.2 l1.6 3.8 l3 2 L61 84.9 l2 -2.9 l-0.3 -1.8 l-1.1 -7.7 L59 60.4 l-1.5 -8.2 h0.9 l1 1.1 l4.1 5.4 l6.9 8.6 l3 3.5 L77 74.5 l2.3 1.8 h4.3 l3.1 -4.7 l-1.4 -4.9 l-4.4 -5.6 l-3.7 -4.7 l-5.3 -7.1 l-3.2 -5.7 l0.3 -0.4 h0.7 l12 2.6 l6.4 1.1 l7.6 1.3 l3.5 -1.6 l0.4 -1.6 l-1.4 -3.4 l-8.2 -2 l-9.6 -2 l-14.3 -3.3 l-0.2 -0.1 l0.2 -0.3 l6.4 -0.6 l2.8 -0.2 h6.8 l12.6 -1 l3.3 -2 l1.9 -2.7 l-0.3 -2 l-5.1 -2.6 l-6.8 1.6 l-16 3.8 l-5.4 1.3 h-0.8 v-0.4 l4.6 -4.5 l8.3 -7.5 L89 7.4 l0.5 -2.4 l-1.3 -2 l-1.4 0.2 l-9.2 7 l-3.6 3 l-8 6.8 h-0.5 v-0.7 l1.8 -2.7 l9.8 -14.7 l0.5 -4.5 l-0.7 -1.4 l-2.6 -1 l-2.7 0.6 l-5.8 8 l-6 9 l-4.7 8.2 l-0.5 -0.4 l-2.9 -30.2 l-1.3 -1.5 l-3 -1.2 l-2.5 2 l-1.4 3 l1.4 6.2 l1.6 8 l1.3 6.4 l1.2 7.9 l0.7 2.6 v0.2 H49 L43 15.5 l-9 -12.3 l-7.2 -7.6 l-1.7 -0.7 l-3 1.5 l0.3 2.8 L24 1.5 l10 12.8 l6 7.9 l4 4.6 l-0.1 0.5 h-0.3 L17.2 10.1 l-4.7 -0.6 l-2 2 l0.2 3 l1 1 l8 5.5 Z"/>
+</font>
+</defs>
+</svg>

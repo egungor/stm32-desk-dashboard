@@ -54,6 +54,8 @@
 static char s_scratch[UI_DASH_DETAIL_BYTES + 1U];
 
 #define ICON_W      22    /**< icon column of a detail row */
+#define ICON_CLAUDE 13U   /**< protocol.md "Icon": Claude Code */
+#define CLAUDE_ORANGE 0xD97757U /**< the Claude symbol's own colour (#59) */
 
 /* Icon numbers of protocol.md ("Icon"); NULL for 0, empty or unknown. */
 static const char *icon_symbol(const char *field)
@@ -61,7 +63,7 @@ static const char *icon_symbol(const char *field)
     static const char *const symbols[] = {
         NULL,          SYM_SUN,  SYM_MOON,       SYM_CLOUD_SUN, SYM_CLOUD_MOON, SYM_CLOUD,
         SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,      SYM_UTENSILS,
-        SYM_BELL,      SYM_ROBOT,
+        SYM_BELL,      SYM_CLAUDE,
     };
     char *end = NULL;
     unsigned long n;
@@ -876,7 +878,10 @@ static void render_indicators(void)
     for (uint32_t i = 0U; i < g_ui.ind_count; i++)
     {
         const UiIndicator *it = &g_ui.indicators[i];
-        const uint32_t color = indicator_colour(it->colour);
+        /* The Claude symbol keeps its own orange unless a state colours it. */
+        const uint32_t color = ((it->icon == ICON_CLAUDE) && (it->colour == UI_INDICATOR_NORMAL))
+                                   ? CLAUDE_ORANGE
+                                   : indicator_colour(it->colour);
         const char *icon = NULL;
         char number[8];
         lv_obj_t *btn = ui_make_box(g_ui.ind_box);

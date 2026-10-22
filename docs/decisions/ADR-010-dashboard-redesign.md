@@ -187,7 +187,12 @@ first: no new command, no wait on a tap.
 - **The morning warning as a banner (ADR-009)**: the owner chose a
   pop-up that stays until "Tamam".
 - **The Claude logo for the Claude Code icon**: a trademark; a generic
-  robot icon (Font Awesome) is used instead.
+  robot icon (Font Awesome) is used instead. Changed by #59 at the
+  owner's request (2026-10-22): the Claude symbol from Wikimedia Commons
+  (CC0 there; a trademark of Anthropic) replaces the robot at the same
+  code point (`tools/fonts/claude-symbol.svg`), in Claude orange unless a
+  state colours it. It is shown on the owner's own device; the
+  repository is public, so whoever reuses it should mind the trademark.
 
 ## Consequences
 
