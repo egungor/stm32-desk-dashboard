@@ -849,16 +849,16 @@ static void run_layouts_script(void)
     /* The layout row on the settings page: back to cards. */
     tap(RAIL_COG_X, RAIL_COG_Y); /* cog */
     check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the rail's cog opens the settings page in layout C");
-    drag_v(240, 250, 40); /* SES: layout 131, grid 180 */
-    tap_setting(277, 131, "the layout control reports the settings");
+    drag_v(240, 250, 40); /* SES (below "Açılış ekranı", #32): layout 188, grid 237 */
+    tap_setting(277, 188, "the layout control reports the settings");
     check(Ui_Settings()->layout == UI_LAYOUT_CARDS, "\"Kart\" sets the cards layout");
-    tap_setting(351, 131, "the layout control reports the settings again");
+    tap_setting(351, 188, "the layout control reports the settings again");
     check(Ui_Settings()->layout == UI_LAYOUT_LIST, "\"Liste\" sets the list layout");
     snapshot("76-settings-layout-list");
     {
         const int before = s_settings.calls;
 
-        tap(312, 180); /* "3x2", greyed out outside the cards layout */
+        tap(312, 237); /* "3x2", greyed out outside the cards layout */
         check((s_settings.calls == before) && (Ui_Settings()->grid == UI_GRID_2X2),
               "the grid row does nothing outside the cards layout");
     }

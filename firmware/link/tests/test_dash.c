@@ -206,7 +206,7 @@ static void test_shared_sequence(void)
     Dash_OnConnected(&s_dash, 0U);
     CHECK(g.sent_count == 2 && g.sent[0].sequence == 40U && g.sent[1].sequence == 41U && shared == 42U);
     CHECK(Dash_Action(&s_dash, PROTO_ACTION_MEDIA, 0U, PROTO_MEDIA_NEXT));
-    CHECK(g.sent[1].sequence == 41U && shared == 42U);
+    CHECK(g.sent_count == 3 && g.sent[2].sequence == 42U && shared == 43U);
 }
 
 static void test_connect_asks_for_cards(void)
