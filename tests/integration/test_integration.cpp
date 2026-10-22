@@ -1627,7 +1627,7 @@ void testPictureOnBoard()
     CHECK(r.inSync() && r.screen.picturesShown == 1 && r.screen.picture == *pixels);
 
     // Another picture; then none.
-    auto other = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES, 0x42U);
+    auto other = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES, std::uint8_t{0x42});
     source.snap.pixels = other;
     ++source.snap.version;
     for (int i = 0; i < 400 && r.screen.picturesShown == 1; ++i) {

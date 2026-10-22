@@ -3573,7 +3573,7 @@ void testPictureService()
     pic.onTick();
     m = sink.pop();
     CHECK(m.command == PROTO_CMD_PICTURE && m.u.pic_id == PROTO_NO_PICTURE && !pic.sending());
-    source.snap.pixels = std::make_shared<std::vector<std::uint8_t>>(100U, 0U);
+    source.snap.pixels = std::make_shared<std::vector<std::uint8_t>>(100U, std::uint8_t{0});
     ++source.snap.version;
     pic.onTick();
     CHECK(sink.pop().u.pic_id == PROTO_NO_PICTURE);
