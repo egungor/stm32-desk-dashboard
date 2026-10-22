@@ -902,13 +902,15 @@ static void run_layouts_script(void)
 #define DASH_PLAY_X  142
 #define DASH_NEXT_X  198
 #define DASH_MUTE_X  258
-/* Music tab (#32): controls at x 166, 268, 370, y 220. */
+/* Music tab (#32): controls at x 138, 240, 342, y 220; the volume column
+ * on the right, x 424 to 480 (#70). */
 #define MUSIC_CTRL_Y 220
-#define MUSIC_PREV_X 166
-#define MUSIC_PLAY_X 268
-#define MUSIC_NEXT_X 370
-#define MUSIC_BAR_Y  166 /* the progress bar, x 124 to 412 (#55) */
-#define MUSIC_BAR_MID_X 268
+#define MUSIC_PREV_X 138
+#define MUSIC_PLAY_X 240
+#define MUSIC_NEXT_X 342
+#define MUSIC_BAR_Y  166 /* the progress bar, x 124 to 356 (#55) */
+#define MUSIC_BAR_MID_X 240
+#define MUSIC_VOL_X  448
 
 static struct
 {
@@ -1294,9 +1296,19 @@ static void run_music_script(void)
     check((s_dash.seek_calls == calls + 1) && (s_dash.seek_s >= 170U) && (s_dash.seek_s <= 184U),
           "a tap in the middle of the bar seeks to the middle of the track");
     check((Ui_MediaPosition() >= 170U) && (Ui_MediaPosition() <= 184U), "the bar shows the new position at once");
-    tap(MUSIC_BAR_MID_X + 84, MUSIC_BAR_Y - 12); /* within the larger touch area */
+    tap(MUSIC_BAR_MID_X + 70, MUSIC_BAR_Y - 12); /* within the larger touch area */
     run_ms(50U);
     check((s_dash.seek_calls == calls + 2) && (s_dash.seek_s > 250U), "a tap just above the bar, further right");
+
+    /* The volume on the right edge (#70): dragging it up raises the volume. */
+    {
+        const int volumes = s_audio.calls;
+
+        drag_v(MUSIC_VOL_X, 190, 60);
+        check((s_audio.calls > volumes) && (s_audio.last > 60U), "the Music tab's volume slider sets the volume");
+        Ui_SetVolume(s_audio.last);
+        run_ms(50U);
+    }
 
     /* Paused, long Turkish texts, no cover, no duration, only play/pause. */
     Ui_SetMedia("\xC3\x87ok uzun bir \xC5\x9F" "ark\xC4\xB1 ad\xC4\xB1: G\xC3\xBCl\xC3\xBC Soldurmam - "
