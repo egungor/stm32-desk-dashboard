@@ -55,6 +55,23 @@ file(GLOB_RECURSE LVGL_SOURCES CONFIGURE_DEPENDS ${LVGL_DIR}/src/*.c)
 option(APP_TEST_SCREEN "Show the M1 test pattern and touch targets instead of the UI" OFF)
 option(APP_UI_DEMO "Feed the UI with demo data instead of the USB host link" OFF)
 
+# Firmware version (ADR-011): the FW_VERSION environment variable (CI: the
+# tag without "v", else dev+<commit>), else "git describe" at configure
+# time (configure again after a commit), else "dev". It goes into the USB
+# configuration string, where the host reads it.
+if(DEFINED ENV{FW_VERSION} AND NOT "$ENV{FW_VERSION}" STREQUAL "")
+    set(FW_VERSION "$ENV{FW_VERSION}")
+else()
+    execute_process(COMMAND git describe --tags --always --dirty
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    OUTPUT_VARIABLE FW_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    string(REGEX REPLACE "^v" "" FW_VERSION "${FW_VERSION}")
+endif()
+if(FW_VERSION STREQUAL "")
+    set(FW_VERSION "dev")
+endif()
+message("Firmware version: ${FW_VERSION}")
+
 # Shared protocol codec and the portable STM32 protocol client.
 set(PROTOCOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../protocol)
 set(LINK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../link)
@@ -109,6 +126,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     LV_CONF_INCLUDE_SIMPLE
     APP_TEST_SCREEN=$<BOOL:${APP_TEST_SCREEN}>
     APP_UI_DEMO=$<BOOL:${APP_UI_DEMO}>
+    FW_VERSION="${FW_VERSION}"
 )
 
 # Remove wrong libob.a library dependency when using cpp files

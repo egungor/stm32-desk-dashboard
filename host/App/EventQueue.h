@@ -5,7 +5,7 @@
 // push; the consumer thread pops and calls the controller.
 //
 // - DevicesChanged / DefaultChanged / VolumeChanged / MenuChanged / MediaChanged /
-//   NotificationsChanged / Quit: a kind that is
+//   NotificationsChanged / SettingsChanged / Quit: a kind that is
 //   already waiting is not queued twice, so a burst of Core Audio
 //   notifications becomes one refresh.
 // - FrameReceived carries a protocol frame; HidConnected / HidDisconnected
@@ -37,7 +37,8 @@ enum class HostEvent {
     MenuChanged,      // a menu import wrote the month files
     MediaChanged,     // what plays on the PC changed (ADR-008)
     NotificationsChanged,  // the toasts in the notification centre changed (ADR-009)
-    PictureChanged,   // a picture was chosen in the tray menu (ADR-010)
+    SettingsChanged,  // setting files changed: read them again (#61, ADR-011)
+    SettingsRequest,  // the settings window changed a preference (text: the request JSON)
     HookRequest,      // a Claude Code permission request from the pipe (ticket, text)
     HookCancelled,    // its hook went away before an answer (ticket)
     Quit,
@@ -47,7 +48,7 @@ struct QueuedEvent {
     HostEvent event;
     Frame frame{};           // FrameReceived only
     std::uint64_t ticket = 0;  // HookRequest, HookCancelled
-    std::string text;        // HookRequest: the hook input
+    std::string text;        // HookRequest: the hook input; SettingsRequest: the request
 };
 
 class EventQueue {
@@ -69,6 +70,9 @@ public:
         }
         cv_.notify_one();
     }
+
+    // SettingsRequest: never merged.
+    void pushText(HostEvent event, std::string text) { pushHook(event, 0U, std::move(text)); }
 
     // HookRequest / HookCancelled: never merged.
     void pushHook(HostEvent event, std::uint64_t ticket, std::string text = {})
@@ -131,7 +135,7 @@ private:
         return event == HostEvent::DevicesChanged || event == HostEvent::DefaultChanged ||
                event == HostEvent::VolumeChanged || event == HostEvent::MenuChanged ||
                event == HostEvent::MediaChanged || event == HostEvent::NotificationsChanged ||
-               event == HostEvent::PictureChanged ||
+               event == HostEvent::SettingsChanged ||
                event == HostEvent::Quit;
     }
 

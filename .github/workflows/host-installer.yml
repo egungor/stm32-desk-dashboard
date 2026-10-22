@@ -46,7 +46,7 @@ jobs:
           echo "file=0.1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Configure (Release, static runtime)
-        run: cmake -S host -B build/host -DBUILD_TESTING=OFF "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+        run: cmake -S host -B build/host -DBUILD_TESTING=OFF "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" "-DDASHBOARD_VERSION=${{ steps.version.outputs.app }}"
 
       - name: Build
         run: cmake --build build/host --config Release

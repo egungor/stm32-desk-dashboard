@@ -15,13 +15,19 @@
 #include <windows.h>
 
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
 #include "EventQueue.h"
+#include "HidMatch.h"
 #include "IFrameSink.h"
 
 namespace stm32_audio::host::win {
+
+// The connected board's versions, read without opening it for reading or
+// writing (works while the tray program serves it); nullopt if no board.
+std::optional<BoardVersion> findBoardVersion();
 
 class WinHidLink : public IFrameSink {
 public:
@@ -45,10 +51,13 @@ public:
     // Device path and product string of the open interface (empty when
     // not connected), for logs.
     std::string description() const;
+    // The open board's versions from its USB configuration string
+    // (ADR-011); empty when not connected or unknown.
+    BoardVersion boardVersion() const;
 
 private:
     void run();
-    HANDLE findAndOpen(std::string& description);
+    HANDLE findAndOpen(std::string& description, BoardVersion& version);
     void readUntilGone(HANDLE device);
     void closeDevice();
 
@@ -62,6 +71,7 @@ private:
     mutable std::mutex mutex_;
     HANDLE device_ = INVALID_HANDLE_VALUE;
     std::string description_;
+    BoardVersion boardVersion_;
 };
 
 }  // namespace stm32_audio::host::win

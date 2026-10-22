@@ -185,6 +185,10 @@ Arguments are read as UTF-8 (`CommandLineToArgvW`), so aliases may
 contain Turkish letters. `list` prints each device's alias and favorite
 mark under its name.
 
+`dashboard-host version` prints the program's version and protocol and,
+if a board is connected, its firmware version and protocol (ADR-011),
+also while the tray program serves it.
+
 ## Weather (#18)
 
 The Dashboard's first card (slot 0) and its detail: now (condition,
@@ -300,10 +304,12 @@ away; see `installer/README.md`. CI builds it as the artifact
 
 The same service as `run` without a console window (Windows GUI
 subsystem). The service loop (`HostService`) runs on a worker thread; the
-main thread owns a hidden window, the tray icon and its menu:
+main thread owns a hidden window, the tray icon, its menu (right click)
+and the settings window (left click):
 
 - the connection state ("Kumanda bağlı" / "Kumanda bekleniyor"), also
   in the icon's tooltip;
+- "Ayarlar…": the settings window (below);
 - "Windows ile başlat": a check mark when
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has the value
   `STM32 Desk Dashboard` = `"<folder>\dashboard-tray.exe"` (current
@@ -323,6 +329,31 @@ record (Turkish or English). Logging off or shutting down Windows stops
 the service the same way. The icon comes back when Explorer restarts
 (`TaskbarCreated`).
 
+### Settings window (ADR-011, #61)
+
+A window with a WebView2 control showing `Platform/Windows/settings.html`
+(a resource of `dashboard-tray`; no network, no files): General
+(language, start with Windows, startup screen, screen timeout, upside
+down), Appearance (theme, accent, Audio tab layout, grid, startup tab),
+Audio (the outputs' names on the board, favourites and order; the
+volume limit), Dashboard (weather location with a search, the picture,
+menu images, the Claude API key, the food lists), Claude Code (copy the
+hook setting) and About (program and firmware versions, a warning when
+their protocols differ, the settings folder and the log).
+
+- The page sends JSON requests, the tray answers with the state
+  (`App/SettingsModel.h`). Preference requests go to the service loop
+  (`HostEvent::SettingsRequest`), which applies them, tells the board and
+  saves `preferences.txt`; its snapshot keeps the open window up to date,
+  also when a setting is changed on the board.
+- The weather, picture and food lists are files the tray writes, then
+  pushes `SettingsChanged`; the API key goes to `claude.txt`.
+- It needs the Microsoft Edge WebView2 Runtime (part of Windows 11);
+  without it the tray says where to get it. Its cache is in
+  `%LOCALAPPDATA%\stm32-desk-dashboard\WebView2`. CMake fetches the
+  WebView2 SDK (NuGet, checked by SHA-256) into the build folder; only
+  MSVC builds the window.
+
 One program serves the controller at a time: `run` and the tray program
 hold the named mutex `Local\stm32-desk-dashboard-host`; the second one
 says so and exits. The other console commands (`list`, `alias`, …) still
@@ -335,11 +366,15 @@ Aliases, the device order, favorites and the board's settings record
 a UTF-8 text file (format in `App/PreferenceFile.h`).
 
 - `run` loads the file at start (`Preferences: <path>`, `(new)` if it does
-  not exist yet), saves what the board changes at most once per second
-  and when it stops, and checks the file once per second: a change made
-  by `alias` (or by hand) is reloaded (`Preferences reloaded from …`) and
-  sent to the board. A change from the file wins over board changes not
-  yet saved.
+  not exist yet) and saves what the board or the settings window changes
+  at most once per second and when it stops. It does not check the file
+  by itself (#61): `alias`, `weather`, `picture` and `menu import` set the
+  named event `Local\stm32-desk-dashboard-settings` after writing, and
+  the service then reads `preferences.txt` (`Preferences reloaded from
+  …`, sent to the board), `weather.txt`, the menu files and
+  `picture.txt` again. A change from the file wins over board changes
+  not yet saved. After editing a file by hand, restart the tray program
+  (or run one of those commands).
 - The file is replaced atomically (`preferences.tmp`, then
   `MoveFileEx`). An unreadable file is kept as `preferences.bad` and the
   defaults are used.
@@ -352,7 +387,10 @@ making it the default, and logs `Volume limit: "<name>" <from>% -> <to>%`.
 Switches made in Windows are not limited, volumes are never raised and
 mute is not touched (ADR-004).
 
-`run` prints `Controller connected: <product> <device path>` and
+`run` prints `Controller connected: <product> <device path>`, then
+`Firmware: <version>, protocol <n>` from the board's USB configuration
+string (ADR-011; a `WARN` when the protocol differs from the program's),
+and
 `Controller disconnected.`, then one line per frame: `<-` received from the
 STM32, `->` sent to it (`[send failed]` if the write failed). Ctrl+C prints
 counters (sent, send failures, rejected, ignored, errors received,

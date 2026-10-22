@@ -23,7 +23,6 @@ public:
     using LogFn = std::function<void(const std::string& line)>;
 
     static constexpr std::uint8_t kSlot = 0;  // ADR-006: 0 weather
-    static constexpr std::uint64_t kFileIntervalMs = 60U * 1000U;
 
     WeatherService(DashController& dash, IPreferenceFile& file, IHttpClient& http, DashController::ClockFn clock,
                    LogFn log);
@@ -31,8 +30,12 @@ public:
     // 0 Turkish, 1 English (settings record).
     void setLanguage(std::uint8_t language);
 
-    // Call regularly (e.g. every 500 ms) with a monotonic clock.
+    // Call regularly (e.g. every 500 ms) with a monotonic clock. The
+    // location file is read at the first tick and on reload() only.
     void onTick(std::uint64_t nowMs);
+
+    // weather.txt changed (settings window or console, #61): read it now.
+    void reload();
 
     // The detail for OPEN_DETAIL on kSlot; nullopt: none (yet), or arg != 0.
     std::optional<std::string> detail(std::int8_t arg) const;
@@ -49,7 +52,7 @@ private:
     DashController::ClockFn clock_;
     LogFn log_;
     WeatherCard weather_;
-    std::optional<std::uint64_t> fileReadMs_;
+    bool fileRead_ = false;
     std::optional<std::string> fileText_;
     std::optional<std::string> shownDetail_;
     std::uint8_t language_ = 0;

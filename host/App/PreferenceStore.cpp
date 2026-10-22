@@ -32,28 +32,28 @@ bool PreferenceStore::save()
     return true;
 }
 
-bool PreferenceStore::poll(std::uint64_t nowMs)
+void PreferenceStore::onTick(std::uint64_t nowMs)
 {
-    bool reloaded = false;
-
-    if (!lastCheckMs_ || nowMs - *lastCheckMs_ >= kCheckIntervalMs) {
-        lastCheckMs_ = nowMs;
-        const std::optional<std::string> content = file_.read();
-        if (content && content != known_) {
-            Preferences fromFile;
-            if (parsePreferences(*content, fromFile)) {
-                prefs_ = std::move(fromFile);
-                dirty_ = false;  // the file wins
-                reloaded = true;
-            }
-            known_ = content;  // an unreadable edit is not retried every second
-        }
-    }
     if (dirty_ && (!lastSaveMs_ || nowMs - *lastSaveMs_ >= kSaveIntervalMs)) {
         lastSaveMs_ = nowMs;
         (void)save();
     }
-    return reloaded;
+}
+
+bool PreferenceStore::reload()
+{
+    const std::optional<std::string> content = file_.read();
+    if (!content || content == known_) {
+        return false;
+    }
+    known_ = content;
+    Preferences fromFile;
+    if (!parsePreferences(*content, fromFile)) {
+        return false;
+    }
+    prefs_ = std::move(fromFile);
+    dirty_ = false;  // the file wins
+    return true;
 }
 
 bool PreferenceStore::flush()

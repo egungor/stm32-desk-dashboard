@@ -128,10 +128,10 @@ const MenuDay* MenuService::dayAt(long day)
     return it == month->days.end() ? nullptr : &it->second;
 }
 
-void MenuService::onTick(std::uint64_t nowMs)
+void MenuService::onTick(std::uint64_t /*nowMs: the files are read on reload() only*/)
 {
-    if (!readMs_ || nowMs - *readMs_ >= kFileIntervalMs) {
-        readMs_ = nowMs;
+    if (!read_) {
+        read_ = true;
         // Read every file again; refresh an open detail if one changed.
         bool changed = false;
         for (const auto& [name, text] : texts_) {

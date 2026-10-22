@@ -38,6 +38,11 @@ enum class TrayText {
     ChoosePicture,     // menu: the picture of the Dashboard's picture card (ADR-010)
     PictureFiles,      // file dialog filter name
     EditFoodLists,     // menu: open menu-lists.txt (ADR-010)
+    Settings,          // menu: the settings window (ADR-011)
+    SettingsTitle,     // the settings window's title
+    WebViewMissing,    // message box when the WebView2 Runtime is missing
+    SettingsSaved,     // settings window notice after a file was saved
+    SettingsNotSaved,  // settings window notice when a file could not be saved
 };
 
 const char* trayText(TrayText id, std::uint8_t language);

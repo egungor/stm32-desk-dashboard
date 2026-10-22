@@ -114,6 +114,19 @@ const char* trayText(TrayText id, std::uint8_t language)
         return english ? "Pictures" : "Resimler";
     case TrayText::EditFoodLists:
         return english ? "Edit food lists\xE2\x80\xA6" : "Yemek listelerini d\xC3\xBCzenle\xE2\x80\xA6";
+    case TrayText::Settings:
+        return english ? "Settings\xE2\x80\xA6" : "Ayarlar\xE2\x80\xA6";
+    case TrayText::SettingsTitle:
+        return english ? "STM32 Desk Dashboard settings" : "STM32 Masa Paneli ayarlar\xC4\xB1";
+    case TrayText::WebViewMissing:
+        return english ? "The settings window needs the Microsoft Edge WebView2 Runtime. Install it from "
+                         "https://go.microsoft.com/fwlink/p/?LinkId=2124703 and try again."
+                       : "Ayarlar penceresi i\xC3\xA7in Microsoft Edge WebView2 Runtime gerekiyor. "
+                         "https://go.microsoft.com/fwlink/p/?LinkId=2124703 adresinden kurup tekrar deneyin.";
+    case TrayText::SettingsSaved:
+        return english ? "Saved." : "Kaydedildi.";
+    case TrayText::SettingsNotSaved:
+        return english ? "Could not save; see the log." : "Kaydedilemedi; g\xC3\xBCnl\xC3\xBC\xC4\x9F\xC3\xBC a\xC3\xA7\xC4\xB1n.";
     }
     return "";
 }

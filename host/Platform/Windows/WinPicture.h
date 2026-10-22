@@ -5,9 +5,10 @@
 // out (centerCrop: no distortion, the edges are cut) and scaled to
 // 480 x 272 (protocol v7), then turned into RGB565.
 //
-// Runs on the service loop's thread: reload() after the tray's event, and
-// poll() looks at picture.txt every kPollMs (so "dashboard-host picture"
-// works while the tray runs).
+// Runs on the service loop's thread: reload() at the start, and
+// reloadIfChanged() when the settings changed (HostEvent::SettingsChanged:
+// the settings window, "dashboard-host picture"; #61). picture.txt is not
+// checked otherwise.
 #pragma once
 
 #include <cstdint>
@@ -36,14 +37,12 @@ PictureLoad loadPicture(const std::wstring& path);
 class WinPicture : public IPictureSource {
 public:
     using LogFn = std::function<void(const std::string& line)>;
-    static constexpr std::uint64_t kPollMs = 5000;
-
     explicit WinPicture(LogFn log);
 
     // Read picture.txt and the file again.
     void reload();
-    // Read picture.txt every kPollMs; reload when the path changed.
-    void poll(std::uint64_t nowMs);
+    // Read picture.txt; reload the picture if its path changed.
+    void reloadIfChanged();
 
     PictureSnapshot snapshot() const override { return snapshot_; }
 
@@ -51,7 +50,6 @@ private:
     LogFn log_;
     PictureSnapshot snapshot_;
     std::optional<std::string> path_;
-    std::optional<std::uint64_t> polledMs_;
 };
 
 }  // namespace stm32_audio::host::win

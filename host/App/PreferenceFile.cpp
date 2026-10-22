@@ -110,6 +110,29 @@ std::optional<std::uint8_t> parseByte(const std::string& text)
 
 }  // namespace
 
+std::vector<std::pair<std::string, unsigned>> settingValues(const ProtoSettings& settings)
+{
+    std::vector<std::pair<std::string, unsigned>> values;
+    for (const SettingField& f : kSettingFields) {
+        values.emplace_back(f.name, settings.*f.field);
+    }
+    return values;
+}
+
+bool setSettingValue(ProtoSettings& settings, const std::string& name, unsigned value)
+{
+    if (value > 255U) {
+        return false;
+    }
+    for (const SettingField& f : kSettingFields) {
+        if (name == f.name) {
+            settings.*f.field = static_cast<std::uint8_t>(value);
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string serializePreferences(const Preferences& prefs)
 {
     std::ostringstream out;

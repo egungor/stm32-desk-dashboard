@@ -24,7 +24,7 @@
 #include "usbd_conf.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#include "protocol.h"  /* PROTO_VERSION_TEXT */
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -85,7 +85,12 @@
 #define USBD_PID_FS                    0x0002  /* 0x0001: stm32-audio-controller */
 #define USBD_MANUFACTURER_STRING       "stm32-desk-dashboard"
 #define USBD_PRODUCT_STRING_FS         "STM32 Desk Dashboard"
-#define USBD_CONFIGURATION_STRING_FS   "Desk Dashboard Config"
+/* The firmware version for the host's settings window (ADR-011):
+ * "Desk Dashboard fw <version> p<protocol version>". */
+#ifndef FW_VERSION
+#define FW_VERSION                     "dev"
+#endif
+#define USBD_CONFIGURATION_STRING_FS   "Desk Dashboard fw " FW_VERSION " p" PROTO_VERSION_TEXT
 #define USBD_INTERFACE_STRING_FS       "Desk Dashboard HID"
 /* USER CODE END PRIVATE_DEFINES */
 

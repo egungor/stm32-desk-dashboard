@@ -21,6 +21,7 @@
 #include "FrameRouter.h"
 #include "FrameText.h"
 #include "HidMatch.h"
+#include "SettingsModel.h"
 #include "HostController.h"
 #include "MediaCover.h"
 #include "MediaKeys.h"
@@ -1024,6 +1025,94 @@ void testPreferenceFileDamaged()
     CHECK(p.order() == std::vector<std::string>({"id1", "id2"}));
 }
 
+// The firmware version in the USB configuration string (ADR-011).
+void testBoardVersion()
+{
+    BoardVersion v = parseBoardVersion("Desk Dashboard fw 0.9.0-beta.5-19-g4ed690d p7");
+    CHECK(v.firmware == "0.9.0-beta.5-19-g4ed690d" && v.protocol == 7U);
+    v = parseBoardVersion("Desk Dashboard fw dev+1a2b3c4 p12");
+    CHECK(v.firmware == "dev+1a2b3c4" && v.protocol == 12U);
+    v = parseBoardVersion("Desk Dashboard fw 1.0.0");  // no protocol part
+    CHECK(v.firmware == "1.0.0" && v.protocol == 0U);
+    v = parseBoardVersion("Desk Dashboard Config");  // firmware before ADR-011
+    CHECK(v.firmware.empty() && v.protocol == 0U);
+    v = parseBoardVersion("");
+    CHECK(v.firmware.empty() && v.protocol == 0U);
+}
+
+// The settings window's requests and state (ADR-011, #61).
+void testSettingsModel()
+{
+    // Requests: well formed and in range, or nothing.
+    std::optional<SettingsRequest> r = parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":1})");
+    CHECK(r && r->kind == SettingsRequestKind::Setting && r->name == "theme" && r->value == 1U);
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":7})"));    // no such theme
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"colour","value":1})"));   // no such field
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":"1"})"));  // not a number
+    CHECK(!parseSettingsRequest(R"({"cmd":"setting","name":"screen_timeout","value":61})"));
+    CHECK(parseSettingsRequest(R"({"cmd":"setting","name":"screen_timeout","value":60})"));
+    CHECK(!parseSettingsRequest("not json"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"format c:"})"));
+    CHECK(!parseSettingsRequest(R"(["get"])"));
+    r = parseSettingsRequest(R"({"cmd":"alias","id":"e1","alias":"Hoparlör"})");
+    CHECK(r && r->kind == SettingsRequestKind::Alias && r->name == "e1" && r->text == "Hoparlör");
+    CHECK(!parseSettingsRequest(R"({"cmd":"favorite","id":"e1","value":2})"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"order","ids":["a","a"]})"));  // twice
+    CHECK(!parseSettingsRequest(R"({"cmd":"order","ids":[]})"));
+    r = parseSettingsRequest(R"({"cmd":"weatherSet","name":"Ankara","latitude":39.93,"longitude":32.86})");
+    CHECK(r && r->kind == SettingsRequestKind::WeatherSet && r->location.name == "Ankara");
+    CHECK(!parseSettingsRequest(R"({"cmd":"weatherSet","name":"x","latitude":95,"longitude":32})"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"claudeKey","key":"a\nmodel=x"})"));
+    CHECK(!parseSettingsRequest(R"({"cmd":"weatherSearch","query":""})"));
+    r = parseSettingsRequest(R"({"cmd":"startup","value":1})");
+    CHECK(r && r->kind == SettingsRequestKind::Startup && r->value == 1U && !isServiceRequest(r->kind));
+
+    // Applied to the preferences: only real changes count.
+    Preferences prefs;
+    prefs.setOrder({"a", "b", "c"});
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":1})"), prefs));
+    CHECK(prefs.settings().theme == 1U);
+    CHECK(!applySettingsRequest(*parseSettingsRequest(R"({"cmd":"setting","name":"theme","value":1})"), prefs));
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"alias","id":"b","alias":"DAC"})"), prefs));
+    CHECK(prefs.device("b") && prefs.device("b")->alias == "DAC");
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"favorite","id":"b","value":1})"), prefs));
+    CHECK(prefs.device("b")->favorite);
+    // Order: the shown devices first, a stored one not shown (c) after them.
+    CHECK(applySettingsRequest(*parseSettingsRequest(R"({"cmd":"order","ids":["b","a"]})"), prefs));
+    CHECK(prefs.order() == std::vector<std::string>({"b", "a", "c"}));
+    CHECK(!applySettingsRequest(*parseSettingsRequest(R"({"cmd":"order","ids":["b","a"]})"), prefs));
+    CHECK(!applySettingsRequest(*parseSettingsRequest(R"({"cmd":"startup","value":1})"), prefs));
+
+    // The state for the page.
+    SettingsState s;
+    s.hostVersion = "1.2.3";
+    s.service.connected = true;
+    s.service.board.firmware = "1.2.3";
+    s.service.board.protocol = PROTO_VERSION;
+    s.service.settings = prefs.settings();
+    s.service.devices.push_back(SettingsDevice{"b", "Hoparlör (DAC)", "DAC", true});
+    s.picture = "C:\\Fotoğraflar\\a.jpg";
+    const std::string json = settingsStateJson(s);
+    CHECK(json.find(R"("type":"state")") != std::string::npos);
+    CHECK(json.find(R"("theme":1)") != std::string::npos);
+    CHECK(json.find(R"x("name":"Hoparlör (DAC)")x") != std::string::npos);
+    CHECK(json.find(R"("weather":null)") != std::string::npos);
+    CHECK(json.find(R"("picture":"C:\\Fotoğraflar\\a.jpg")") != std::string::npos);
+    CHECK(noticeJson(false, "x") == R"({"ok":false,"text":"x","type":"notice"})");
+
+    // Snapshots compare by content.
+    ServiceSnapshot a = s.service;
+    CHECK(a == s.service);
+    a.devices[0].alias = "Other";
+    CHECK(a != s.service);
+
+    // claude.txt keeps its model when the key changes; "" removes the key.
+    CHECK(claudeFileWithKey(std::nullopt, "sk-1") == "api_key=sk-1\n");
+    CHECK(claudeFileWithKey(std::string("api_key=old\r\nmodel=m\n"), "sk-2") == "api_key=sk-2\nmodel=m\n");
+    CHECK(claudeFileWithKey(std::string("model=m\n"), "sk-3") == "api_key=sk-3\nmodel=m\n");
+    CHECK(claudeFileWithKey(std::string("api_key=old\nmodel=m\n"), "") == "model=m\n");
+}
+
 void testPreferenceStore()
 {
     FakeFile file;
@@ -1031,46 +1120,47 @@ void testPreferenceStore()
     PreferenceStore store(file, prefs);
 
     CHECK(store.load() == PreferenceStore::LoadResult::Missing);
-    CHECK(!store.poll(0));
-    CHECK(file.writes == 0);
+    store.onTick(0);
+    CHECK(file.writes == 0 && !store.reload());
 
     // Changes are written at most once per second.
     (void)prefs.setAlias("a", "A");
     store.markChanged();
-    CHECK(!store.poll(100));
+    store.onTick(100);
     CHECK(file.writes == 1);
     (void)prefs.setAlias("a", "B");
     store.markChanged();
-    CHECK(!store.poll(600));
+    store.onTick(600);
     CHECK(file.writes == 1 && store.dirty());
-    CHECK(!store.poll(1100));
+    store.onTick(1100);
     CHECK(file.writes == 2 && !store.dirty());
     CHECK(file.content->find("alias\tB") != std::string::npos);
 
-    // Another program replaced the file: reloaded at the next check, and
-    // the file wins over unsaved changes.
+    // Another program replaced the file and said so (SettingsChanged,
+    // #61): reload() takes it, and the file wins over unsaved changes.
+    // Nothing reads the file without that.
     Preferences other;
     (void)other.setAlias("a", "From CLI");
     file.content = serializePreferences(other);
     (void)prefs.setFavorite("a", true);
     store.markChanged();
-    CHECK(store.poll(2200));
+    CHECK(store.reload());
     CHECK(prefs.device("a")->alias == "From CLI" && !prefs.device("a")->favorite);
     CHECK(!store.dirty());
-    CHECK(!store.poll(3300));  // no change since
+    CHECK(!store.reload());  // no change since
 
     // Our own writes do not count as external changes.
     (void)prefs.setFavorite("a", true);
     store.markChanged();
-    CHECK(!store.poll(4400));
-    CHECK(!store.poll(5500));
+    store.onTick(4400);
+    CHECK(!store.reload());
     CHECK(prefs.device("a")->favorite);
 
     // A write failure keeps the change for the next try; flush reports it.
     file.failWrite = true;
     (void)prefs.setFavorite("a", false);
     store.markChanged();
-    (void)store.poll(6600);
+    store.onTick(6600);
     CHECK(store.dirty() && store.writeFailures() == 1);
     CHECK(!store.flush());
     file.failWrite = false;
@@ -1086,9 +1176,10 @@ void testPreferenceStore()
     CHECK(badStore.load() == PreferenceStore::LoadResult::Unreadable);
     CHECK(bad.kept == std::string("garbage"));
     CHECK(fresh.device("z") == nullptr);
-    // ... and is not retried every second.
-    CHECK(!badStore.poll(0));
-    CHECK(!badStore.poll(2000));
+    // ... and a reload does not take it either.
+    CHECK(!badStore.reload());
+    bad.content = "still garbage";
+    CHECK(!badStore.reload() && fresh.device("z") == nullptr);
 }
 
 void testVolumeLimit()
@@ -1434,7 +1525,7 @@ void testTrayText()
     CHECK(std::strcmp(trayText(TrayText::Exit, 1), "Exit") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 0), "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 7), trayText(TrayText::Exit, 0)) == 0);  // unknown: Turkish
-    for (int id = 0; id <= static_cast<int>(TrayText::EditFoodLists); ++id) {
+    for (int id = 0; id <= static_cast<int>(TrayText::SettingsNotSaved); ++id) {
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 0)) > 0);
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 1)) > 0);
     }
@@ -2066,12 +2157,12 @@ void testWeatherService()
     CHECK(r.dash.card(0).find("Konum ayarlanmadı") != std::string::npos && http.calls == 0);
     CHECK(!weather.detail(0).has_value());
 
-    // The file appears; it is read again after a minute.
+    // The file appears; it is read when the settings say so (#61).
     file.text = "name=İstanbul\nlatitude=41.0138\nlongitude=28.9497\n";
     ms += 1000;
     weather.onTick(ms);
-    CHECK(r.dash.card(0).find("Konum") != std::string::npos);
-    ms += WeatherService::kFileIntervalMs;
+    CHECK(r.dash.card(0).find("Konum") != std::string::npos);  // not read again by itself
+    weather.reload();
     auto waitForCard = [&](const char* text) {
         for (int i = 0; i < 400 && r.dash.card(0).find(text) == std::string::npos; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -2107,7 +2198,7 @@ void testWeatherService()
 
     // A broken file: warning, back to the hint.
     file.text = "latitude=x";
-    ms += WeatherService::kFileIntervalMs;
+    weather.reload();
     weather.onTick(ms);
     CHECK(r.dash.card(0).find("No location set") != std::string::npos);
     CHECK(logs.back() == "WARN: weather.txt has no valid latitude and longitude.");
@@ -2419,7 +2510,8 @@ void testMenuService()
                                                                     std::string("Kağıt kebabı").size(), "Hünkar beğendi");
     menu.onTick(ms += 500);
     CHECK(r.sink.sent.empty());  // not yet
-    menu.onTick(ms += MenuService::kFileIntervalMs);
+    menu.reload();
+    menu.onTick(ms += 500);
     CHECK(!logs.empty() && logs.back() == "Menu files changed.");
     const std::string detailSent = popRecord(r.sink, PROTO_CMD_DETAIL_PART);
     CHECK(detailSent.find("Hünkar beğendi") != std::string::npos);
@@ -3447,7 +3539,8 @@ void testMenuColoursAndWarning()
     menu.onTick(ms);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "D9A520" + sep + "\n", 0) == 0U);
     lists.text = "[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n";
-    menu.onTick(ms += MenuService::kFileIntervalMs);  // read again after a minute
+    menu.reload();  // the settings window saved the lists (#61)
+    menu.onTick(ms += 500);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "E0702F" + sep + "\n", 0) == 0U);
     const std::string d = menu.detail(0).value_or("");
     CHECK(d.find(sep + "Yan yemek" + sep + "Kalem börek \xC2\xB7 istemiyorum\n") != std::string::npos);
@@ -3746,6 +3839,8 @@ int main()
     testPreferencesReplacedFromOutside();
     testPreferenceFileRoundTrip();
     testPreferenceFileDamaged();
+    testBoardVersion();
+    testSettingsModel();
     testPreferenceStore();
     testVolumeLimit();
     testVolumeLimitOnSelect();

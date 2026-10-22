@@ -1,11 +1,12 @@
 // Keeps Preferences and the preference file in step (ADR-004, #59):
 //
 // - load() at start;
-// - markChanged() when the STM32 changed something; poll() writes the
-//   file at most once per kSaveIntervalMs (changes come in bursts);
-// - poll() also notices, once per kCheckIntervalMs, that another program
-//   (e.g. "dashboard-host alias") replaced the file, and reloads it. A
-//   change from the file wins over unsaved changes from the STM32.
+// - markChanged() when the STM32 or the settings window changed
+//   something; onTick() writes the file at most once per kSaveIntervalMs
+//   (changes come in bursts);
+// - reload() when another program (e.g. "dashboard-host alias") says it
+//   replaced the file (HostEvent::SettingsChanged, #61): the file is not
+//   checked otherwise. A change from the file wins over unsaved changes.
 //
 // Time is passed in (milliseconds) so tests can drive it. Platform
 // independent; not thread-safe.
@@ -23,7 +24,6 @@ namespace stm32_audio::host {
 class PreferenceStore {
 public:
     static constexpr std::uint64_t kSaveIntervalMs = 1000;
-    static constexpr std::uint64_t kCheckIntervalMs = 1000;
 
     enum class LoadResult {
         Loaded,
@@ -37,9 +37,12 @@ public:
 
     void markChanged() { dirty_ = true; }
 
-    // Save or reload as due. Returns true if the preferences were reloaded
-    // from the file (the caller tells the STM32).
-    bool poll(std::uint64_t nowMs);
+    // Save if changes wait and kSaveIntervalMs passed since the last save.
+    void onTick(std::uint64_t nowMs);
+
+    // Read the file again. Returns true if it changed and was taken (the
+    // caller tells the STM32); an unreadable file is ignored.
+    bool reload();
 
     // Save now if there are unsaved changes. Returns false if writing failed.
     bool flush();
@@ -55,7 +58,6 @@ private:
     std::optional<std::string> known_;  // file content last read or written
     bool dirty_ = false;
     std::optional<std::uint64_t> lastSaveMs_;
-    std::optional<std::uint64_t> lastCheckMs_;
     unsigned writeFailures_ = 0;
 };
 

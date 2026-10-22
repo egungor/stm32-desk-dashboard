@@ -5,6 +5,7 @@
 #include "protocol.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int g_failures;
@@ -79,6 +80,7 @@ static void test_header_and_golden_frame(void)
     {
         CHECK(frame[i] == 0U);
     }
+    CHECK(strtoul(PROTO_VERSION_TEXT, NULL, 10) == PROTO_VERSION); /* the text follows the number */
     CHECK(frame[62] == 0x8BU);
     CHECK(frame[63] == 0x2BU);
 }

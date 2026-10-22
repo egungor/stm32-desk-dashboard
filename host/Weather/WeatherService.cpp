@@ -37,10 +37,17 @@ void WeatherService::readLocation()
     weather_.setLocation(std::move(location));
 }
 
+void WeatherService::reload()
+{
+    fileRead_ = true;
+    readLocation();
+    publish();
+}
+
 void WeatherService::onTick(std::uint64_t nowMs)
 {
-    if (!fileReadMs_ || nowMs - *fileReadMs_ >= kFileIntervalMs) {
-        fileReadMs_ = nowMs;
+    if (!fileRead_) {
+        fileRead_ = true;
         readLocation();
     }
     if (std::optional<BackgroundFetch::Result> result = fetch_.poll()) {

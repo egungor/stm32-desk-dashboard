@@ -27,6 +27,7 @@
 #include "WinMenuImport.h"
 #include "WinNotificationListener.h"
 #include "WinPicture.h"
+#include "WinSettingsSignal.h"
 
 namespace stm32_audio::host::win {
 
@@ -166,6 +167,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     NotificationService notifications(dash, notificationListener, focus, log);
     // The picture card (ADR-010): the file chosen in the tray menu.
     WinPicture picture(log);
+    SettingsWatcher settingsWatcher(events);
     PictureService pictureService(sink, picture);
     dash.setCardsSentHandler([&pictureService] { pictureService.onRequest(); });
     // The media controls (strip and Music tab) and the prompts' buttons: the
@@ -210,6 +212,30 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         }
     };
 
+    // What the settings window shows (ADR-011): published when it changes.
+    bool connected = false;
+    ServiceSnapshot published;
+    bool publishedOnce = false;
+    auto publishSnapshot = [&] {
+        if (!hooks.snapshot) {
+            return;
+        }
+        ServiceSnapshot s;
+        s.connected = connected;
+        if (connected) {
+            s.board = link.boardVersion();
+        }
+        s.settings = controller.preferences().settings();
+        for (const DeviceRegistry::Device& d : controller.registry().devices()) {
+            s.devices.push_back(SettingsDevice{d.endpoint.id, d.endpoint.name, d.alias, d.favorite});
+        }
+        if (!publishedOnce || s != published) {
+            published = s;
+            publishedOnce = true;
+            hooks.snapshot(published);
+        }
+    };
+
     controller.onPreferencesChanged();  // the stored order and aliases
     controller.setPreferencesChangedHandler([&store] { store.markChanged(); });
     controller.setVolumeLimitedHandler([&log](const VolumeLimited& v) { logVolumeLimited(v, log); });
@@ -232,6 +258,10 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     if (!mediaSession.start()) {
         log("WARN: cannot start the media session thread; the media strip uses media keys.");
     }
+    picture.reload();
+    if (!settingsWatcher.start()) {
+        log("WARN: cannot watch for settings changes; restart the program after changing them.");
+    }
     if (!notificationListener.start()) {
         log("WARN: cannot start the notification thread; the notifications card stays empty.");
     }
@@ -242,9 +272,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         const std::optional<QueuedEvent> item =
             events.pop(media.sendingArt() || pictureService.sending() ? std::chrono::milliseconds(0)
                                                                        : std::chrono::milliseconds(500));
-        if (saving && store.poll(GetTickCount64())) {
-            log("Preferences reloaded from " + file.location());
-            controller.onPreferencesChanged();
+        if (saving) {
+            store.onTick(GetTickCount64());  // save what the board changed
         }
         reportLanguage();
         weather.setLanguage(controller.preferences().settings().language);
@@ -263,10 +292,10 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             indicators.items[1] = approvals.indicator();
             dash.setIndicators(indicators);
         }
-        picture.poll(GetTickCount64());
         pictureService.onTick();
         dash.onTick(GetTickCount64());
         media.onTick(GetTickCount64());
+        publishSnapshot();
         if (!item) {
             continue;
         }
@@ -276,7 +305,18 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             router.onFrame(item->frame);
             break;
         case HostEvent::HidConnected:
+            connected = true;
             log("Controller connected: " + link.description());
+            {
+                const BoardVersion v = link.boardVersion();
+                log("Firmware: " + (v.firmware.empty() ? std::string("unknown (older than ADR-011)") : v.firmware) +
+                    (v.protocol != 0U ? ", protocol " + std::to_string(v.protocol) : std::string()));
+                if (v.protocol != 0U && v.protocol != PROTO_VERSION) {
+                    log("WARN: the board speaks protocol " + std::to_string(v.protocol) + ", this program " +
+                        std::to_string(PROTO_VERSION) + ": update the " +
+                        (v.protocol < PROTO_VERSION ? "firmware." : "program."));
+                }
+            }
             controller.onConnected();
             dash.onConnected();
             media.onConnected(GetTickCount64());
@@ -285,6 +325,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             }
             break;
         case HostEvent::HidDisconnected:
+            connected = false;
             log("Controller disconnected.");
             controller.onDisconnected();
             approvals.onDisconnected();  // nobody can answer: back to the terminal
@@ -305,9 +346,31 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::MediaChanged:
         case HostEvent::NotificationsChanged:
             break;  // the onTicks above took the new snapshot
-        case HostEvent::PictureChanged:
-            picture.reload();
+        case HostEvent::SettingsChanged:
+            // The settings window or a console tool wrote setting files
+            // (#61); nothing reads them otherwise.
+            log("Settings changed; reading the setting files again.");
+            if (saving && store.reload()) {
+                log("Preferences reloaded from " + file.location());
+                controller.onPreferencesChanged();
+            }
+            weather.reload();
+            menu.reload();
+            picture.reloadIfChanged();
             break;
+        case HostEvent::SettingsRequest: {
+            // The settings window (ADR-011): a preference, applied as if the
+            // board had changed it, then sent to the board and saved.
+            const std::optional<SettingsRequest> request = parseSettingsRequest(item->text);
+            if (request && isServiceRequest(request->kind) &&
+                applySettingsRequest(*request, controller.preferences())) {
+                controller.onPreferencesChanged();
+                store.markChanged();
+                reportLanguage();
+                publishSnapshot();
+            }
+            break;
+        }
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
             menu.reload();
@@ -315,6 +378,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::Quit: {
             approvals.cancelAll();
             hookPipe.stop();
+            settingsWatcher.stop();
             mediaSession.stop();
             notificationListener.stop();
             link.stop();

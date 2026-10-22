@@ -6,6 +6,8 @@
 // hidden window, the tray icon and its menu:
 //
 //   <state>                     "Kumanda bağlı" / "Kumanda bekleniyor" (greyed)
+//   Ayarlar…                    the settings window (ADR-011; also a left click
+//                               on the icon): every setting, the versions
 //   Windows ile başlat          check mark; HKCU\...\Run (WinStartup)
 //   Menü görüntülerini yükle…   images -> Claude API -> menu-YYYY-MM.json (#20);
 //                               a balloon shows the summary
@@ -17,6 +19,7 @@
 //   Günlüğü aç                  host.log
 //   Çıkış
 //
+// A right click shows the menu, a left click opens the settings window.
 // The text follows the language of the board's settings record. Only one
 // program serves the controller at a time (SingleInstance).
 
@@ -26,6 +29,7 @@
 #include <share.h>
 
 #include <atomic>
+#include <memory>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -46,6 +50,13 @@
 #include "MenuLists.h"
 #include "WinPicture.h"
 #include "WinStrings.h"
+#include "MenuImport.h"
+#include "SettingsModel.h"
+#include "WeatherLocation.h"
+#include "WinHttpClient.h"
+#if DASHBOARD_SETTINGS_WINDOW
+#include "WinSettingsWindow.h"
+#endif
 #include "tray_resource.h"
 
 using namespace stm32_audio::host;
@@ -56,11 +67,14 @@ constexpr UINT kTrayMessage = WM_APP + 1;   // icon events
 constexpr UINT kStateMessage = WM_APP + 2;  // worker: connection or language changed
 constexpr UINT kWorkerDone = WM_APP + 3;    // worker: service loop returned
 constexpr UINT kMenuImportDone = WM_APP + 4;  // importer: menu import finished
+constexpr UINT kSnapshotMessage = WM_APP + 5;  // worker: what the settings window shows changed
+constexpr UINT kPlacesMessage = WM_APP + 6;    // weather search finished
 constexpr UINT kIconId = 1;
 constexpr ULONGLONG kMaxLogBytes = 1024ULL * 1024ULL;
 
 enum MenuId : UINT {
     kMenuState = 1,
+    kMenuSettings,
     kMenuStartup,
     kMenuLoadMenu,
     kMenuPicture,
@@ -86,6 +100,15 @@ struct App {
     std::atomic<bool> importing{false};
     std::mutex importMutex;
     MenuImportResult importResult;  // under importMutex
+    std::mutex snapshotMutex;
+    ServiceSnapshot snapshot;       // under snapshotMutex; from the worker
+    std::thread search;             // weather search for the settings window
+    std::atomic<bool> searching{false};
+    std::mutex placesMutex;
+    std::string places;             // under placesMutex: placesJson of the last search
+#if DASHBOARD_SETTINGS_WINDOW
+    std::unique_ptr<win::WinSettingsWindow> settings;
+#endif
 };
 
 App g_app;
@@ -94,6 +117,10 @@ std::wstring text(TrayText id)
 {
     return win::toWide(trayText(id, g_app.language.load()));
 }
+
+// The settings window, if open (below).
+void postState();
+void postToPage(const std::string& json);
 
 // --------------------------------------------------------------------- log
 
@@ -151,6 +178,13 @@ void workerMain()
             hooks.language = [](std::uint8_t language) {
                 g_app.language = language;
                 PostMessageW(g_app.window, kStateMessage, 0, 0);
+            };
+            hooks.snapshot = [](const ServiceSnapshot& snapshot) {
+                {
+                    std::lock_guard<std::mutex> lock(g_app.snapshotMutex);
+                    g_app.snapshot = snapshot;
+                }
+                PostMessageW(g_app.window, kSnapshotMessage, 0, 0);
             };
             result = win::runHostService(audio, g_app.events, hooks);
         }
@@ -288,6 +322,8 @@ void onMenuImportDone()
     }
     showBalloon(text(result.ok ? TrayText::MenuImported : TrayText::MenuImportFailed), win::toWide(result.message),
                 !result.ok);
+    postToPage(noticeJson(result.ok, result.message));
+    postState();
 }
 
 // The picture card (ADR-010): one image file; its path goes to picture.txt
@@ -319,7 +355,8 @@ void choosePicture()
         logLine("WARN: could not save picture.txt.");
         return;
     }
-    g_app.events.push(HostEvent::PictureChanged);
+    g_app.events.push(HostEvent::SettingsChanged);
+    postState();
 }
 
 // menu-lists.txt (ADR-010) in the default editor; created with the
@@ -370,6 +407,191 @@ void copyHookSettings(const std::wstring& trayExe)
     }
 }
 
+// ------------------------------------------------------- settings window
+
+#if DASHBOARD_SETTINGS_WINDOW
+// The page (settings.html, an RCDATA resource) as UTF-16.
+std::wstring settingsHtml()
+{
+    HRSRC found = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_SETTINGS_HTML), RT_RCDATA);
+    HGLOBAL loaded = found != nullptr ? LoadResource(nullptr, found) : nullptr;
+    const void* data = loaded != nullptr ? LockResource(loaded) : nullptr;
+    if (data == nullptr) {
+        return L"<p>settings.html is missing</p>";
+    }
+    return win::toWide(std::string(static_cast<const char*>(data), SizeofResource(nullptr, found)));
+}
+
+SettingsState buildState()
+{
+    SettingsState s;
+    s.hostVersion = DASHBOARD_VERSION;
+    {
+        std::lock_guard<std::mutex> lock(g_app.snapshotMutex);
+        s.service = g_app.snapshot;
+    }
+    win::WinPreferenceFile weather(L"weather");
+    if (const std::optional<std::string> text = weather.read()) {
+        s.weather = parseLocationFile(*text);
+    }
+    s.picture = win::storedPicturePath().value_or("");
+    win::WinPreferenceFile lists(L"menu-lists");
+    s.foodLists = lists.read().value_or(kMenuListsTemplate);
+    win::WinPreferenceFile claude(L"claude");
+    const ClaudeConfig config = parseClaudeConfig(claude.read(), std::string());
+    s.claudeKeySet = !config.apiKey.empty();
+    s.claudeModel = config.model;
+    s.startup = win::startupEnabled(win::trayProgramPath());
+    s.importing = g_app.importing;
+    s.folder = win::toUtf8(g_app.dir.c_str());
+    return s;
+}
+#endif
+
+void postToPage(const std::string& json)
+{
+#if DASHBOARD_SETTINGS_WINDOW
+    if (g_app.settings && g_app.settings->isOpen()) {
+        g_app.settings->post(json);
+    }
+#else
+    (void)json;
+#endif
+}
+
+void postState()
+{
+#if DASHBOARD_SETTINGS_WINDOW
+    if (g_app.settings && g_app.settings->isOpen()) {
+        g_app.settings->post(settingsStateJson(buildState()));
+    }
+#endif
+}
+
+#if DASHBOARD_SETTINGS_WINDOW
+// A setting file was written (or not): the service reads it again (#61).
+void settingsFileSaved(bool ok, const char* name)
+{
+    if (ok) {
+        g_app.events.push(HostEvent::SettingsChanged);
+        postToPage(noticeJson(true, win::toUtf8(text(TrayText::SettingsSaved).c_str())));
+    } else {
+        logLine(std::string("WARN: settings window: could not save ") + name + ".");
+        postToPage(noticeJson(false, win::toUtf8(text(TrayText::SettingsNotSaved).c_str())));
+    }
+    postState();
+}
+
+void searchWeather(const std::string& query)
+{
+    if (g_app.searching.exchange(true)) {
+        return;  // one at a time
+    }
+    if (g_app.search.joinable()) {
+        g_app.search.join();
+    }
+    const std::uint8_t language = g_app.language.load();
+    g_app.search = std::thread([query, language] {
+        win::WinHttpClient http;
+        const std::optional<std::string> answer = http.get(geocodingUrl(query, language));
+        const std::vector<Place> places = answer ? parseGeocoding(*answer) : std::vector<Place>();
+        {
+            std::lock_guard<std::mutex> lock(g_app.placesMutex);
+            g_app.places = placesJson(places);
+        }
+        g_app.searching = false;
+        PostMessageW(g_app.window, kPlacesMessage, 0, 0);
+    });
+}
+
+// A request from the page (SettingsModel.h).
+void onSettingsMessage(const std::string& json)
+{
+    const std::optional<SettingsRequest> request = parseSettingsRequest(json);
+    if (!request) {
+        logLine("WARN: settings window: a request was not understood.");
+        return;
+    }
+    const std::wstring exe = win::trayProgramPath();
+    switch (request->kind) {
+    case SettingsRequestKind::Get:
+        postState();
+        break;
+    case SettingsRequestKind::Setting:
+    case SettingsRequestKind::Alias:
+    case SettingsRequestKind::Favorite:
+    case SettingsRequestKind::Order:
+        // The service owns the preferences; its snapshot brings the result.
+        g_app.events.pushText(HostEvent::SettingsRequest, json);
+        break;
+    case SettingsRequestKind::WeatherSearch:
+        searchWeather(request->text);
+        break;
+    case SettingsRequestKind::WeatherSet: {
+        win::WinPreferenceFile file(L"weather");
+        settingsFileSaved(file.write(formatLocationFile(request->location)), "weather.txt");
+        break;
+    }
+    case SettingsRequestKind::PictureChoose:
+        choosePicture();
+        postState();
+        break;
+    case SettingsRequestKind::PictureClear:
+        settingsFileSaved(win::storePicturePath(std::string()), "picture.txt");
+        break;
+    case SettingsRequestKind::FoodLists: {
+        win::WinPreferenceFile file(L"menu-lists");
+        settingsFileSaved(file.write(request->text), "menu-lists.txt");
+        break;
+    }
+    case SettingsRequestKind::ClaudeKey: {
+        // Read at the next menu import; the service does not need it.
+        win::WinPreferenceFile file(L"claude");
+        const bool ok = file.write(claudeFileWithKey(file.read(), request->text));
+        logLine(ok ? "Settings window: Claude API key saved." : "WARN: settings window: could not save claude.txt.");
+        postToPage(noticeJson(ok, win::toUtf8(text(ok ? TrayText::SettingsSaved : TrayText::SettingsNotSaved).c_str())));
+        postState();
+        break;
+    }
+    case SettingsRequestKind::MenuImport:
+        loadMenuImages();
+        postState();
+        break;
+    case SettingsRequestKind::Startup: {
+        const bool enable = request->value != 0U;
+        if (win::setStartup(enable, exe)) {
+            logLine(std::string("Start with Windows: ") + (enable ? "on" : "off"));
+        } else {
+            postToPage(noticeJson(false, win::toUtf8(text(TrayText::StartupFailed).c_str())));
+        }
+        postState();
+        break;
+    }
+    case SettingsRequestKind::CopyHook:
+        copyHookSettings(exe);
+        break;
+    case SettingsRequestKind::OpenFolder:
+        (void)ShellExecuteW(nullptr, L"open", g_app.dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    case SettingsRequestKind::OpenLog:
+        (void)ShellExecuteW(nullptr, L"open", g_app.logPath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    }
+}
+
+void openSettings()
+{
+    if (!g_app.settings) {
+        g_app.settings = std::make_unique<win::WinSettingsWindow>(GetModuleHandleW(nullptr), onSettingsMessage);
+    }
+    if (!g_app.settings->show(text(TrayText::SettingsTitle), settingsHtml(), g_app.icon.hIcon)) {
+        logLine("WARN: settings window: the WebView2 Runtime is missing or the window failed.");
+        MessageBoxW(g_app.window, text(TrayText::WebViewMissing).c_str(), text(TrayText::Title).c_str(),
+                    MB_OK | MB_ICONWARNING);
+    }
+}
+#endif
+
 void showMenu(POINT at)
 {
     const std::wstring exe = win::trayProgramPath();
@@ -380,6 +602,10 @@ void showMenu(POINT at)
     AppendMenuW(menu, MF_STRING | MF_GRAYED, kMenuState,
                 text(g_app.connected ? TrayText::Connected : TrayText::Waiting).c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+#if DASHBOARD_SETTINGS_WINDOW
+    AppendMenuW(menu, MF_STRING, kMenuSettings, text(TrayText::Settings).c_str());
+    SetMenuDefaultItem(menu, kMenuSettings, FALSE);
+#endif
     AppendMenuW(menu, MF_STRING | (win::startupEnabled(exe) ? MF_CHECKED : MF_UNCHECKED), kMenuStartup,
                 text(TrayText::StartWithWindows).c_str());
     AppendMenuW(menu, MF_STRING | (g_app.importing ? MF_GRAYED : 0U), kMenuLoadMenu, text(TrayText::LoadMenu).c_str());
@@ -401,6 +627,9 @@ void showMenu(POINT at)
     DestroyMenu(menu);
 
     switch (cmd) {
+    case kMenuSettings:
+        openSettings();
+        break;
     case kMenuStartup: {
         const bool enable = !win::startupEnabled(exe);
         if (win::setStartup(enable, exe)) {
@@ -409,6 +638,7 @@ void showMenu(POINT at)
             MessageBoxW(g_app.window, text(TrayText::StartupFailed).c_str(), text(TrayText::Title).c_str(),
                         MB_OK | MB_ICONWARNING);
         }
+        postState();
         break;
     }
     case kMenuLoadMenu:
@@ -442,16 +672,42 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     if (msg == kTrayMessage) {
         // NOTIFYICON_VERSION_4: the event in LOWORD(lParam), the point in wParam.
         const UINT event = LOWORD(lparam);
-        if (event == WM_CONTEXTMENU || event == NIN_SELECT || event == NIN_KEYSELECT) {
-            POINT at{ static_cast<short>(LOWORD(wparam)), static_cast<short>(HIWORD(wparam)) };
+        POINT at{ static_cast<short>(LOWORD(wparam)), static_cast<short>(HIWORD(wparam)) };
+#if DASHBOARD_SETTINGS_WINDOW
+        if (event == NIN_SELECT) {
+            openSettings();  // a left click
+        } else if (event == WM_CONTEXTMENU || event == NIN_KEYSELECT) {
             showMenu(at);
         }
+#else
+        if (event == WM_CONTEXTMENU || event == NIN_SELECT || event == NIN_KEYSELECT) {
+            showMenu(at);
+        }
+#endif
         return 0;
     }
     if (msg == kStateMessage) {
         setTooltip();
         g_app.icon.uFlags = NIF_TIP | NIF_SHOWTIP;
         (void)Shell_NotifyIconW(NIM_MODIFY, &g_app.icon);
+#if DASHBOARD_SETTINGS_WINDOW
+        if (g_app.settings) {
+            g_app.settings->setTitle(text(TrayText::SettingsTitle));
+        }
+#endif
+        return 0;
+    }
+    if (msg == kSnapshotMessage) {
+        postState();
+        return 0;
+    }
+    if (msg == kPlacesMessage) {
+        std::string places;
+        {
+            std::lock_guard<std::mutex> lock(g_app.placesMutex);
+            places = g_app.places;
+        }
+        postToPage(places);
         return 0;
     }
     if (msg == kMenuImportDone) {
@@ -493,7 +749,11 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
-    // The file dialog wants a single-threaded apartment on this thread.
+#if DASHBOARD_SETTINGS_WINDOW
+    // Sharp text in the settings window on scaled screens.
+    (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+#endif
+    // The file dialog (and WebView2) want a single-threaded apartment on this thread.
     const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
     win::SingleInstance single;
@@ -533,7 +793,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         DispatchMessageW(&msg);
     }
 
+#if DASHBOARD_SETTINGS_WINDOW
+    g_app.settings.reset();
+#endif
     stopWorker();
+    if (g_app.search.joinable()) {
+        g_app.search.join();  // ends by the HTTP timeout
+    }
     if (g_app.importer.joinable()) {
         g_app.importer.join();  // an import still waiting for the API ends by its timeout
     }

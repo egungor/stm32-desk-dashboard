@@ -82,12 +82,14 @@
 #include "WeatherCard.h"
 #include "WeatherLocation.h"
 #include "WinAudioSystem.h"
+#include "WinHidLink.h"
 #include "WinHttpClient.h"
 #include "WinHookPipe.h"
 #include "WinMediaSession.h"
 #include "WinNotificationListener.h"
 #include "WinNotificationProbe.h"
 #include "WinPicture.h"
+#include "WinSettingsSignal.h"
 #include "WinMenuImport.h"
 #include "WinPreferenceFile.h"
 #include "WinStartup.h"
@@ -261,6 +263,7 @@ int cmdAlias(win::WinAudioSystem& audio, const std::vector<std::string>& args)
         std::printf("FAIL: could not write %s\n", file.location().c_str());
         return 1;
     }
+    (void)win::notifySettingsChanged();  // a running tray reads the file again (#61)
     const DevicePreferences* p = prefs.device(e.id);
     if (p == nullptr || p->alias.empty()) {
         std::printf("OK: \"%s\" has no alias.\n", e.name.c_str());
@@ -349,6 +352,7 @@ int saveWeatherLocation(const WeatherLocation& location)
         std::printf("FAIL: could not write %s\n", file.location().c_str());
         return 1;
     }
+    (void)win::notifySettingsChanged();
     std::printf("OK: weather location \"%s\" (%.4f, %.4f) saved in %s\n", location.name.c_str(),
                 location.latitude, location.longitude, file.location().c_str());
     return 0;
@@ -583,6 +587,9 @@ int cmdMenu(const std::vector<std::string>& args)
                     static_cast<unsigned long>(paths.size()));
         std::fflush(stdout);
         const MenuImportResult result = win::importMenuFiles(paths, 0);
+        if (result.ok) {
+            (void)win::notifySettingsChanged();
+        }
         std::printf("%s%s\n", result.ok ? "OK: " : "FAIL: ", result.message.c_str());
         return result.ok ? 0 : 1;
     }
@@ -680,6 +687,7 @@ int cmdPicture(const std::vector<std::string>& args)
             std::printf("FAIL: cannot write picture.txt.\n");
             return 1;
         }
+        (void)win::notifySettingsChanged();
     } else if (args.size() != 2) {
         return usage();
     }
@@ -778,6 +786,24 @@ int cmdStartup(const std::string& arg)
     return 0;
 }
 
+// The program's version and the connected board's (ADR-011).
+int cmdVersion()
+{
+    std::printf("dashboard-host %s, protocol %u\n", DASHBOARD_VERSION, static_cast<unsigned>(PROTO_VERSION));
+    const std::optional<BoardVersion> board = win::findBoardVersion();
+    if (!board) {
+        std::printf("No board connected.\n");
+        return 0;
+    }
+    if (board->firmware.empty()) {
+        std::printf("Firmware: unknown (older than ADR-011)\n");
+        return 0;
+    }
+    std::printf("Firmware %s, protocol %u%s\n", board->firmware.c_str(), board->protocol,
+                board->protocol != 0U && board->protocol != PROTO_VERSION ? " (does not match this program)" : "");
+    return 0;
+}
+
 int usage()
 {
     std::printf(
@@ -786,7 +812,7 @@ int usage()
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
         "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
         "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n"
-        "                        notify | notify focus | picture [<file> | none]\n");
+        "                        notify | notify focus | picture [<file> | none] | version\n");
     return 2;
 }
 
@@ -844,6 +870,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "picture") {
         return cmdPicture(args);
+    }
+    if (cmd == "version" && args.size() == 2) {
+        return cmdVersion();
     }
 
     EventQueue events;

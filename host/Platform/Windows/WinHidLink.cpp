@@ -52,7 +52,66 @@ bool queryInfo(const wchar_t* path, HidInfo& info, std::string& product)
     return ok;
 }
 
+// Calls @p visit with the device path of every present HID interface
+// until it returns true.
+template <typename Visit>
+void forEachHidPath(Visit visit)
+{
+    GUID hidGuid;
+    HidD_GetHidGuid(&hidGuid);
+    HDEVINFO set = SetupDiGetClassDevsW(&hidGuid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (set == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    SP_DEVICE_INTERFACE_DATA iface{};
+    iface.cbSize = sizeof(iface);
+    for (DWORD i = 0; SetupDiEnumDeviceInterfaces(set, nullptr, &hidGuid, i, &iface); ++i) {
+        DWORD size = 0;
+        SetupDiGetDeviceInterfaceDetailW(set, &iface, nullptr, 0, &size, nullptr);
+        if (size < sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W)) {
+            continue;
+        }
+        std::vector<std::uint8_t> buffer(size);
+        auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buffer.data());
+        detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+        if (SetupDiGetDeviceInterfaceDetailW(set, &iface, detail, size, nullptr, nullptr) &&
+            visit(detail->DevicePath)) {
+            break;
+        }
+    }
+    SetupDiDestroyDeviceInfoList(set);
+}
+
+BoardVersion readBoardVersion(HANDLE device)
+{
+    wchar_t text[128] = {};
+    if (!HidD_GetIndexedString(device, kVersionStringIndex, text, static_cast<ULONG>(sizeof(text) - sizeof(wchar_t)))) {
+        return {};
+    }
+    return parseBoardVersion(toUtf8(text));
+}
+
 }  // namespace
+
+std::optional<BoardVersion> findBoardVersion()
+{
+    std::optional<BoardVersion> found;
+    forEachHidPath([&found](const wchar_t* path) {
+        HidInfo info;
+        std::string product;
+        if (!queryInfo(path, info, product) || !isController(info)) {
+            return false;
+        }
+        HANDLE h = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        found = BoardVersion{};
+        if (h != INVALID_HANDLE_VALUE) {
+            found = readBoardVersion(h);
+            CloseHandle(h);
+        }
+        return true;
+    });
+    return found;
+}
 
 WinHidLink::WinHidLink(EventQueue& events) : events_(events) {}
 
@@ -101,6 +160,12 @@ std::string WinHidLink::description() const
     return description_;
 }
 
+BoardVersion WinHidLink::boardVersion() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return boardVersion_;
+}
+
 bool WinHidLink::sendFrame(const Frame& frame)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -133,12 +198,14 @@ void WinHidLink::run()
 {
     for (;;) {
         std::string description;
-        HANDLE device = findAndOpen(description);
+        BoardVersion version;
+        HANDLE device = findAndOpen(description, version);
         if (device != INVALID_HANDLE_VALUE) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 device_ = device;
                 description_ = description;
+                boardVersion_ = version;
             }
             events_.push(HostEvent::HidConnected);
             readUntilGone(device);
@@ -151,49 +218,27 @@ void WinHidLink::run()
     }
 }
 
-HANDLE WinHidLink::findAndOpen(std::string& description)
+HANDLE WinHidLink::findAndOpen(std::string& description, BoardVersion& version)
 {
-    GUID hidGuid;
-    HidD_GetHidGuid(&hidGuid);
-    HDEVINFO set = SetupDiGetClassDevsW(&hidGuid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-    if (set == INVALID_HANDLE_VALUE) {
-        return INVALID_HANDLE_VALUE;
-    }
-
     HANDLE found = INVALID_HANDLE_VALUE;
-    SP_DEVICE_INTERFACE_DATA iface{};
-    iface.cbSize = sizeof(iface);
-    for (DWORD i = 0; found == INVALID_HANDLE_VALUE &&
-                      SetupDiEnumDeviceInterfaces(set, nullptr, &hidGuid, i, &iface);
-         ++i) {
-        DWORD size = 0;
-        SetupDiGetDeviceInterfaceDetailW(set, &iface, nullptr, 0, &size, nullptr);
-        if (size < sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W)) {
-            continue;
-        }
-        std::vector<std::uint8_t> buffer(size);
-        auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buffer.data());
-        detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
-        if (!SetupDiGetDeviceInterfaceDetailW(set, &iface, detail, size, nullptr, nullptr)) {
-            continue;
-        }
-
+    forEachHidPath([&](const wchar_t* path) {
         HidInfo info;
         std::string product;
-        if (!queryInfo(detail->DevicePath, info, product) || !isController(info)) {
-            continue;
+        if (!queryInfo(path, info, product) || !isController(info)) {
+            return false;
         }
-        found = CreateFileW(detail->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                            nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
-        if (found != INVALID_HANDLE_VALUE) {
-            // More buffered input reports than the default 32, so a slow
-            // consumer loses fewer frames to the HID driver.
-            HidD_SetNumInputBuffers(found, 64);
-            description = (product.empty() ? std::string("(no product string)") : product) + " " +
-                          toUtf8(detail->DevicePath);
+        found = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                            OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+        if (found == INVALID_HANDLE_VALUE) {
+            return false;
         }
-    }
-    SetupDiDestroyDeviceInfoList(set);
+        // More buffered input reports than the default 32, so a slow
+        // consumer loses fewer frames to the HID driver.
+        HidD_SetNumInputBuffers(found, 64);
+        version = readBoardVersion(found);
+        description = (product.empty() ? std::string("(no product string)") : product) + " " + toUtf8(path);
+        return true;
+    });
     return found;
 }
 
