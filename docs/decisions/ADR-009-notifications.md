@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed (issue #34). Based on the spike #33 (`docs/notification-spike.md`)
-and the owner's decisions of 2026-10-22.
+Accepted (issue #34, implemented in the same issue). Based on the spike
+#33 (`docs/notification-spike.md`) and the owner's decisions of
+2026-10-22. Open: the Do not disturb check below (REQUIRES WINDOWS) and
+the banner on the board (REQUIRES HARDWARE).
 
 ## Context
 
@@ -43,8 +45,9 @@ pop-up on the board, but the card and the list still update.
   implementation; the candidate is `SHQueryUserNotificationState`
   (documented, shell32): `QUNS_ACCEPTS_NOTIFICATIONS` (5) means pop-ups
   may show. On the owner's PC it returns 5 with Do not disturb off; what
-  it returns with it on is checked in #34 before the pop-up is built on
-  it. If it does not follow Do not disturb, the fallback is the
+  it returns with it on is checked with `dashboard-host notify focus`
+  (prints it and the registry value below at every change); until that
+  run the banner is built on it. If it does not follow Do not disturb, the fallback is the
   `NOC_GLOBAL_SETTING_TOASTS_ENABLED` value under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`
   (undocumented), or no Do not disturb rule.
@@ -58,6 +61,9 @@ pop-up on the board, but the card and the list still update.
     not when the host starts or reconnects (those are not new), not
     while Do not disturb is on, and at most one every 2 s (a burst shows
     the newest).
+- Without notification access the card says so ("Bildirim erişimi
+  kapalı") and the detail names the Windows setting; if the listener
+  fails, "Bildirimler okunamıyor" and the reader tries again every 30 s.
 - Texts follow the board's language for the fixed words. Notification
   texts go to the board over USB; `host.log` logs frames without their
   record text (as today), so the texts are not written to disk.
@@ -68,7 +74,10 @@ The card and the detail are the generic records of ADR-006. The pop-up
 is one more generic component, the **banner**: a strip over the top of
 every screen with an icon, a title, up to two lines and a countdown; a
 tap opens the detail of a card slot the record names, or just closes it.
-It knows nothing about notifications.
+It knows nothing about notifications. A tap with a slot opens that
+detail only on the main screen (it switches to the Dashboard tab); on the
+settings or edit screens it only closes, so a half-done edit is not
+lost.
 
 The prompt (ADR-007) is not reused: it is modal, has buttons, keeps the
 screen lit until answered and is queued one at a time; a banner is none
@@ -100,9 +109,11 @@ so both move to 5.
 
 ### Board memory
 
-One banner record being assembled in `dash_client.c` and the shown one
-in `g_ui` (257 bytes each); the banner's LVGL objects exist while it is
-shown. No change to the cover buffers.
+One banner record being assembled in `dash_client.c`, the shown one in
+`g_ui` and a scratch copy for splitting it in `ui_dash.c` (257 bytes
+each); the banner's LVGL objects exist while it is shown. No change to
+the cover buffers. The bell (U+F0F3) is added to the 14, 16 and 22 px
+fonts (`tools/gen-ui-fonts.sh`).
 
 ## Alternatives
 

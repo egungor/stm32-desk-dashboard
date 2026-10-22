@@ -31,7 +31,7 @@ host/
 │   ├── IFrameSink.h        # outgoing 64-byte protocol frames
 │   └── HidMatch.h          # which HID interface is the controller (ADR-003)
 ├── App/
-│   ├── HostController.*    # protocol v4 audio exchanges (protocol/protocol.md)
+│   ├── HostController.*    # protocol v5 audio exchanges (protocol/protocol.md)
 │   ├── DashController.*    # dashboard records: cards, details, actions, TIME (ADR-006)
 │   ├── FrameRouter.*       # one decode per frame; audio vs dashboard commands
 │   ├── MediaKeys.*         # media strip ACTION -> previous / play-pause / next key
@@ -51,8 +51,10 @@ host/
 │   ├── MediaSession.h      # IMediaSession: snapshot (texts, status, position, cover), commands
 │   ├── MediaCover.*        # square crop, BGRA -> RGB565, app name from the AppUserModelID
 │   └── MediaService.*      # MEDIA_PART / MEDIA_STATE / ART_PART, controls to the session or keys
-├── Notify/                 # notification spike (#33)
-│   └── ToastText.*         # <text> lines of a toast payload, FILETIME -> Unix time
+├── Notify/                 # Windows notifications (ADR-009, #34; spike #33)
+│   ├── NotificationSource.h # INotificationSource (the toasts), IFocusState (Do not disturb)
+│   ├── NotificationService.* # card slot 2, its list, a BANNER_PART for each new toast
+│   └── ToastText.*         # spike: <text> lines of a toast payload, FILETIME -> Unix time
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
@@ -68,6 +70,8 @@ host/
 │   ├── WinHidLink.*        # HID discovery, reader thread, IFrameSink
 │   ├── WinMediaKeys.*      # IMediaKeys on SendInput (VK_MEDIA_*)
 │   ├── WinMediaSession.*   # IMediaSession on Windows.Media.Control (C++/WinRT), cover through WIC
+│   ├── WinNotificationListener.* # UserNotificationListener polled every 500 ms (C++/WinRT);
+│   │                       #   WinFocusState: SHQueryUserNotificationState (ADR-009)
 │   ├── WinNotificationProbe.* # spike #33: UserNotificationListener and wpndatabase.db (winsqlite3)
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
@@ -157,6 +161,11 @@ dashboard-host notify probe [n]  notification spike (#33): the notification
                                    listener and the notification database; the
                                    last n toasts (docs/notification-spike.md)
 dashboard-host notify watch      print new toasts as they arrive (Ctrl+C stops)
+dashboard-host notify            the notifications card, its detail and the
+                                   banner of the newest toast, as the tray
+                                   sends them (ADR-009)
+dashboard-host notify focus      whether Windows accepts pop-ups (Do not
+                                   disturb), at every change (Ctrl+C stops)
 dashboard-host menu              print the menu card and the day's detail
 dashboard-host menu import <image> [<image> ...]
                                    read menu images with the Claude API into

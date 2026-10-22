@@ -128,11 +128,14 @@ Done in code (verification status above):
 - tabs on a left rail: Dashboard and Audio, global settings in sections,
   the tab shown at start chosen in the settings;
 - Dashboard: clock and date from the PC, four cards (weather, menu of the
-  day, Claude Code; one is kept for notifications), a detail view
-  per card, media keys `<< || >>` for the player on the PC;
+  day, notifications, Claude Code), a detail view per card, media keys
+  `<< || >>` for the player on the PC;
 - weather for one location (Open-Meteo, no key): card and 10-day detail;
 - menu of the day read from menu images with the Claude API, card and
   day detail with the salad bar;
+- Windows notifications: the card counts the toasts in the notification
+  centre, its list shows them, and a new one shows a short banner at the
+  top of every screen (none while Do not disturb is on);
 - Claude Code permission requests on this PC shown over every screen:
   Onayla / Reddet / Terminalde sor, with a countdown; nothing is allowed
   by default;

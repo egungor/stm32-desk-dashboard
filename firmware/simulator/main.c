@@ -849,16 +849,16 @@ static void run_layouts_script(void)
     /* The layout row on the settings page: back to cards. */
     tap(RAIL_COG_X, RAIL_COG_Y); /* cog */
     check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the rail's cog opens the settings page in layout C");
-    drag_v(240, 250, 40); /* SES: layout 131, grid 180 */
-    tap_setting(277, 131, "the layout control reports the settings");
+    drag_v(240, 250, 40); /* SES (below "Açılış ekranı", #32): layout 188, grid 237 */
+    tap_setting(277, 188, "the layout control reports the settings");
     check(Ui_Settings()->layout == UI_LAYOUT_CARDS, "\"Kart\" sets the cards layout");
-    tap_setting(351, 131, "the layout control reports the settings again");
+    tap_setting(351, 188, "the layout control reports the settings again");
     check(Ui_Settings()->layout == UI_LAYOUT_LIST, "\"Liste\" sets the list layout");
     snapshot("76-settings-layout-list");
     {
         const int before = s_settings.calls;
 
-        tap(312, 180); /* "3x2", greyed out outside the cards layout */
+        tap(312, 237); /* "3x2", greyed out outside the cards layout */
         check((s_settings.calls == before) && (Ui_Settings()->grid == UI_GRID_2X2),
               "the grid row does nothing outside the cards layout");
     }
@@ -1296,6 +1296,147 @@ static void run_music_script(void)
     run_ms(50U);
 }
 
+/* Notifications (ADR-009, #34): the fourth card, its list, and the banner
+ * over every screen. Texts as host/Notify/NotificationService makes them. */
+static void run_banner_script(void)
+{
+    static const char *const notify_card =
+        "12" F "Bildirimler" F "3\n"
+        "WhatsApp: Ay\xC5\x9F" "e\n"
+        "Outlook: Toplant\xC4\xB1 notlar\xC4\xB1\n"
+        "Microsoft Teams: Ali Y\xC4\xB1lmaz";
+    static const char *const notify_detail =
+        "Bildirimler" F "3 bildirim" F "\n"
+        "#WhatsApp \xC2\xB7 14:32\n"
+        F "Ay\xC5\x9F" "e" F "Ak\xC5\x9F" "am geliyor musun? Saat yedide kap\xC4\xB1n\xC4\xB1n \xC3\xB6n\xC3\xBC" "nde olal\xC4\xB1m.\n"
+        "#Outlook \xC2\xB7 14:13\n"
+        F "Toplant\xC4\xB1 notlar\xC4\xB1" F "Per\xC5\x9F" "embe sunumu i\xC3\xA7in son hali ekte.\n"
+        "#Microsoft Teams \xC2\xB7 13:58\n"
+        F "Ali Y\xC4\xB1lmaz" F "PR'a bakabilir misin?";
+    static const char *const banner =
+        "12" F "WhatsApp" F "5" F "2\n"
+        "Ay\xC5\x9F" "e\n"
+        "Ak\xC5\x9F" "am geliyor musun? Saat yedide kap\xC4\xB1n\xC4\xB1n \xC3\xB6n\xC3\xBC" "nde olal\xC4\xB1m, ge\xC3\xA7 kalma.";
+    static const char *const banner_no_slot = "12" F "Snipping Tool" F "" F "";
+    UiSettings s = *Ui_Settings();
+    int opens;
+
+    Ui_SetCard(2U, notify_card);
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
+    snapshot("96-dashboard-notifications");
+
+    Ui_ShowBanner(banner);
+    run_ms(50U);
+    check(Ui_BannerShown(), "a banner is shown over the Dashboard tab");
+    snapshot("97-banner");
+    run_ms(4500U);
+    check(Ui_BannerShown(), "a banner stays for its seconds");
+    run_ms(800U);
+    check(!Ui_BannerShown(), "a banner closes itself after its seconds");
+
+    /* Over the Audio tab; a tap opens the notifications detail. */
+    tap(RAIL_AUDIO_X, RAIL_AUDIO_Y);
+    run_ms(50U);
+    Ui_ShowBanner(banner);
+    run_ms(50U);
+    snapshot("98-banner-audio");
+    opens = s_dash.open_calls;
+    tap(240, 40);
+    run_ms(50U);
+    check(!Ui_BannerShown() && (Ui_CurrentAppTab() == UI_APP_TAB_DASHBOARD) && (s_dash.open_calls == opens + 1) &&
+              (s_dash.open_slot == 2U) && (s_dash.open_arg == 0),
+          "a tap on the banner opens its card's detail on the Dashboard tab");
+    Ui_ShowDetail(2U, notify_detail);
+    run_ms(50U);
+    check(Ui_DashView() == UI_DASH_VIEW_DETAIL, "the notifications detail is shown");
+    snapshot("99-notifications-detail");
+    tap(76, 18);
+    run_ms(50U);
+
+    /* Without a slot a tap only closes it; a newer one replaces the shown one. */
+    Ui_ShowBanner(banner);
+    Ui_ShowBanner(banner_no_slot);
+    run_ms(50U);
+    snapshot("100-banner-no-texts");
+    opens = s_dash.open_calls;
+    tap(240, 30);
+    run_ms(50U);
+    check(!Ui_BannerShown() && (s_dash.open_calls == opens) && (Ui_DashView() == UI_DASH_VIEW_CARDS),
+          "a banner without a slot only closes");
+    Ui_ShowBanner(banner_no_slot);
+    run_ms(4900U);
+    check(Ui_BannerShown(), "an empty seconds field means 5 s");
+    run_ms(400U);
+    check(!Ui_BannerShown(), "and it closes after 5 s");
+
+    /* Never over a prompt; a prompt closes a shown banner. */
+    Ui_ShowPrompt(9U, prompt_bash);
+    Ui_ShowBanner(banner);
+    run_ms(50U);
+    check(!Ui_BannerShown() && (Ui_PromptShown() == 9U), "no banner while a prompt is shown");
+    Ui_ClosePrompt(9U);
+    Ui_ShowBanner(banner);
+    Ui_ShowPrompt(10U, prompt_bash);
+    run_ms(50U);
+    check(!Ui_BannerShown(), "a prompt closes the banner");
+    Ui_ClosePrompt(10U);
+    run_ms(50U);
+
+    /* On the settings page a tap only closes it. */
+    tap(RAIL_COG_X, RAIL_COG_Y);
+    run_ms(50U);
+    check(Ui_CurrentScreen() == UI_SCREEN_SETTINGS, "the settings page is open");
+    Ui_ShowBanner(banner);
+    run_ms(50U);
+    snapshot("101-banner-settings");
+    opens = s_dash.open_calls;
+    tap(240, 40);
+    run_ms(50U);
+    check(!Ui_BannerShown() && (Ui_CurrentScreen() == UI_SCREEN_SETTINGS) && (s_dash.open_calls == opens),
+          "on the settings page a tap only closes the banner");
+    tap(60, 18);
+    run_ms(50U);
+
+    /* A rebuild (light theme) keeps it; a dark screen drops it and is not woken. */
+    Ui_ShowBanner(banner);
+    s.theme = UI_THEME_LIGHT;
+    Ui_ApplySettings(&s);
+    run_ms(50U);
+    check(Ui_BannerShown(), "a rebuild keeps the banner");
+    snapshot("102-banner-light");
+    s.theme = UI_THEME_DARK;
+    s.screen_timeout = 1U;
+    Ui_ApplySettings(&s);
+    run_ms(61000U + UI_SCREEN_OFF_CHECK_MS);
+    check(!Ui_ScreenOn() && !Ui_BannerShown(), "the screen went dark, no banner");
+    Ui_ShowBanner(banner);
+    run_ms(50U);
+    check(!Ui_ScreenOn() && !Ui_BannerShown(), "a banner does not wake a dark screen");
+    tap(170, 140); /* wakes the screen */
+    run_ms(50U);
+    s.screen_timeout = 0U;
+    Ui_ApplySettings(&s);
+    run_ms(50U);
+
+    /* Showing banners again and again does not leak. */
+    {
+        uint32_t before;
+        uint32_t after;
+
+        Ui_MemoryUse(&before, NULL);
+        for (uint32_t i = 0U; i < 10U; i++)
+        {
+            Ui_ShowBanner(banner);
+            run_ms(5300U);
+        }
+        Ui_MemoryUse(&after, NULL);
+        printf("memory after 10 banners: before=%lu after=%lu\n", (unsigned long)before, (unsigned long)after);
+        check(after <= before + 512U, "banners do not leak memory");
+    }
+    report_memory("banner-end");
+}
+
 #undef F
 
 static void run_script(void)
@@ -1461,6 +1602,7 @@ static void run_script(void)
     run_layouts_script();
     run_dashboard_script();
     run_music_script();
+    run_banner_script();
 }
 
 int main(int argc, char **argv)

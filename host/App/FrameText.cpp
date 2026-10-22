@@ -58,6 +58,8 @@ const char* commandName(std::uint8_t command)
         return "ACTION";
     case PROTO_CMD_MEDIA_PART:
         return "MEDIA_PART";
+    case PROTO_CMD_BANNER_PART:
+        return "BANNER_PART";
     case PROTO_CMD_MEDIA_STATE:
         return "MEDIA_STATE";
     case PROTO_CMD_ART_PART:
@@ -179,7 +181,8 @@ std::string describeMessage(const ProtoMessage& msg)
     case PROTO_CMD_CARD_PART:
     case PROTO_CMD_DETAIL_PART:
     case PROTO_CMD_PROMPT_PART:
-    case PROTO_CMD_MEDIA_PART: {
+    case PROTO_CMD_MEDIA_PART:
+    case PROTO_CMD_BANNER_PART: {
         const ProtoRecordPart& p = msg.u.part;
         out += " id=" + std::to_string(p.id) + " gen=" + std::to_string(p.generation) + " part=" +
                std::to_string(p.part + 1U) + "/" + std::to_string(p.parts) + " bytes=" + std::to_string(p.len);

@@ -29,8 +29,11 @@ beyond what the current step needs.
 Dashboard v1, the owner's requests before v1.0.0 (`docs/roadmap.md`,
 "Requests of 2026-10-21"): media (#30 ADR-008 and protocol v4, #31 host,
 #32 board: Music tab, play / pause by state, volume on the Dashboard
-strip) is done and checked with Deezer on the board; next the
-notification spike (#33), then notifications (#34).
+strip) is done and checked with Deezer on the board; the notification
+spike (#33) is done; notifications (#34: ADR-009, protocol v5
+`BANNER_PART`, `host/Notify/NotificationService`,
+`Platform/Windows/WinNotificationListener`, the banner in `ui_dash.c`) are
+in code, their Windows and board checks are open (`docs/hardware.md`).
 Step 12 (#28): release preparation done, **no `v1.0.0` tag** yet. Done: steps 1–11 (Claude Code approvals: #26,
 `host/Hook/ApprovalService`, `Platform/Windows/WinHookPipe`, the prompt
 in `ui_dash.c`) and the test releases `v0.9.0-beta.1` (#22) and

@@ -34,6 +34,7 @@
 #include "SequencedSink.h"
 #include "ApprovalService.h"
 #include "MenuService.h"
+#include "NotificationService.h"
 #include "WeatherCard.h"
 #include "../../host/Tests/WeatherSamples.h"
 #include "dash_client.h"
@@ -161,6 +162,8 @@ struct FirmwareScreen {
     std::string prompt;             // shown prompt text, "" if none
     int promptId = -1;              // shown prompt id, -1 if none
     int promptsShown = 0;
+    std::string banner;             // last banner text
+    int bannersShown = 0;
 };
 
 struct WireStats {
@@ -208,7 +211,8 @@ public:
         Link_Init(&link, &cb);
         const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard,   &Rig::fwDetail,      &Rig::fwDashNotice,
                                    &Rig::fwTime, &Rig::fwPrompt, &Rig::fwClosePrompt, this,
-                                   nullptr,      nullptr,        nullptr};  // now playing: not driven here
+                                   nullptr,      nullptr,        nullptr,  // now playing: not driven here
+                                   &Rig::fwBanner};
         Dash_Init(&dashClient, &dcb);
         Dash_SetSequenceCounter(&dashClient, &link.sequence);  // link_port.c
     }
@@ -474,6 +478,12 @@ private:
         screen.prompt = text;
         screen.promptId = id;
         ++screen.promptsShown;
+    }
+    static void fwBanner(const char* text, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        screen.banner = text;
+        ++screen.bannersShown;
     }
     static void fwClosePrompt(std::uint8_t id, void* ctx)
     {
@@ -1464,6 +1474,80 @@ void testApprovalOnBoard()
     CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 }
 
+// Notifications (ADR-009, #34): the card and its detail on the board, a
+// banner for a new toast, none while a prompt is shown on the board.
+struct FakeToasts : INotificationSource {
+    NotificationSnapshot snap;
+    NotificationSnapshot snapshot() const override { return snap; }
+};
+struct AlwaysFocus : IFocusState {
+    bool acceptsPopups() const override { return true; }
+};
+
+Notification makeToast(std::uint32_t id, const char* app, const char* title, const char* body)
+{
+    Notification n;
+    n.id = id;
+    n.app = app;
+    n.title = title;
+    n.body = body;
+    n.localTime = localTimeValue(2026, 10, 22, 9, 15, 0);
+    return n;
+}
+
+void testNotificationsOnBoard()
+{
+    g_scenario = "notifications on the board";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    FakeToasts toasts;
+    AlwaysFocus focus;
+    NotificationService notify(*r.dash, toasts, focus, nullptr);
+    r.dash->setDetailHandler([&notify](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
+        return slot == NotificationService::kSlot && arg == 0 ? notify.detail() : std::nullopt;
+    });
+    toasts.snap.access = NotificationAccess::Allowed;
+    toasts.snap.toasts = {makeToast(1, "Outlook", "Toplant\xC4\xB1", "Saat 10'da")};
+    toasts.snap.version = 1;
+    notify.onTick(r.now);
+    r.plugIn();
+    r.run(3000);
+    CHECK(r.inSync() && r.screen.cards[2] == r.dash->card(2));
+    CHECK(r.screen.cards[2].find("Outlook: Toplant\xC4\xB1") != std::string::npos);
+    CHECK(r.screen.bannersShown == 0);  // what was there before is not new
+
+    // A new toast: the card changes and a banner reaches the board.
+    toasts.snap.toasts.insert(toasts.snap.toasts.begin(), makeToast(2, "WhatsApp", "Ay\xC5\x9F" "e", "Geliyor musun?"));
+    ++toasts.snap.version;
+    notify.onTick(r.now);
+    r.run(300);
+    CHECK(r.screen.bannersShown == 1 && r.screen.banner == notify.banner(toasts.snap.toasts[0]));
+    CHECK(r.screen.cards[2].find("WhatsApp: Ay\xC5\x9F" "e") != std::string::npos);
+    // A tap on it: the detail lists both.
+    CHECK(Dash_OpenDetail(&r.dashClient, NotificationService::kSlot, 0, r.now));
+    r.run(300);
+    CHECK(r.screen.detail.find("#WhatsApp \xC2\xB7 09:15") != std::string::npos &&
+          r.screen.detail.find("#Outlook") != std::string::npos);
+    // The open detail follows Windows: a toast dismissed on the PC leaves it.
+    toasts.snap.toasts.pop_back();
+    ++toasts.snap.version;
+    notify.onTick(r.now);
+    r.run(300);
+    CHECK(r.screen.detail.find("#Outlook") == std::string::npos);
+
+    // While a prompt is shown, the board drops banners.
+    r.dash->showPrompt(1, "Claude Code\x1F\x1F" "60\n!1\x1FOnayla");
+    r.run(300);
+    CHECK(r.screen.promptId == 1);
+    toasts.snap.toasts.insert(toasts.snap.toasts.begin(), makeToast(3, "Teams", "Ali", "PR"));
+    ++toasts.snap.version;
+    notify.onTick(r.now + 5000U);
+    r.run(300);
+    CHECK(r.screen.bannersShown == 1);
+    CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
+}
+
 int main()
 {
     testConnect();
@@ -1489,6 +1573,7 @@ int main()
     testWeatherOnBoard();
     testMenuOnBoard();
     testApprovalOnBoard();
+    testNotificationsOnBoard();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();

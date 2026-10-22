@@ -1,6 +1,6 @@
 /**
  * @file    protocol.h
- * @brief   STM32 <-> Windows host protocol, version 4 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 5 (see protocol/protocol.md).
  *
  * Portable C99 codec shared by the firmware and the host. Every message is
  * one fixed-size frame of PROTO_FRAME_SIZE bytes:
@@ -30,7 +30,7 @@ extern "C" {
 
 #define PROTO_FRAME_SIZE   64U
 #define PROTO_MAGIC        0xA5U
-#define PROTO_VERSION      4U
+#define PROTO_VERSION      5U
 #define PROTO_HEADER_SIZE  5U
 #define PROTO_CRC_OFFSET   62U
 #define PROTO_MAX_PAYLOAD  (PROTO_CRC_OFFSET - PROTO_HEADER_SIZE) /* 57 */
@@ -58,11 +58,13 @@ extern "C" {
 #define PROTO_DETAIL_MAX_BYTES  2048U
 #define PROTO_PROMPT_MAX_BYTES  1024U
 #define PROTO_MEDIA_MAX_BYTES   512U
+#define PROTO_BANNER_MAX_BYTES  256U
 /** Most parts of a record of each kind (ceil(max / 53)). */
 #define PROTO_CARD_MAX_PARTS    5U
 #define PROTO_DETAIL_MAX_PARTS  39U
 #define PROTO_PROMPT_MAX_PARTS  20U
 #define PROTO_MEDIA_MAX_PARTS   10U
+#define PROTO_BANNER_MAX_PARTS  5U
 /** Record text: lines end with '\n', fields are separated by this byte. */
 #define PROTO_FIELD_SEPARATOR   0x1FU
 
@@ -114,6 +116,7 @@ typedef enum
     PROTO_CMD_MEDIA_PART      = 0x26, /**< host -> STM32, part of the media record (v4) */
     PROTO_CMD_MEDIA_STATE     = 0x27, /**< host -> STM32 (v4) */
     PROTO_CMD_ART_PART        = 0x28, /**< host -> STM32, part of a cover (v4) */
+    PROTO_CMD_BANNER_PART     = 0x29, /**< host -> STM32, part of a banner record (v5) */
     PROTO_CMD_GET_CARDS       = 0x30, /**< STM32 -> host */
     PROTO_CMD_OPEN_DETAIL     = 0x31, /**< STM32 -> host */
     PROTO_CMD_ACTION          = 0x32, /**< STM32 -> host */
@@ -242,10 +245,10 @@ typedef enum
 #define PROTO_MEDIA_PLAY_PAUSE 2U
 #define PROTO_MEDIA_NEXT       3U
 
-/** CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART: one part of a text record. */
+/** CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART, BANNER_PART: one part of a text record. */
 typedef struct
 {
-    uint8_t id;         /**< card slot (< PROTO_MAX_CARDS), prompt id, or 0 (media) */
+    uint8_t id;         /**< card slot (< PROTO_MAX_CARDS), prompt or banner id, or 0 (media) */
     uint8_t generation; /**< changes for every new version of the record */
     uint8_t part;       /**< 0 .. parts-1 */
     uint8_t parts;      /**< 1 .. the command's PROTO_*_MAX_PARTS */
@@ -310,7 +313,7 @@ typedef struct
         uint8_t            muted;        /**< SET_MUTE, MUTE_CHANGED: 0 or 1 */
         ProtoError         error;        /**< ERROR */
         uint32_t           local_time;   /**< TIME: seconds since 1970-01-01 00:00 local time */
-        ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART */
+        ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART, BANNER_PART */
         ProtoMediaState    media;        /**< MEDIA_STATE */
         ProtoArtPart       art;          /**< ART_PART */
         uint8_t            slot;         /**< CARD_CLEAR */
@@ -352,7 +355,7 @@ int Proto_SettingsValid(const ProtoSettings *settings);
 
 /**
  * Largest record of a part command (CARD_PART, DETAIL_PART, PROMPT_PART,
- * MEDIA_PART), in bytes; 0 for any other command.
+ * MEDIA_PART, BANNER_PART), in bytes; 0 for any other command.
  */
 uint16_t Proto_RecordMaxBytes(uint8_t command);
 

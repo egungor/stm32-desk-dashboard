@@ -1,6 +1,6 @@
 /**
  * @file    dash_client.c
- * @brief   STM32 side of the dashboard commands of protocol v4 (see
+ * @brief   STM32 side of the dashboard commands of protocol v5 (see
  *          dash_client.h).
  */
 #include "dash_client.h"
@@ -151,6 +151,24 @@ static void on_prompt_close(DashClient *dash, uint8_t id)
     }
 }
 
+static void on_banner_part(DashClient *dash, const ProtoRecordPart *part, uint32_t now_ms)
+{
+    if (Proto_AssemblerAdd(&dash->banner_asm, part) != PROTO_ASM_COMPLETE)
+    {
+        dash->banner_part_ms = now_ms;
+        return;
+    }
+    if (dash->prompt_shown != DASH_NO_PROMPT)
+    {
+        dash->frames_ignored++;  /* a banner never covers a prompt */
+        return;
+    }
+    if (dash->cb.show_banner != NULL)
+    {
+        dash->cb.show_banner((const char *)dash->banner_buf, dash->cb.ctx);
+    }
+}
+
 static void on_media_part(DashClient *dash, const ProtoRecordPart *part, uint32_t now_ms)
 {
     if (Proto_AssemblerAdd(&dash->media_asm, part) == PROTO_ASM_COMPLETE)
@@ -263,6 +281,7 @@ void Dash_Init(DashClient *dash, const DashCallbacks *callbacks)
     Proto_AssemblerInit(&dash->detail_asm, dash->detail_buf, PROTO_DETAIL_MAX_BYTES);
     Proto_AssemblerInit(&dash->prompt_asm, dash->prompt_buf, PROTO_PROMPT_MAX_BYTES);
     Proto_AssemblerInit(&dash->media_asm, dash->media_buf, PROTO_MEDIA_MAX_BYTES);
+    Proto_AssemblerInit(&dash->banner_asm, dash->banner_buf, PROTO_BANNER_MAX_BYTES);
     Proto_ArtAssemblerInit(&dash->art_asm, NULL);
     dash->art_shown = PROTO_NO_ART;
     dash->detail_slot = DASH_NO_SLOT;
@@ -291,6 +310,7 @@ void Dash_OnDisconnected(DashClient *dash)
     Proto_AssemblerReset(&dash->card_asm);
     Proto_AssemblerReset(&dash->detail_asm);
     Proto_AssemblerReset(&dash->prompt_asm);
+    Proto_AssemblerReset(&dash->banner_asm);
     dash->detail_waiting = false;
     dash->detail_slot = DASH_NO_SLOT;
     close_prompt(dash);  /* nobody could receive its answer */
@@ -342,6 +362,9 @@ void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
     case PROTO_CMD_ART_PART:
         on_art_part(dash, &msg->u.art, now_ms);
         break;
+    case PROTO_CMD_BANNER_PART:
+        on_banner_part(dash, &msg->u.part, now_ms);
+        break;
     case PROTO_CMD_ERROR:
         on_error(dash, &msg->u.error);
         break;
@@ -377,6 +400,12 @@ void Dash_Poll(DashClient *dash, uint32_t now_ms)
     {
         /* A prompt part was lost: drop it; the host times the request out. */
         Proto_AssemblerReset(&dash->prompt_asm);
+        dash->frames_ignored++;
+    }
+    if ((dash->banner_asm.active != 0U) && ((now_ms - dash->banner_part_ms) >= DASH_RETRY_MS))
+    {
+        /* A banner part was lost: drop it; a banner is about now. */
+        Proto_AssemblerReset(&dash->banner_asm);
         dash->frames_ignored++;
     }
     if (dash->detail_slot == DASH_NO_SLOT)

@@ -37,6 +37,7 @@ add_library(host_core STATIC
     Hook/ClaudeHook.cpp
     Media/MediaCover.cpp
     Media/MediaService.cpp
+    Notify/NotificationService.cpp
     Notify/ToastText.cpp
     Menu/MenuData.cpp
     Menu/MenuImport.cpp
@@ -60,16 +61,18 @@ endif()
 if(WIN32)
     enable_language(RC)
 
-    # The C++/WinRT sources: WinMediaSession (ADR-008; WIC) and the
-    # notification probe of spike #33 (winsqlite3, Windows' own SQLite).
+    # The C++/WinRT sources: WinMediaSession (ADR-008; WIC), the notification
+    # listener (ADR-009) and the notification probe of spike #33 (winsqlite3,
+    # Windows' own SQLite).
     # The C++/WinRT headers need C++20 coroutines (in C++17 they fall back to
     # <experimental/coroutine>, which current MSVC refuses), so these files
     # are their own library in C++20; the rest of the host stays C++17.
-    add_library(host_media_win STATIC Platform/Windows/WinMediaSession.cpp Platform/Windows/WinNotificationProbe.cpp)
+    add_library(host_media_win STATIC Platform/Windows/WinMediaSession.cpp Platform/Windows/WinNotificationListener.cpp
+                Platform/Windows/WinNotificationProbe.cpp)
     target_include_directories(host_media_win PUBLIC Platform/Windows)
     target_compile_definitions(host_media_win PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     set_target_properties(host_media_win PROPERTIES CXX_STANDARD 20)
-    target_link_libraries(host_media_win PUBLIC host_core windowsapp windowscodecs shcore ole32 winsqlite3)
+    target_link_libraries(host_media_win PUBLIC host_core windowsapp windowscodecs shcore ole32 winsqlite3 shell32 advapi32)
 
     # Windows sources shared by the console and the tray program.
     add_library(host_windows STATIC

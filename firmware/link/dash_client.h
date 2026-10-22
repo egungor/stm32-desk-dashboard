@@ -1,7 +1,8 @@
 /**
  * @file    dash_client.h
- * @brief   STM32 side of the dashboard commands of protocol v4 (ADR-006,
- *          ADR-008; protocol/protocol.md, "Dashboard records", "Now playing").
+ * @brief   STM32 side of the dashboard commands of protocol v5 (ADR-006,
+ *          ADR-008, ADR-009; protocol/protocol.md, "Dashboard records",
+ *          "Now playing", "Banner").
  *
  * Hardware independent, like link_client.h: frames go out through a
  * callback; decoded dashboard messages come in through Dash_OnMessage()
@@ -36,6 +37,10 @@
  *     DASH_RETRY_MS after its last part (or after the MEDIA_STATE that
  *     named it) is asked for again with GET_MEDIA. A disconnect reports
  *     status none and no cover.
+ *   - Banner (ADR-009): a complete BANNER_PART record goes to show_banner,
+ *     unless a prompt is shown (a banner never covers a prompt; it is
+ *     dropped). A banner still incomplete DASH_RETRY_MS after its last part
+ *     is dropped; it is never asked for again.
  *
  * Sequence numbers: the client numbers its frames from a counter it is
  * given (Dash_SetSequenceCounter), so that it can share the audio
@@ -43,8 +48,8 @@
  * protocol.md defines it, and the audio client still recognises the
  * ERROR frames that answer its own requests by their ref_sequence.
  *
- * Static buffers only (one card, one detail, one prompt and one media
- * record being assembled; the cover buffer is the caller's).
+ * Static buffers only (one card, one detail, one prompt, one media and one
+ * banner record being assembled; the cover buffer is the caller's).
  * Not thread-safe: call everything from one task.
  */
 #ifndef DASH_CLIENT_H
@@ -94,6 +99,10 @@ typedef struct
     /** A complete cover (PROTO_ART_BYTES of RGB565), or NULL: none. The
      *  buffer is reused for the next cover: copy what is to be kept. */
     void (*show_art)(const uint8_t *pixels, void *ctx);
+    /* Banner (ADR-009), optional. */
+    /** A banner arrived (NUL-terminated record text); not while a prompt is
+     *  shown. */
+    void (*show_banner)(const char *text, void *ctx);
 } DashCallbacks;
 
 typedef struct
@@ -127,6 +136,10 @@ typedef struct
     ProtoArtAssembler art_asm; /**< collects into the caller's buffer */
     uint32_t art_part_ms;      /**< time of the last cover part or its MEDIA_STATE */
     uint8_t art_shown;         /**< id of the cover handed to show_art, PROTO_NO_ART if none */
+
+    ProtoAssembler banner_asm;
+    uint8_t banner_buf[PROTO_BANNER_MAX_BYTES + 1U];
+    uint32_t banner_part_ms;   /**< time of the last banner part */
 
     bool time_known;
     uint32_t time_base;        /**< local time of the last TIME */

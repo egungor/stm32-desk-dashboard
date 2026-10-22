@@ -387,6 +387,26 @@ void Ui_ClosePrompt(uint8_t id);
 /** The shown prompt's id, or UI_NO_PROMPT (for tests). */
 uint16_t Ui_PromptShown(void);
 
+/* ---------------------------------------------------------------- banner */
+
+#define UI_BANNER_BYTES 256U    /**< = PROTO_BANNER_MAX_BYTES */
+
+/**
+ * @brief  Show a banner over the top of every screen (ADR-009: a new
+ *         notification). Record text (protocol.md "Banner"): first line
+ *         `icon ␟ title ␟ seconds ␟ slot`, then up to two text lines. It
+ *         closes itself after `seconds` (1-30, otherwise 5) and replaces a
+ *         shown banner. Dropped while a prompt is shown or the screen is
+ *         dark (it does not wake it); a prompt that appears closes it.
+ *         A tap closes it; on the main screen a tap with a `slot` of a shown
+ *         card also opens that card's detail on the Dashboard tab, as a tap
+ *         on the card would (elsewhere, e.g. the settings, it only closes).
+ */
+void Ui_ShowBanner(const char *text);
+
+/** True while a banner is shown (for tests). */
+bool Ui_BannerShown(void);
+
 /* ----------------------------------------------------------- now playing */
 
 #define UI_MEDIA_BYTES 512U                           /**< = PROTO_MEDIA_MAX_BYTES */
