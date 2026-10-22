@@ -21,6 +21,7 @@
 #include "FrameRouter.h"
 #include "FrameText.h"
 #include "HidMatch.h"
+#include "PictureLibrary.h"
 #include "SettingsModel.h"
 #include "HostController.h"
 #include "MediaCover.h"
@@ -1091,13 +1092,35 @@ void testSettingsModel()
     s.service.board.protocol = PROTO_VERSION;
     s.service.settings = prefs.settings();
     s.service.devices.push_back(SettingsDevice{"b", "Hoparlör (DAC)", "DAC", true});
-    s.picture = "C:\\Fotoğraflar\\a.jpg";
-    const std::string json = settingsStateJson(s);
+    s.service.picture = "p2";
+    LibraryPicture pic;
+    pic.id = "p2";
+    pic.file = "p2.heic";
+    pic.name = "Fotoğraf.HEIC";
+    pic.width = 3024;
+    pic.height = 4032;
+    pic.crop = defaultCrop(pic.width, pic.height);
+    s.pictures.pictures.push_back(pic);
+    const std::string json = settingsStateJson(s, "https://pictures.example/");
     CHECK(json.find(R"("type":"state")") != std::string::npos);
     CHECK(json.find(R"("theme":1)") != std::string::npos);
     CHECK(json.find(R"x("name":"Hoparlör (DAC)")x") != std::string::npos);
     CHECK(json.find(R"("weather":null)") != std::string::npos);
-    CHECK(json.find(R"("picture":"C:\\Fotoğraflar\\a.jpg")") != std::string::npos);
+    CHECK(json.find(R"("currentPicture":"p2")") != std::string::npos);
+    CHECK(json.find(R"("preview":"https://pictures.example/previews/p2.jpg")") != std::string::npos);
+    CHECK(json.find(R"("name":"Fotoğraf.HEIC")") != std::string::npos);
+
+    // Picture requests (ADR-012): pictureShow goes to the service, "" = none.
+    r = parseSettingsRequest(R"({"cmd":"pictureShow","id":""})");
+    CHECK(r && r->kind == SettingsRequestKind::PictureShow && r->name.empty() && isServiceRequest(r->kind));
+    CHECK(!parseSettingsRequest(R"({"cmd":"pictureRemove","id":""})"));
+    r = parseSettingsRequest(R"({"cmd":"pictureCrop","id":"p2","x":0.1,"y":0.2,"w":0.5,"h":0.2})");
+    CHECK(r && r->kind == SettingsRequestKind::PictureCrop && r->crop.w == 0.5 && !isServiceRequest(r->kind));
+    CHECK(!parseSettingsRequest(R"({"cmd":"pictureCrop","id":"p2","x":0.1})"));
+    r = parseSettingsRequest(R"({"cmd":"pictureShuffle","enabled":true,"minutes":30,"random":false})");
+    CHECK(r && r->kind == SettingsRequestKind::PictureShuffle && r->shuffle.enabled && r->shuffle.minutes == 30U &&
+          !r->shuffle.random);
+    CHECK(!parseSettingsRequest(R"({"cmd":"pictureShuffle","enabled":true,"minutes":0,"random":true})"));
     CHECK(noticeJson(false, "x") == R"({"ok":false,"text":"x","type":"notice"})");
 
     // Snapshots compare by content.
@@ -1111,6 +1134,60 @@ void testSettingsModel()
     CHECK(claudeFileWithKey(std::string("api_key=old\r\nmodel=m\n"), "sk-2") == "api_key=sk-2\nmodel=m\n");
     CHECK(claudeFileWithKey(std::string("model=m\n"), "sk-3") == "api_key=sk-3\nmodel=m\n");
     CHECK(claudeFileWithKey(std::string("api_key=old\nmodel=m\n"), "") == "model=m\n");
+}
+
+// The picture card's library (ADR-012, #72).
+void testPictureLibrary()
+{
+    // The centred 480:272 part of a portrait photo, and a valid crop.
+    const NormRect c = defaultCrop(3024, 4032);
+    CHECK(c.x == 0.0 && c.w == 1.0 && c.h > 0.4 && c.h < 0.45 && c.y > 0.25);
+    CHECK(validCrop(c, 3024, 4032));
+    CHECK(!validCrop(NormRect{0.0, 0.0, 1.0, 1.0}, 3024, 4032));    // not 480:272
+    CHECK(!validCrop(NormRect{0.6, 0.0, 0.5, 0.125}, 3024, 4032));  // outside
+    CHECK(validCrop(NormRect{0.25, 0.3, 0.5, 0.5 * 3024.0 / 4032.0 * 272.0 / 480.0}, 3024, 4032));
+
+    // Ids are never used twice.
+    PictureLibrary lib;
+    const std::string a = newPictureId(lib);
+    lib.pictures.push_back(LibraryPicture{a, a + ".jpg", "a.jpg", 4000, 3000, defaultCrop(4000, 3000), true});
+    const std::string b = newPictureId(lib);
+    CHECK(a == "p1" && b == "p2");
+    lib.pictures.push_back(LibraryPicture{b, b + ".png", "b.png", 1920, 1080, defaultCrop(1920, 1080), false});
+    lib.pictures.push_back(LibraryPicture{"p3", "p3.heic", "c.heic", 3024, 4032, defaultCrop(3024, 4032), true});
+    lib.nextId = 4;
+    lib.pictures.erase(lib.pictures.begin() + 2);  // p3 removed: not used again
+    CHECK(newPictureId(lib) == "p4");
+
+    // Saved and read back; bad entries are left out.
+    lib.shuffle = ShuffleSettings{true, 30, false};
+    const std::string json = serializePictureLibrary(lib);
+    std::optional<PictureLibrary> back = parsePictureLibrary(json);
+    CHECK(back && back->pictures.size() == 2U && back->nextId == lib.nextId);
+    CHECK(back->shuffle.enabled && back->shuffle.minutes == 30U && !back->shuffle.random);
+    CHECK(back->pictures[1].id == "p2" && !back->pictures[1].shuffle && back->pictures[1].width == 1920U);
+    CHECK(!parsePictureLibrary("[]") && !parsePictureLibrary("x"));
+    back = parsePictureLibrary(R"({"pictures":[{"id":"p1","file":"..\\x.jpg","width":10,"height":10},)"
+                               R"({"id":"q","file":"q.jpg","width":10,"height":10},)"
+                               R"({"id":"p7","file":"p7.jpg","width":480,"height":272,"crop":{"x":0,"y":0,"w":2,"h":1}}],)"
+                               R"("shuffle":{"enabled":true,"minutes":0}})");
+    CHECK(back && back->pictures.size() == 1U && back->pictures[0].id == "p7");
+    CHECK(back->pictures[0].crop.w == 1.0);  // a bad crop: the centred part
+    CHECK(back->shuffle.enabled && back->shuffle.minutes == 10U);  // a bad time: the default
+
+    // The shuffle: in order (p2 takes no part), or another at random.
+    lib.pictures.push_back(LibraryPicture{"p5", "p5.jpg", "e.jpg", 800, 600, defaultCrop(800, 600), true});
+    lib.shuffle.random = false;
+    CHECK(nextShufflePicture(lib, "p1", 0.0) == std::optional<std::string>("p5"));
+    CHECK(nextShufflePicture(lib, "p5", 0.0) == std::optional<std::string>("p1"));
+    CHECK(nextShufflePicture(lib, "p2", 0.0) == std::optional<std::string>("p1"));
+    lib.shuffle.random = true;
+    CHECK(nextShufflePicture(lib, "p1", 0.99) == std::optional<std::string>("p5"));
+    CHECK(nextShufflePicture(lib, "p5", 0.0) == std::optional<std::string>("p1"));
+    for (LibraryPicture& p : lib.pictures) {
+        p.shuffle = false;
+    }
+    CHECK(!nextShufflePicture(lib, "p1", 0.5));
 }
 
 void testPreferenceStore()
@@ -1525,7 +1602,7 @@ void testTrayText()
     CHECK(std::strcmp(trayText(TrayText::Exit, 1), "Exit") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 0), "\xC3\x87\xC4\xB1k\xC4\xB1\xC5\x9F") == 0);
     CHECK(std::strcmp(trayText(TrayText::Exit, 7), trayText(TrayText::Exit, 0)) == 0);  // unknown: Turkish
-    for (int id = 0; id <= static_cast<int>(TrayText::SettingsNotSaved); ++id) {
+    for (int id = 0; id <= static_cast<int>(TrayText::PicturesNotAdded); ++id) {
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 0)) > 0);
         CHECK(std::strlen(trayText(static_cast<TrayText>(id), 1)) > 0);
     }
@@ -3841,6 +3918,7 @@ int main()
     testPreferenceFileDamaged();
     testBoardVersion();
     testSettingsModel();
+    testPictureLibrary();
     testPreferenceStore();
     testVolumeLimit();
     testVolumeLimitOnSelect();

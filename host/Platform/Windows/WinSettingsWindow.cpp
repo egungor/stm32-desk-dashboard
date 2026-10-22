@@ -143,6 +143,15 @@ void WinSettingsWindow::createWebView()
                                 (void)settings->put_IsStatusBarEnabled(FALSE);
                                 (void)settings->put_IsZoomControlEnabled(FALSE);
                             }
+                            if (!mapHost_.empty() && !mapFolder_.empty()) {
+                                (void)CreateDirectoryW(mapFolder_.c_str(), nullptr);
+                                Microsoft::WRL::ComPtr<ICoreWebView2_3> webview3;
+                                if (SUCCEEDED(webview_.As(&webview3)) && webview3) {
+                                    (void)webview3->SetVirtualHostNameToFolderMapping(
+                                        mapHost_.c_str(), mapFolder_.c_str(),
+                                        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+                                }
+                            }
                             EventRegistrationToken token{};
                             (void)webview_->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(

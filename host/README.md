@@ -62,6 +62,7 @@ host/
 │   └── MenuService.*       # card slot 1 (coloured by the lists), the day detail, the 08:00 warning
 ├── Picture/                # the picture card (ADR-010, #47)
 │   ├── PictureSource.h     # IPictureSource: the 480 x 272 RGB565 picture, or none
+│   ├── PictureLibrary.*    # pictures.json: photos, crops, shuffle (ADR-012)
 │   └── PictureService.*    # PICTURE and its PICTURE_PARTs after the cards
 ├── Weather/                # the weather card (#18)
 │   ├── WeatherReport.*     # Open-Meteo URL and answer, WMO code -> icon and text
@@ -80,7 +81,7 @@ host/
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
 │   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
-│   ├── WinPicture.*        # picture.txt and the WIC import (centre crop, 480 x 272)
+│   ├── WinPicture.*        # the library's files, the shown picture, the shuffle, WIC (ADR-012)
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
 │   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt, ...
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8
@@ -171,10 +172,10 @@ dashboard-host notify            the notifications card, its detail and the
                                    sends them (ADR-009)
 dashboard-host notify focus      whether Windows accepts pop-ups (Do not
                                    disturb), at every change (Ctrl+C stops)
-dashboard-host picture [<file> | none]
-                                   the picture card's file (ADR-010): check
-                                   that it loads, or set / remove it (the
-                                   tray picks it up within 5 s)
+dashboard-host picture [add <file>]
+                                   the picture library (ADR-012): list it and
+                                   check that the shown picture loads, or add
+                                   a photo (a running tray reads it at once)
 dashboard-host menu              print the menu card and the day's detail
 dashboard-host menu import <image> [<image> ...]
                                    read menu images with the Claude API into
@@ -332,8 +333,9 @@ A window with a WebView2 control showing `Platform/Windows/settings.html`
 (language, start with Windows, startup screen, screen timeout, upside
 down), Appearance (theme, accent, Audio tab layout, grid, startup tab),
 Audio (the outputs' names on the board, favourites and order; the
-volume limit), Dashboard (weather location with a search, the picture,
-menu images, the Claude API key, the food lists), Claude Code (copy the
+volume limit), Dashboard (weather location with a search, menu images,
+the Claude API key, the food lists), Pictures (ADR-012: add photos,
+show, crop with zoom, delete, the shuffle), Claude Code (copy the
 hook setting) and About (program and firmware versions, a warning when
 their protocols differ, the settings folder and the log).
 
@@ -342,8 +344,18 @@ their protocols differ, the settings folder and the log).
   (`HostEvent::SettingsRequest`), which applies them, tells the board and
   saves `preferences.txt`; its snapshot keeps the open window up to date,
   also when a setting is changed on the board.
-- The weather, picture and food lists are files the tray writes, then
-  pushes `SettingsChanged`; the API key goes to `claude.txt`.
+- The weather, the food lists and the picture library (`pictures.json`)
+  are files the tray writes, then pushes `SettingsChanged`; the API key
+  goes to `claude.txt`. Which picture is shown is the service's
+  (`picture-current.txt`); "Göster" is a request to it.
+- Pictures (ADR-012): an added photo is copied unchanged into
+  `pictures\<id>.<ext>` with an upright JPEG preview in
+  `pictures\previews` (the window cannot show HEIC); the window reads
+  the folder as `https://pictures.desk-dashboard/`. The crop is kept as
+  fractions of the upright photo; the board's 480 x 272 is cut from the
+  original. The shuffle runs in the service; a new picture reaches the
+  board in about 20 s and is shown when complete. A `picture.txt` from
+  before #72 becomes the first picture.
 - It needs the Microsoft Edge WebView2 Runtime (part of Windows 11);
   without it the tray says where to get it. Its cache is in
   `%LOCALAPPDATA%\stm32-desk-dashboard\WebView2`. CMake fetches the
@@ -364,11 +376,11 @@ a UTF-8 text file (format in `App/PreferenceFile.h`).
 - `run` loads the file at start (`Preferences: <path>`, `(new)` if it does
   not exist yet) and saves what the board or the settings window changes
   at most once per second and when it stops. It does not check the file
-  by itself (#61): `alias`, `weather`, `picture` and `menu import` set the
+  by itself (#61): `alias`, `weather`, `picture add` and `menu import` set the
   named event `Local\stm32-desk-dashboard-settings` after writing, and
   the service then reads `preferences.txt` (`Preferences reloaded from
   …`, sent to the board), `weather.txt`, the menu files and
-  `picture.txt` again. A change from the file wins over board changes
+  `pictures.json` again. A change from the file wins over board changes
   not yet saved. After editing a file by hand, restart the tray program
   (or run one of those commands).
 - The file is replaced atomically (`preferences.tmp`, then

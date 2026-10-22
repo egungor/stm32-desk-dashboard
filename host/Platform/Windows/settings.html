@@ -6,7 +6,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https://pictures.desk-dashboard">
 <title>Settings</title>
 <style>
 :root {
@@ -87,6 +87,28 @@ button.b:disabled { opacity: .5; cursor: default; }
 #toast.show { opacity: 1; }
 #toast.bad { border-color: var(--danger); }
 input[type=range] { width: 200px; accent-color: var(--accent); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; max-width: 760px; }
+.pic { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.pic.current { border: 2px solid var(--accent); }
+.thumb { width: 100%; aspect-ratio: 480 / 272; background-color: var(--bg); background-repeat: no-repeat; }
+.pic .meta { padding: 8px 10px; }
+.pic .meta div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pic .meta small { color: var(--muted); }
+.pic .acts { display: flex; gap: 6px; padding: 0 10px 10px; flex-wrap: wrap; align-items: center; }
+.pic .acts label { display: flex; align-items: center; gap: 4px; margin-right: auto; font-size: 12px; color: var(--muted); }
+.pic .acts button.b { padding: 4px 10px; font-size: 13px; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 9px; background: var(--accent); color: var(--accent-text); margin-left: 6px; }
+#cropper { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 10; }
+#cropper.open { display: flex; }
+#cropper .box { background: var(--panel); border-radius: 10px; padding: 18px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+#cropper h3 { margin: 0 0 4px; }
+#frame { position: relative; width: 640px; height: 363px; overflow: hidden; background: #000; cursor: grab;
+  border-radius: 6px; touch-action: none; user-select: none; }
+#frame.drag { cursor: grabbing; }
+#frame img { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; max-width: none; }
+#cropper .tools { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+#cropper .tools input[type=range] { flex: 1; width: auto; }
+#cropper .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -97,6 +119,7 @@ input[type=range] { width: 200px; accent-color: var(--accent); }
   <button data-page="display" data-t="pDisplay"></button>
   <button data-page="audio" data-t="pAudio"></button>
   <button data-page="dashboard" data-t="pDashboard"></button>
+  <button data-page="pictures" data-t="pPictures"></button>
   <button data-page="claude" data-t="pClaude"></button>
   <button data-page="about" data-t="pAbout"></button>
 </nav>
@@ -167,12 +190,6 @@ input[type=range] { width: 200px; accent-color: var(--accent); }
       <div class="places" id="places"></div>
     </div>
     <div class="card">
-      <h3 data-t="picture"></h3>
-      <div class="row"><div class="label"><span class="mono" id="pictureNow"></span></div>
-        <button class="b" id="pictureChoose" data-t="choose"></button>
-        <button class="b" id="pictureClear" data-t="remove"></button></div>
-    </div>
-    <div class="card">
       <h3 data-t="menu"></h3>
       <div class="row"><div class="label"><span data-t="menuImport"></span><small data-t="menuImportHint"></small></div>
         <button class="b" id="menuImport" data-t="chooseImages"></button></div>
@@ -187,6 +204,28 @@ input[type=range] { width: 200px; accent-color: var(--accent); }
       <textarea id="foodLists" spellcheck="false"></textarea>
       <div class="row" style="justify-content:flex-end"><button class="b primary" id="foodListsSave" data-t="save"></button></div>
     </div>
+  </section>
+
+  <section id="pictures">
+    <h2 data-t="pPictures"></h2>
+    <div class="card">
+      <div class="row"><div class="label"><span data-t="picAdd"></span><small data-t="picAddHint"></small></div>
+        <button class="b primary" id="picturesAdd" data-t="picAddButton"></button></div>
+      <div class="row"><div class="label"><span data-t="shuffle"></span><small data-t="shuffleHint"></small></div>
+        <label class="switch"><input type="checkbox" id="shuffleOn"><span></span></label></div>
+      <div class="row"><div class="label" data-t="shuffleEvery"></div>
+        <select id="shuffleMinutes"><option value="1">1 dk</option><option value="5">5 dk</option>
+          <option value="10">10 dk</option><option value="15">15 dk</option><option value="30">30 dk</option>
+          <option value="60">1 sa</option><option value="120">2 sa</option><option value="360">6 sa</option>
+          <option value="1440">24 sa</option></select></div>
+      <div class="row"><div class="label" data-t="shuffleOrder"></div>
+        <select id="shuffleRandom"><option value="1" data-t="orderRandom"></option>
+          <option value="0" data-t="orderList"></option></select></div>
+      <div class="row"><div class="label"><span data-t="picNone"></span><small data-t="picNoneHint"></small></div>
+        <button class="b" id="pictureNone" data-t="picNoneButton"></button></div>
+    </div>
+    <p class="muted" id="picEmpty" data-t="picEmpty"></p>
+    <div class="grid" id="pictureGrid"></div>
   </section>
 
   <section id="claude">
@@ -212,6 +251,16 @@ input[type=range] { width: 200px; accent-color: var(--accent); }
     </div>
   </section>
 </main>
+<div id="cropper"><div class="box">
+  <h3 data-t="cropTitle"></h3>
+  <p class="muted" data-t="cropHint" style="margin:0 0 10px"></p>
+  <div id="frame"><img id="cropImg" alt=""></div>
+  <div class="tools"><button class="b" id="zoomOut">−</button>
+    <input type="range" id="zoom" min="0" max="1000" value="0"><button class="b" id="zoomIn">+</button>
+    <button class="b" id="cropReset" data-t="reset"></button></div>
+  <div class="buttons"><button class="b" id="cropCancel" data-t="cancel"></button>
+    <button class="b primary" id="cropSave" data-t="save"></button></div>
+</div></div>
 <div id="toast"></div>
 
 <script>
@@ -250,7 +299,26 @@ const TEXT = {
   weather: ["Hava durumu", "Weather"], location: ["Konum", "Location"], noLocation: ["Konum ayarlanmadı", "No location set"],
   search: ["Ara", "Search"], cityPh: ["Şehir adı", "City name"], noPlaces: ["Yer bulunamadı.", "No place found."],
   searching: ["Aranıyor…", "Searching…"],
-  picture: ["Resim kartı", "Picture card"], noPicture: ["Resim seçilmedi", "No picture"],
+  pPictures: ["Resimler", "Pictures"],
+  picAdd: ["Resim ekle", "Add pictures"],
+  picAddHint: ["Seçilen fotoğraflar ayarlar klasörüne kopyalanır; kartta gösterilecek kısmı sonra da değiştirebilirsiniz.",
+    "The photos are copied into the settings folder; you can change the part shown on the board at any time."],
+  picAddButton: ["Fotoğraf seç…", "Choose photos…"],
+  shuffle: ["Karışık göster", "Shuffle"],
+  shuffleHint: ["İşaretli resimler sırayla karta gönderilir; yeni resim tamamı gelince görünür.",
+    "The marked pictures go to the board in turn; a new one shows once it has fully arrived."],
+  shuffleEvery: ["Değişme süresi", "Change every"],
+  shuffleOrder: ["Sıra", "Order"], orderRandom: ["Rastgele", "Random"], orderList: ["Listedeki sırayla", "As listed"],
+  picNone: ["Kartta resim gösterme", "No picture on the board"],
+  picNoneHint: ["Resim kartı boş kalır; karışık gösterim de kapanır.", "The picture card stays empty; the shuffle stops too."],
+  picNoneButton: ["Resmi kaldır", "Show none"],
+  picEmpty: ["Henüz resim yok. Fotoğraf ekleyin.", "No pictures yet. Add some photos."],
+  inShuffle: ["Karışıkta", "In shuffle"], onBoard: ["Kartta", "On board"],
+  show: ["Göster", "Show"], crop: ["Kırp", "Crop"], del: ["Sil", "Delete"],
+  delAsk: ["\"{n}\" silinsin mi?", "Delete \"{n}\"?"],
+  cropTitle: ["Kartta görünecek kısım", "The part shown on the board"],
+  cropHint: ["Sürükleyerek kaydırın, tekerlek ya da kaydırıcıyla yakınlaştırın.", "Drag to move, use the wheel or the slider to zoom."],
+  zoom: ["Yakınlaştır", "Zoom"], reset: ["Ortala", "Centre"], cancel: ["İptal", "Cancel"],
   choose: ["Seç…", "Choose…"], remove: ["Kaldır", "Remove"],
   menu: ["Yemek menüsü", "Menu"], menuImport: ["Menü görüntülerini yükle", "Load menu images"],
   menuImportHint: ["Görüntüleri Claude okur ve ayın menüsünü kaydeder.", "Claude reads the images and saves the month's menu."],
@@ -338,8 +406,7 @@ function render() {
   $("weatherNow").textContent = s.weather
     ? (s.weather.name || "—") + " (" + s.weather.latitude.toFixed(4) + ", " + s.weather.longitude.toFixed(4) + ")"
     : t("noLocation");
-  $("pictureNow").textContent = s.picture || t("noPicture");
-  $("pictureClear").disabled = !s.picture;
+  renderPictures();
   $("menuImport").disabled = s.importing;
   $("menuImport").textContent = t(s.importing ? "importing" : "chooseImages");
   $("claudeKeyNow").textContent = s.claudeKeySet ? t("keySet", { m: s.claudeModel }) : t("keyNotSet");
@@ -464,8 +531,160 @@ $("search").onclick = () => {
   send({ cmd: "weatherSearch", query: q });
 };
 $("city").onkeydown = e => { if (e.key === "Enter") $("search").click(); };
-$("pictureChoose").onclick = () => send({ cmd: "pictureChoose" });
-$("pictureClear").onclick = () => send({ cmd: "pictureClear" });
+$("picturesAdd").onclick = () => send({ cmd: "picturesAdd" });
+$("pictureNone").onclick = () => {
+  sendShuffle({ enabled: false });
+  send({ cmd: "pictureShow", id: "" });
+};
+$("shuffleOn").onchange = e => sendShuffle({ enabled: e.target.checked });
+$("shuffleMinutes").onchange = e => sendShuffle({ minutes: Number(e.target.value) });
+$("shuffleRandom").onchange = e => sendShuffle({ random: e.target.value === "1" });
+
+function sendShuffle(change) {
+  const s = Object.assign({}, state.shuffle, change);
+  send({ cmd: "pictureShuffle", enabled: s.enabled, minutes: s.minutes, random: s.random });
+}
+
+// The cropped part as a CSS background: what goes to the board.
+function thumbStyle(el, p) {
+  const sx = 100 / p.crop.w, sy = 100 / p.crop.h;
+  el.style.backgroundImage = "url(" + JSON.stringify(p.preview) + ")";
+  el.style.backgroundSize = sx + "% " + sy + "%";
+  el.style.backgroundPosition = (p.crop.w < 1 ? (p.crop.x / (1 - p.crop.w)) * 100 : 0) + "% " +
+                                (p.crop.h < 1 ? (p.crop.y / (1 - p.crop.h)) * 100 : 0) + "%";
+}
+
+function renderPictures() {
+  const s = state;
+  $("shuffleOn").checked = s.shuffle.enabled;
+  if (document.activeElement !== $("shuffleMinutes")) $("shuffleMinutes").value = String(s.shuffle.minutes);
+  if (document.activeElement !== $("shuffleRandom")) $("shuffleRandom").value = s.shuffle.random ? "1" : "0";
+  $("shuffleMinutes").disabled = $("shuffleRandom").disabled = !s.shuffle.enabled;
+  $("pictureNone").disabled = !s.currentPicture && !s.shuffle.enabled;
+  $("picEmpty").hidden = s.pictures.length > 0;
+  const grid = $("pictureGrid");
+  grid.textContent = "";
+  s.pictures.forEach(p => {
+    const card = document.createElement("div");
+    card.className = "pic" + (p.id === s.currentPicture ? " current" : "");
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    thumbStyle(thumb, p);
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const name = document.createElement("div");
+    name.textContent = p.name || p.id;
+    if (p.id === s.currentPicture) {
+      const b = document.createElement("span");
+      b.className = "badge";
+      b.textContent = t("onBoard");
+      name.appendChild(b);
+    }
+    const size = document.createElement("small");
+    size.textContent = p.width + " × " + p.height;
+    meta.append(name, size);
+    const acts = document.createElement("div");
+    acts.className = "acts";
+    const inc = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = p.shuffle;
+    cb.onchange = () => send({ cmd: "pictureInclude", id: p.id, value: cb.checked ? 1 : 0 });
+    inc.append(cb, document.createTextNode(t("inShuffle")));
+    const show = document.createElement("button");
+    show.className = "b"; show.textContent = t("show"); show.disabled = p.id === s.currentPicture;
+    show.onclick = () => send({ cmd: "pictureShow", id: p.id });
+    const crop = document.createElement("button");
+    crop.className = "b"; crop.textContent = t("crop");
+    crop.onclick = () => openCropper(p);
+    const del = document.createElement("button");
+    del.className = "b"; del.textContent = t("del");
+    del.onclick = () => { if (confirm(t("delAsk", { n: p.name || p.id }))) send({ cmd: "pictureRemove", id: p.id }); };
+    acts.append(inc, show, crop, del);
+    card.append(thumb, meta, acts);
+    grid.appendChild(card);
+  });
+}
+
+// --- the cropper: the frame is the board's 480:272; the image is moved and
+// scaled under it; what the frame shows is the part sent to the board.
+const crop = { pic: null, iw: 0, ih: 0, scale: 1, min: 1, max: 1, x: 0, y: 0 };
+const FW = 640, FH = 363;
+
+function cropClamp() {
+  crop.scale = Math.min(crop.max, Math.max(crop.min, crop.scale));
+  const w = crop.iw * crop.scale, h = crop.ih * crop.scale;
+  crop.x = Math.min(0, Math.max(FW - w, crop.x));
+  crop.y = Math.min(0, Math.max(FH - h, crop.y));
+  const img = $("cropImg");
+  img.style.transform = "translate(" + crop.x + "px," + crop.y + "px) scale(" + crop.scale + ")";
+  $("zoom").value = String(Math.round(1000 * Math.log(crop.scale / crop.min) / Math.log(crop.max / crop.min || 2)));
+}
+
+function zoomAt(scale, cx, cy) {
+  const old = crop.scale;
+  crop.scale = Math.min(crop.max, Math.max(crop.min, scale));
+  crop.x = cx - (cx - crop.x) * crop.scale / old;
+  crop.y = cy - (cy - crop.y) * crop.scale / old;
+  cropClamp();
+}
+
+function cropFrom(rect) {
+  crop.scale = FW / (rect.w * crop.iw);
+  crop.x = -rect.x * crop.iw * crop.scale;
+  crop.y = -rect.y * crop.ih * crop.scale;
+  cropClamp();
+}
+
+function openCropper(p) {
+  const img = $("cropImg");
+  crop.pic = p;
+  img.onload = () => {
+    crop.iw = img.naturalWidth; crop.ih = img.naturalHeight;
+    crop.min = Math.max(FW / crop.iw, FH / crop.ih);
+    crop.max = crop.min * 8;
+    cropFrom(p.crop);
+  };
+  img.src = p.preview;
+  $("cropper").classList.add("open");
+}
+
+function centredCrop() {
+  // The largest centred 480:272 part.
+  const aspect = 480 / 272, a = crop.iw / crop.ih;
+  const w = a > aspect ? aspect / a : 1, h = a > aspect ? 1 : a / aspect;
+  return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
+}
+
+(function cropEvents() {
+  const frame = $("frame");
+  let drag = null;
+  frame.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY }; frame.setPointerCapture(e.pointerId); frame.classList.add("drag"); };
+  frame.onpointermove = e => {
+    if (!drag) return;
+    crop.x += e.clientX - drag.x; crop.y += e.clientY - drag.y;
+    drag = { x: e.clientX, y: e.clientY };
+    cropClamp();
+  };
+  frame.onpointerup = frame.onpointercancel = () => { drag = null; frame.classList.remove("drag"); };
+  frame.onwheel = e => {
+    e.preventDefault();
+    const r = frame.getBoundingClientRect();
+    zoomAt(crop.scale * Math.pow(1.0015, -e.deltaY), e.clientX - r.left, e.clientY - r.top);
+  };
+  $("zoom").oninput = e => zoomAt(crop.min * Math.pow(crop.max / crop.min, Number(e.target.value) / 1000), FW / 2, FH / 2);
+  $("zoomIn").onclick = () => zoomAt(crop.scale * 1.25, FW / 2, FH / 2);
+  $("zoomOut").onclick = () => zoomAt(crop.scale / 1.25, FW / 2, FH / 2);
+  $("cropReset").onclick = () => cropFrom(centredCrop());
+  $("cropCancel").onclick = () => $("cropper").classList.remove("open");
+  $("cropSave").onclick = () => {
+    const w = FW / (crop.iw * crop.scale), h = FH / (crop.ih * crop.scale);
+    const x = Math.min(1 - w, Math.max(0, -crop.x / (crop.iw * crop.scale)));
+    const y = Math.min(1 - h, Math.max(0, -crop.y / (crop.ih * crop.scale)));
+    send({ cmd: "pictureCrop", id: crop.pic.id, x, y, w, h });
+    $("cropper").classList.remove("open");
+  };
+})();
 $("menuImport").onclick = () => send({ cmd: "menuImport" });
 $("claudeKeySave").onclick = () => {
   const key = $("claudeKey").value.trim();

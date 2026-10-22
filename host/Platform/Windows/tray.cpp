@@ -23,6 +23,7 @@
 #include <shellapi.h>
 #include <share.h>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <cstdint>
@@ -65,6 +66,9 @@ constexpr UINT kMenuImportDone = WM_APP + 4;  // importer: menu import finished
 constexpr UINT kSnapshotMessage = WM_APP + 5;  // worker: what the settings window shows changed
 constexpr UINT kPlacesMessage = WM_APP + 6;    // weather search finished
 constexpr UINT kIconId = 1;
+// The settings window finds the pictures folder here (ADR-012).
+constexpr const wchar_t* kPicturesHost = L"pictures.desk-dashboard";
+constexpr const char* kPicturesUrl = "https://pictures.desk-dashboard/";
 constexpr ULONGLONG kMaxLogBytes = 1024ULL * 1024ULL;
 
 enum MenuId : UINT {
@@ -229,15 +233,15 @@ void showBalloon(const std::wstring& title, const std::wstring& body, bool warni
 }
 
 // The images chosen in the file dialog; empty if cancelled.
-std::vector<std::wstring> chooseImages()
+std::vector<std::wstring> chooseImages(const std::wstring& name, const std::wstring& patterns,
+                                       const std::wstring& title)
 {
     std::vector<wchar_t> buffer(32768, L'\0');
-    std::wstring filter = text(TrayText::MenuImages) + L" (*.png, *.jpg, *.webp, *.gif)";
+    std::wstring filter = name;
     filter.push_back(L'\0');
-    filter += L"*.png;*.jpg;*.jpeg;*.webp;*.gif";
+    filter += patterns;
     filter.push_back(L'\0');
     filter.push_back(L'\0');
-    const std::wstring title = text(TrayText::LoadMenu);
 
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
@@ -272,7 +276,8 @@ std::vector<std::wstring> chooseImages()
     if (g_app.importing) {
         return;
     }
-    const std::vector<std::wstring> paths = chooseImages();
+    const std::vector<std::wstring> paths = chooseImages(text(TrayText::MenuImages) + L" (*.png, *.jpg, *.webp, *.gif)",
+                                                         L"*.png;*.jpg;*.jpeg;*.webp;*.gif", text(TrayText::LoadMenu));
     if (paths.empty()) {
         return;
     }
@@ -312,39 +317,6 @@ void onMenuImportDone()
     showBalloon(text(result.ok ? TrayText::MenuImported : TrayText::MenuImportFailed), win::toWide(result.message),
                 !result.ok);
     postToPage(noticeJson(result.ok, result.message));
-    postState();
-}
-
-// The picture card (ADR-010): one image file; its path goes to picture.txt
-// and the service loop reads it.
-[[maybe_unused]] void choosePicture()
-{
-    std::vector<wchar_t> buffer(MAX_PATH * 4, L'\0');
-    std::wstring filter = text(TrayText::PictureFiles) + L" (*.jpg, *.png, *.bmp, *.gif, *.webp, *.heic)";
-    filter.push_back(L'\0');
-    filter += L"*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp;*.heic;*.tif;*.tiff";
-    filter.push_back(L'\0');
-    filter.push_back(L'\0');
-    const std::wstring title = text(TrayText::ChoosePicture);
-
-    OPENFILENAMEW ofn{};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_app.window;
-    ofn.lpstrFilter = filter.c_str();
-    ofn.lpstrFile = buffer.data();
-    ofn.nMaxFile = static_cast<DWORD>(buffer.size());
-    ofn.lpstrTitle = title.c_str();
-    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    SetForegroundWindow(g_app.window);
-    if (!GetOpenFileNameW(&ofn)) {
-        return;
-    }
-    const std::string path = win::toUtf8(buffer.data());
-    if (!win::storePicturePath(path)) {
-        logLine("WARN: could not save picture.txt.");
-        return;
-    }
-    g_app.events.push(HostEvent::SettingsChanged);
     postState();
 }
 
@@ -407,7 +379,7 @@ SettingsState buildState()
     if (const std::optional<std::string> text = weather.read()) {
         s.weather = parseLocationFile(*text);
     }
-    s.picture = win::storedPicturePath().value_or("");
+    s.pictures = win::readPictureLibrary().value_or(PictureLibrary());
     win::WinPreferenceFile lists(L"menu-lists");
     s.foodLists = lists.read().value_or(kMenuListsTemplate);
     win::WinPreferenceFile claude(L"claude");
@@ -436,7 +408,7 @@ void postState()
 {
 #if DASHBOARD_SETTINGS_WINDOW
     if (g_app.settings && g_app.settings->isOpen()) {
-        g_app.settings->post(settingsStateJson(buildState()));
+        g_app.settings->post(settingsStateJson(buildState(), kPicturesUrl));
     }
 #endif
 }
@@ -477,6 +449,76 @@ void searchWeather(const std::string& query)
     });
 }
 
+// Photos for the picture card (ADR-012): copied into the pictures folder
+// with a preview; the service reads the library again.
+void addPictures()
+{
+    const std::vector<std::wstring> paths =
+        chooseImages(text(TrayText::PictureFiles) + L" (*.jpg, *.png, *.heic, *.webp, *.bmp, *.gif, *.tif)",
+                     L"*.jpg;*.jpeg;*.png;*.heic;*.heif;*.webp;*.bmp;*.gif;*.tif;*.tiff", text(TrayText::AddPictures));
+    if (paths.empty()) {
+        return;
+    }
+    PictureLibrary library = win::readPictureLibrary().value_or(PictureLibrary());
+    unsigned added = 0;
+    std::string failed;
+    for (const std::wstring& path : paths) {
+        std::string error;
+        if (win::addLibraryPicture(library, path, error)) {
+            ++added;
+        } else {
+            logLine("WARN: picture " + win::toUtf8(path.c_str()) + ": " + error);
+            failed += (failed.empty() ? "" : ", ") + win::toUtf8(path.substr(path.find_last_of(L"\\/") + 1U).c_str());
+        }
+    }
+    logLine("Pictures added: " + std::to_string(added) + ".");
+    if (added > 0U) {
+        settingsFileSaved(win::writePictureLibrary(library), "pictures.json");
+    }
+    if (!failed.empty()) {
+        postToPage(noticeJson(false, win::toUtf8(text(TrayText::PicturesNotAdded).c_str()) + " " + failed));
+    }
+    postState();
+}
+
+// Remove a picture, change its part, its place in the shuffle, or the
+// shuffle's settings: pictures.json, then the service reads it again.
+void editPictures(const SettingsRequest& request)
+{
+    PictureLibrary library = win::readPictureLibrary().value_or(PictureLibrary());
+    auto it = std::find_if(library.pictures.begin(), library.pictures.end(),
+                           [&request](const LibraryPicture& p) { return p.id == request.name; });
+    switch (request.kind) {
+    case SettingsRequestKind::PictureShuffle:
+        library.shuffle = request.shuffle;
+        break;
+    case SettingsRequestKind::PictureRemove:
+        if (it == library.pictures.end()) {
+            return;
+        }
+        win::removeLibraryFiles(*it);
+        library.pictures.erase(it);
+        break;
+    case SettingsRequestKind::PictureInclude:
+        if (it == library.pictures.end()) {
+            return;
+        }
+        it->shuffle = request.value != 0U;
+        break;
+    case SettingsRequestKind::PictureCrop:
+        if (it == library.pictures.end() || !validCrop(request.crop, it->width, it->height)) {
+            logLine("WARN: settings window: a picture part that does not fit was not saved.");
+            postState();
+            return;
+        }
+        it->crop = request.crop;
+        break;
+    default:
+        return;
+    }
+    settingsFileSaved(win::writePictureLibrary(library), "pictures.json");
+}
+
 // A request from the page (SettingsModel.h).
 void onSettingsMessage(const std::string& json)
 {
@@ -505,12 +547,18 @@ void onSettingsMessage(const std::string& json)
         settingsFileSaved(file.write(formatLocationFile(request->location)), "weather.txt");
         break;
     }
-    case SettingsRequestKind::PictureChoose:
-        choosePicture();
-        postState();
+    case SettingsRequestKind::PicturesAdd:
+        addPictures();
         break;
-    case SettingsRequestKind::PictureClear:
-        settingsFileSaved(win::storePicturePath(std::string()), "picture.txt");
+    case SettingsRequestKind::PictureShow:
+        // The service keeps which picture is shown (ADR-012).
+        g_app.events.pushText(HostEvent::SettingsRequest, json);
+        break;
+    case SettingsRequestKind::PictureRemove:
+    case SettingsRequestKind::PictureCrop:
+    case SettingsRequestKind::PictureInclude:
+    case SettingsRequestKind::PictureShuffle:
+        editPictures(*request);
         break;
     case SettingsRequestKind::FoodLists: {
         win::WinPreferenceFile file(L"menu-lists");
@@ -556,6 +604,7 @@ void openSettings()
 {
     if (!g_app.settings) {
         g_app.settings = std::make_unique<win::WinSettingsWindow>(GetModuleHandleW(nullptr), onSettingsMessage);
+        g_app.settings->mapFolder(kPicturesHost, win::picturesDirectory());  // the previews (ADR-012)
     }
     if (!g_app.settings->show(text(TrayText::SettingsTitle), settingsHtml(), g_app.icon.hIcon)) {
         logLine("WARN: settings window: the WebView2 Runtime is missing or the window failed.");
@@ -707,6 +756,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     g_app.dir = prefs.directory();
     openLog();
     logLine("dashboard-tray started.");
+    {
+        // The picture chosen before #72 becomes the library's first.
+        std::string message;
+        if (win::migrateOldPicture(message) && !message.empty()) {
+            logLine(message);
+        }
+    }
 
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);

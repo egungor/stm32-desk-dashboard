@@ -125,6 +125,10 @@ const char* trayText(TrayText id, std::uint8_t language)
                          "https://go.microsoft.com/fwlink/p/?LinkId=2124703 adresinden kurup tekrar deneyin.";
     case TrayText::SettingsSaved:
         return english ? "Saved." : "Kaydedildi.";
+    case TrayText::AddPictures:
+        return english ? "Add pictures" : "Resim ekle";
+    case TrayText::PicturesNotAdded:
+        return english ? "Could not be read:" : "Okunamad\xC4\xB1:";
     case TrayText::SettingsNotSaved:
         return english ? "Could not save; see the log." : "Kaydedilemedi; g\xC3\xBCnl\xC3\xBC\xC4\x9F\xC3\xBC a\xC3\xA7\xC4\xB1n.";
     }

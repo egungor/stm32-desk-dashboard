@@ -12,7 +12,10 @@
 //   order     ids [...]                   the audio devices in the new order
 //   weatherSearch  query                  places for a city name
 //   weatherSet     name, latitude, longitude
-//   pictureChoose | pictureClear
+//   picturesAdd                           choose photos and add them (ADR-012)
+//   pictureRemove  id | pictureShow  id ("" none) | pictureInclude  id, value
+//   pictureCrop    id, x, y, w, h        the part shown (fractions of the photo)
+//   pictureShuffle enabled, minutes, random
 //   foodLists text                        menu-lists.txt
 //   claudeKey key                         claude.txt's api_key ("" removes it)
 //   menuImport | startup value | copyHook | openFolder | openLog
@@ -21,8 +24,9 @@
 // "places":[...]}, {"type":"notice","ok":bool,"text":...}.
 //
 // setting, alias, favorite and order change the preferences the service
-// owns: the tray passes them to the service loop (HostEvent::SettingsRequest),
-// which applies them with applySettingsRequest() and tells the board.
+// owns, pictureShow the picture it shows: the tray passes them to the
+// service loop (HostEvent::SettingsRequest), which applies them
+// (applySettingsRequest() for the preferences) and tells the board.
 #pragma once
 
 #include <cstdint>
@@ -31,6 +35,7 @@
 #include <vector>
 
 #include "HidMatch.h"
+#include "PictureLibrary.h"
 #include "Preferences.h"
 #include "WeatherLocation.h"
 #include "protocol.h"
@@ -50,6 +55,7 @@ struct ServiceSnapshot {
     BoardVersion board;
     ProtoSettings settings{};
     std::vector<SettingsDevice> devices;  // in the board's order
+    std::string picture;                  // the shown picture's id (ADR-012), "" none
 
     bool operator==(const ServiceSnapshot& o) const;
     bool operator!=(const ServiceSnapshot& o) const { return !(*this == o); }
@@ -60,7 +66,7 @@ struct SettingsState {
     std::string hostVersion;
     ServiceSnapshot service;
     std::optional<WeatherLocation> weather;
-    std::string picture;    // path, "" none
+    PictureLibrary pictures;  // pictures.json (ADR-012)
     std::string foodLists;  // menu-lists.txt
     bool claudeKeySet = false;
     std::string claudeModel;
@@ -69,7 +75,8 @@ struct SettingsState {
     std::string folder;      // the settings folder
 };
 
-std::string settingsStateJson(const SettingsState& state);
+// @p previewBase: where the page finds the previews ("https://<host>/").
+std::string settingsStateJson(const SettingsState& state, const std::string& previewBase = std::string());
 std::string placesJson(const std::vector<Place>& places);
 std::string noticeJson(bool ok, const std::string& text);
 
@@ -81,8 +88,12 @@ enum class SettingsRequestKind {
     Order,
     WeatherSearch,
     WeatherSet,
-    PictureChoose,
-    PictureClear,
+    PicturesAdd,
+    PictureRemove,
+    PictureShow,
+    PictureCrop,
+    PictureInclude,
+    PictureShuffle,
     FoodLists,
     ClaudeKey,
     MenuImport,
@@ -94,11 +105,13 @@ enum class SettingsRequestKind {
 
 struct SettingsRequest {
     SettingsRequestKind kind = SettingsRequestKind::Get;
-    std::string name;  // setting: field; alias, favorite: device id
+    std::string name;  // setting: field; alias, favorite: device id; picture*: picture id
     std::string text;  // alias, weatherSearch query, foodLists, claudeKey
     unsigned value = 0;  // setting, favorite, startup
     std::vector<std::string> ids;  // order
     WeatherLocation location;      // weatherSet
+    NormRect crop;                 // pictureCrop
+    ShuffleSettings shuffle;       // pictureShuffle
 };
 
 // nullopt for anything that is not a known, well-formed request (unknown
@@ -113,7 +126,8 @@ bool applySettingsRequest(const SettingsRequest& request, Preferences& prefs);
 inline bool isServiceRequest(SettingsRequestKind kind)
 {
     return kind == SettingsRequestKind::Setting || kind == SettingsRequestKind::Alias ||
-           kind == SettingsRequestKind::Favorite || kind == SettingsRequestKind::Order;
+           kind == SettingsRequestKind::Favorite || kind == SettingsRequestKind::Order ||
+           kind == SettingsRequestKind::PictureShow;
 }
 
 // claude.txt with @p apiKey and the model of @p existing (kept), for the
