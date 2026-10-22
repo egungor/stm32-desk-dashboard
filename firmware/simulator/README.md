@@ -74,6 +74,7 @@ argument):
 | `104-dashboard-rain-red.png` | Rain, a "don't like" dish on Monday (yellow, badge), the bell "99+" and two Claude Code requests waiting (red) |
 | `105-dashboard-light.png` | The light theme: the cards keep their colours; one green status icon |
 | `106-menu-warning.png` | The morning menu warning (a prompt with one button) |
+| `107-picture-full-screen.png` | The picture card tapped (#53): the picture full screen, 480 × 272 (taken between 103 and 104) |
 | `97-banner.png` | A notification banner over the Dashboard (bell, app, countdown, two lines) |
 | `98-banner-audio.png` | The banner over the Audio tab; a tap opens the notifications list |
 | `99-notifications-detail.png` | The notifications list: app and time, sender and text |

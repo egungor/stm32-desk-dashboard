@@ -260,6 +260,7 @@ typedef struct
     uint8_t       *pic_buf;            /**< UI_PICTURE_BYTES (Ui_SetPictureBuffer) */
     bool           pic_valid;          /**< pic_buf holds the shown picture */
     lv_image_dsc_t pic_dsc;
+    lv_obj_t      *photo_obj;          /**< full-screen picture on lv_layer_top(), or NULL */
 
     /* Prompt over every screen (ui_dash.c, ADR-007); kept over a rebuild. */
     char           prompt_text[UI_PROMPT_BYTES + 1U];
@@ -344,6 +345,7 @@ void ui_dash_music_render(void);    /**< the Dashboard's now-playing card (media
 void ui_banner_rebuild(void);       /**< build the shown banner again (theme change) */
 void ui_banner_tick(void);          /**< countdown and time-out (banner_timer) */
 void ui_banner_close(void);         /**< hide the banner (a prompt, a dark screen) */
+void ui_photo_close(void);          /**< hide the full-screen picture (rebuild, waiting screen) */
 
 /** Light the screen if it is dark (screen timeout), as a touch would. */
 void ui_wake_screen(void);

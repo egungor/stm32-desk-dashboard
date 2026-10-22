@@ -1,6 +1,6 @@
 /**
  * @file    dash_client.c
- * @brief   STM32 side of the dashboard commands of protocol v6 (see
+ * @brief   STM32 side of the dashboard commands of protocol v7 (see
  *          dash_client.h).
  */
 #include "dash_client.h"

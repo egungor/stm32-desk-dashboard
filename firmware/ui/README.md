@@ -35,8 +35,9 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   left, white or dark text by the background; an empty slot is a dim frame
   that cannot be tapped); the bottom row is the board's own: now playing
   (music icon, a 36 px cover, the title; a tap opens the Music tab) and the
-  picture (`Ui_SetPictureBuffer`, `Ui_SetPicture`: 200 × 92 RGB565, or a
-  placeholder). A tap
+  picture (`Ui_SetPictureBuffer`, `Ui_SetPicture`: 480 × 272 RGB565,
+  scaled down to cover the card, or a placeholder; a tap shows it full
+  screen until the next tap, #53). A tap
   on a card shows the detail view in the tab ("Yükleniyor..." with the
   card's title until `Ui_ShowDetail`): a header with back, title,
   subtitle and ‹ › when the record's flags hold `n`; rows (label and

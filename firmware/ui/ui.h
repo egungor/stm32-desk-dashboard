@@ -368,8 +368,8 @@ uint32_t Ui_DashView(void);
 /* ------------------------------------------- status icons, picture card */
 
 #define UI_MAX_INDICATORS 4U       /**< = PROTO_MAX_INDICATORS */
-#define UI_PICTURE_W      200U     /**< = PROTO_PICTURE_W, the card's size */
-#define UI_PICTURE_H      92U      /**< = PROTO_PICTURE_H */
+#define UI_PICTURE_W      480U     /**< = PROTO_PICTURE_W, the screen's size */
+#define UI_PICTURE_H      272U     /**< = PROTO_PICTURE_H */
 #define UI_PICTURE_BYTES  (UI_PICTURE_W * UI_PICTURE_H * 2U) /**< RGB565, = PROTO_PICTURE_BYTES */
 
 /** Indicator colours; values match PROTO_INDICATOR_*. */
@@ -400,12 +400,16 @@ uint32_t Ui_IndicatorCount(void);
  *  board). Without one the picture card shows its placeholder. */
 void Ui_SetPictureBuffer(uint8_t *buffer);
 
-/** The picture card's picture (UI_PICTURE_BYTES of RGB565, copied), or
- *  NULL: the placeholder. */
+/** The picture (UI_PICTURE_BYTES of RGB565, copied), or NULL: the
+ *  placeholder. The picture card shows it scaled down and cropped; a tap
+ *  on the card shows it full screen until the next tap (NULL closes it). */
 void Ui_SetPicture(const uint8_t *pixels);
 
 /** True while the picture card shows a picture (for tests). */
 bool Ui_PictureShown(void);
+
+/** True while the picture is shown full screen (for tests). */
+bool Ui_PhotoShown(void);
 
 /* ---------------------------------------------------------------- prompt */
 
