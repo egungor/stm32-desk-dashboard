@@ -484,19 +484,42 @@ static void on_detail_button(lv_event_t *e)
     }
 }
 
-static lv_obj_t *make_header_button(lv_obj_t *bar, const char *symbol, lv_event_cb_t cb, void *user)
+/* A header button: a visible key (#49: the back arrow was hard to hit) with
+ * a touch area larger than it, more below, as the panel reports touches a
+ * few pixels lower than the finger (docs/hardware.md, touch check). */
+#define HEADER_BTN_H   30
+#define HEADER_TOUCH   12     /**< extra touch area around a header button (the panel reads 5-13 px low) */
+
+static lv_obj_t *make_header_button(lv_obj_t *bar, const char *symbol, int32_t width, lv_event_cb_t cb, void *user)
 {
     lv_obj_t *btn = ui_make_box(bar);
 
-    lv_obj_set_size(btn, 40, STRIP_H);
+    lv_obj_set_size(btn, width, HEADER_BTN_H);
+    ui_style_card(btn, 8);
     lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(btn, HEADER_TOUCH);
+    lv_obj_set_style_bg_color(btn, ui_color(g_ui.pal.accent), LV_STATE_PRESSED);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user);
-    lv_obj_center(ui_make_label(btn, &ui_font_16, g_ui.pal.text, symbol));
+    lv_obj_center(ui_make_label(btn, &ui_font_22, g_ui.pal.text, symbol));
     return btn;
 }
 
 /* Header: back, title and subtitle, previous / next when asked for. */
-static void build_detail_header(lv_obj_t *view, const char *title, const char *subtitle, bool nav)
+/* An invisible touch zone over the back button and HEADER_TOUCH pixels
+ * below it, on top of everything in @p view (#49): LVGL does not look for a
+ * button's extended touch area outside its parent (the header bar). */
+static void add_back_zone(lv_obj_t *view)
+{
+    lv_obj_t *zone = ui_make_box(view);
+
+    lv_obj_set_pos(zone, 0, 0);
+    lv_obj_set_size(zone, 4 + 64 + HEADER_TOUCH, STRIP_H + HEADER_TOUCH);
+    lv_obj_add_flag(zone, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(zone, on_back, LV_EVENT_CLICKED, NULL);
+    lv_obj_move_foreground(zone);
+}
+
+static lv_obj_t *build_detail_header(lv_obj_t *view, const char *title, const char *subtitle, bool nav)
 {
     lv_obj_t *bar = ui_make_box(view);
     lv_obj_t *texts;
@@ -505,10 +528,12 @@ static void build_detail_header(lv_obj_t *view, const char *title, const char *s
     lv_obj_set_size(bar, LV_PCT(100), STRIP_H);
     lv_obj_set_style_bg_color(bar, ui_color(g_ui.pal.bar), 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_hor(bar, 4, 0);
+    lv_obj_set_style_pad_column(bar, 8, 0);
     lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    (void)make_header_button(bar, SYM_PREV, on_back, NULL);
+    (void)make_header_button(bar, SYM_PREV, 64, on_back, NULL);
     texts = ui_make_box(bar);
     lv_obj_set_flex_grow(texts, 1);
     lv_obj_set_height(texts, LV_SIZE_CONTENT);
@@ -523,9 +548,10 @@ static void build_detail_header(lv_obj_t *view, const char *title, const char *s
     lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
     if (nav)
     {
-        (void)make_header_button(bar, SYM_PREV, on_nav, NULL);
-        (void)make_header_button(bar, SYM_NEXT, on_nav, (void *)1);
+        (void)make_header_button(bar, SYM_PREV, 48, on_nav, NULL);
+        (void)make_header_button(bar, SYM_NEXT, 48, on_nav, (void *)1);
     }
+    return bar;
 }
 
 static void add_row(lv_obj_t *list, char *line)
@@ -674,20 +700,33 @@ static void build_detail_view(void)
         char *card_lines[1];
         lv_obj_t *label;
 
-        (void)memcpy(s_scratch, g_ui.dash_cards[g_ui.dash_slot], sizeof(g_ui.dash_cards[0]));
+        if (g_ui.dash_slot < UI_DASH_CARDS)
+        {
+            (void)memcpy(s_scratch, g_ui.dash_cards[g_ui.dash_slot], sizeof(g_ui.dash_cards[0]));
+        }
+        else
+        {
+            s_scratch[0] = '\0';  /* a status icon's slot above the kept cards */
+        }
         (void)split_lines(s_scratch, card_lines, 1U);
         split_fields(card_lines[0], head, 3U);
-        build_detail_header(view, head[1], "", false);
         label = ui_make_label(view, &ui_font_16, g_ui.pal.muted, ui_text(TXT_LOADING));
         lv_obj_center(label);
+        (void)build_detail_header(view, head[1], "", false);
+        add_back_zone(view);
         return;
     }
 
     (void)memcpy(s_scratch, g_ui.dash_detail, sizeof(g_ui.dash_detail));
     n = split_lines(s_scratch, lines, MAX_LINES);
     split_fields(lines[0], head, 3U);
-    build_detail_header(view, head[0], head[1], strchr(head[2], 'n') != NULL);
-    build_detail_body(view, lines, n);
+    {
+        lv_obj_t *bar = build_detail_header(view, head[0], head[1], strchr(head[2], 'n') != NULL);
+
+        build_detail_body(view, lines, n);
+        lv_obj_move_foreground(bar);
+        add_back_zone(view);
+    }
 }
 
 static void show_view(uint32_t view)

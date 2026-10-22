@@ -1068,10 +1068,13 @@ static void run_dashboard_script(void)
     snapshot("82-detail-weather");
     report_memory("82-detail-weather");
 
-    /* Back to the cards. */
-    tap(76, 18);
+    snapshot("82b-detail-back-button");
+    /* Back to the cards: a touch a little below the button counts (#49: the
+     * panel reports touches lower than the finger). */
+    tap(90, 42);
     run_ms(50U);
-    check((Ui_DashView() == UI_DASH_VIEW_CARDS) && (s_dash.close_calls == 1), "back closes the detail");
+    check((Ui_DashView() == UI_DASH_VIEW_CARDS) && (s_dash.close_calls == 1),
+          "a tap just below the back button closes the detail");
 
     /* Menu: previous / next and a button. */
     tap(372, 82);
@@ -1084,7 +1087,7 @@ static void run_dashboard_script(void)
           "next asks for the next day");
     Ui_ShowDetail(1U, menu_detail);
     run_ms(50U);
-    tap(420, 18);
+    tap(396, 18); /* previous (#49: 48 px keys) */
     check((s_dash.open_calls == 4) && (s_dash.open_arg == -1), "previous asks for the previous day");
     Ui_ShowDetail(1U, menu_detail);
     run_ms(50U);

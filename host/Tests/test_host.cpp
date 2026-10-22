@@ -2372,7 +2372,7 @@ void testMenuService()
     menu.reload();
     menu.onTick(ms += 500);
     // Main dish, soup, dessert; green without lists.
-    CHECK(r.dash.card(1) == "11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı\nTarhana çorba\nMeyve / fıstıklı baklava");
+    CHECK(r.dash.card(1) == "11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı\nTarhana çorba\nfıstıklı baklava");
     CHECK(logs.size() == 1U && logs[0] == "Menu files changed.");  // the file appeared
 
     // Detail, then the next working days (6th: no entry in the file).
@@ -2643,7 +2643,9 @@ void testApprovalService()
     CHECK(approvals.indicator().colour == PROTO_INDICATOR_YELLOW && approvals.indicator().number == 0U);
     const std::optional<std::string> detail = approvals.detail();
     CHECK(detail.has_value() && detail->find("#Son kararlar") != std::string::npos);
-    CHECK(detail->find("kart yok · npm test") != std::string::npos && detail->size() <= PROTO_DETAIL_MAX_BYTES);
+    // #49: never the command in the list; this request had no description.
+    CHECK(detail->find("kart yok") != std::string::npos && detail->find("npm test") == std::string::npos &&
+          detail->size() <= PROTO_DETAIL_MAX_BYTES);
     CHECK(approvals.indicator().colour == PROTO_INDICATOR_NORMAL);
     CHECK(!logs.empty());
 }
@@ -3327,6 +3329,13 @@ void testMenuLists()
     day.soup.clear();
     day.saladBar = {"Tarhana salatası"};  // the salad bar does not count
     CHECK(markOf(day, lists) == DishMark::None);
+
+    // #49: the dessert without the fruit option.
+    CHECK(withoutFruit("Meyve / Fıstıklı baklava") == "Fıstıklı baklava");
+    CHECK(withoutFruit("Kazandibi / MEVSİM MEYVESİ") == "Kazandibi");
+    CHECK(withoutFruit("Meyve").empty() && withoutFruit("").empty());
+    CHECK(withoutFruit("Sütlaç") == "Sütlaç");
+    CHECK(withoutFruit("Revani / Sütlaç") == "Revani / Sütlaç");
 }
 
 void testMenuColoursAndWarning()
@@ -3448,6 +3457,41 @@ void testApprovalIndicatorAndIds()
         last = id;
     }
     CHECK(last < MenuService::kWarningPromptId);
+}
+
+void testApprovalListSummary()
+{
+    // #49: the list shows a command's description, never the command; the
+    // file of Write / Edit; nothing for other tools; long lines cut.
+    const std::string bash = hookInput("Bash", {{"command", "rm -rf node_modules && npm ci --verbose"},
+                                                {"description", "Reinstall the packages"}});
+    std::optional<ApprovalInfo> info = parseApprovalInput(bash, 0);
+    CHECK(info.has_value() && info->summary == "Reinstall the packages");
+    info = parseApprovalInput(hookInput("Bash", {{"command", "ls"}}), 0);
+    CHECK(info.has_value() && info->summary.empty());
+    info = parseApprovalInput(hookInput("Write", {{"file_path", "src/a.ts"}, {"content", "x"}}), 0);
+    CHECK(info.has_value() && info->summary == "src/a.ts");
+    info = parseApprovalInput(hookInput("Grep", {{"pattern", "secret"}}), 0);
+    CHECK(info.has_value() && info->summary.empty());
+    info = parseApprovalInput(hookInput("Bash", {{"command", "x"}, {"description", std::string(300, 'd')}}), 0);
+    CHECK(info.has_value() && info->summary.size() == 120U && info->summary.compare(117, 3, "...") == 0);
+
+    DashRig r;
+    std::vector<std::pair<std::uint64_t, HookAnswer>> replies;
+    ApprovalService approvals(r.dash, [&r] { return r.now; },
+                              [&replies](std::uint64_t t, HookAnswer a) { replies.emplace_back(t, a); }, nullptr);
+    r.dash.onConnected();
+    approvals.onRequest(1, bash, 0);
+    std::string list = approvals.detail().value_or("");
+    CHECK(list.find("Reinstall the packages") != std::string::npos && list.find("node_modules") == std::string::npos);
+    ProtoAction a{};
+    a.kind = PROTO_ACTION_PROMPT;
+    a.ref = 0;
+    a.action = 2;
+    CHECK(approvals.onAction(a, 10));
+    list = approvals.detail().value_or("");
+    CHECK(list.find("reddedildi \xC2\xB7 Reinstall the packages") != std::string::npos &&
+          list.find("node_modules") == std::string::npos);
 }
 
 void testDashIndicators()
@@ -3663,6 +3707,7 @@ int main()
     testMenuLists();
     testMenuColoursAndWarning();
     testApprovalIndicatorAndIds();
+    testApprovalListSummary();
     testDashIndicators();
     testCenterCrop();
     testPictureService();

@@ -133,6 +133,25 @@ MenuLists parseMenuLists(std::string_view text)
     return lists;
 }
 
+std::string withoutFruit(const std::string& dessert)
+{
+    std::string out;
+    std::size_t pos = 0;
+    while (pos <= dessert.size()) {
+        std::size_t end = dessert.find('/', pos);
+        if (end == std::string::npos) {
+            end = dessert.size();
+        }
+        const std::string part = trim(dessert.substr(pos, end - pos));
+        pos = end + 1U;
+        if (part.empty() || turkishLower(part).find("meyve") != std::string::npos) {
+            continue;
+        }
+        out += (out.empty() ? "" : " / ") + part;
+    }
+    return out;
+}
+
 DishMark markOf(const std::string& dish, const MenuLists& lists)
 {
     if (dish.empty()) {

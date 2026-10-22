@@ -48,6 +48,10 @@ struct ApprovalInfo {
     std::string tool;
     std::string project;  // last part of cwd
     std::vector<ApprovalRow> rows;
+    // One short line for the list (the detail of the robot icon, #49): the
+    // description of a command (never the command itself), the file or the
+    // URL of other tools; "" if there is none.
+    std::string summary;
 };
 
 // nullopt if @p json is not a hook input with a tool_name. Labels in

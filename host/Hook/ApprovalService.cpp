@@ -144,6 +144,7 @@ std::optional<ApprovalInfo> parseApprovalInput(const std::string& text, std::uin
     if (tool == "Bash" || tool == "PowerShell") {
         add(t.command, stringOf(input, "command"), true);
         add(t.description, stringOf(input, "description"), false);
+        info.summary = flatten(stringOf(input, "description"));
     } else if (tool == "Edit") {
         add(t.file, stringOf(input, "file_path"), true);
         add(t.oldText, stringOf(input, "old_string"), true);
@@ -165,6 +166,15 @@ std::optional<ApprovalInfo> parseApprovalInput(const std::string& text, std::uin
         add(t.request, stringOf(input, "prompt"), false);
     } else {
         add(t.input, input.dump(-1, ' ', false, json::error_handler_t::replace), true);
+    }
+    const bool fileOrUrl = tool == "Edit" || tool == "Write" || tool == "MultiEdit" || tool == "NotebookEdit" ||
+                           tool == "WebFetch";
+    if (fileOrUrl && info.rows.size() > 1U) {
+        info.summary = info.rows[1].value;  // the file or the URL; other tools: the tool name is enough
+    }
+    // The list is short: a long description or path is cut.
+    if (info.summary.size() > 120U) {
+        info.summary = cutUtf8(info.summary, 117U) + "...";
     }
     return info;
 }
@@ -265,7 +275,7 @@ void ApprovalService::onRequest(std::uint64_t ticket, const std::string& input, 
         Decision d;
         d.localTime = clock_();
         d.tool = info->tool;
-        d.summary = info->rows.size() > 1U ? info->rows[1].value : std::string();
+        d.summary = info->summary;
         d.result = dash_.synced() ? t.resultTerminal : t.resultNoBoard;
         history_.push_front(std::move(d));
         if (history_.size() > kHistory) {
@@ -300,7 +310,7 @@ void ApprovalService::answer(std::size_t index, HookAnswer answer, const char* h
     Decision d;
     d.localTime = clock_();
     d.tool = r.info.tool;
-    d.summary = r.info.rows.size() > 1U ? r.info.rows[1].value : std::string();
+    d.summary = r.info.summary;
     d.result = how;
     history_.push_front(std::move(d));
     if (history_.size() > kHistory) {
@@ -439,7 +449,7 @@ std::optional<std::string> ApprovalService::detail()
     if (!queue_.empty()) {
         text += "\n#" + std::string(t.sectionWaiting);
         for (const Request& r : queue_) {
-            text += "\n" + recordLine({"", r.info.tool, r.info.rows.size() > 1U ? r.info.rows[1].value : ""});
+            text += "\n" + recordLine({"", r.info.tool, r.info.summary});
         }
     }
     if (!history_.empty()) {
