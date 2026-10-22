@@ -334,7 +334,8 @@ static void render_main(void)
     }
 }
 
-/* One volume control: the Audio tab's or the Dashboard strip's. */
+/* One volume control: the Audio tab's, the Dashboard strip's or the Music
+ * tab's. */
 static void render_volume(lv_obj_t *slider, lv_obj_t *label, lv_obj_t *mute_btn, lv_obj_t *mute_icon)
 {
     const bool known = (g_ui.volume != UI_VOLUME_UNKNOWN);
@@ -374,6 +375,7 @@ static void render_audio(void)
 {
     render_volume(g_ui.slider, g_ui.volume_label, g_ui.mute_btn, g_ui.mute_icon);
     render_volume(g_ui.dash_slider, g_ui.dash_volume_label, g_ui.dash_mute_btn, g_ui.dash_mute_icon);
+    render_volume(g_ui.music_slider, g_ui.music_volume_label, g_ui.music_mute_btn, g_ui.music_mute_icon);
 }
 
 /* ---------------------------------------------------------------- events */
@@ -381,15 +383,17 @@ static void render_audio(void)
 void ui_on_slider_event(lv_event_t *e)
 {
     const lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *const slider = lv_event_get_target_obj(e);  /* the Audio tab's or the Dashboard's */
+    lv_obj_t *const slider = lv_event_get_target_obj(e);  /* the Audio tab's, the Dashboard's or the Music tab's */
     const uint8_t value = (uint8_t)lv_slider_get_value(slider);
 
     if ((code != LV_EVENT_VALUE_CHANGED) && (code != LV_EVENT_RELEASED))
     {
         return;
     }
-    lv_label_set_text_fmt((slider == g_ui.dash_slider) ? g_ui.dash_volume_label : g_ui.volume_label, "%u%%",
-                          (unsigned)value);
+    lv_label_set_text_fmt((slider == g_ui.dash_slider)    ? g_ui.dash_volume_label
+                          : (slider == g_ui.music_slider) ? g_ui.music_volume_label
+                                                          : g_ui.volume_label,
+                          "%u%%", (unsigned)value);
     /* The slider's value is the volume now. The caller may not report it
      * back (the host confirms the value already shown), and render_audio,
      * e.g. on a mute change, must not move the knob back to the volume from
