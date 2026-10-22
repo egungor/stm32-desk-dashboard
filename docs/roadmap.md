@@ -161,6 +161,6 @@ Requests of 2026-10-21 before v1.0.0 (media first, then notifications):
 
 After v1:
 
-- [ ] Windows settings window (GUI) for the host program: location, Claude API key and menu import, card order, Claude Code hook status (#6; UI technology needs an ADR)
+- [ ] Windows settings window (GUI) for the host program (#6 → #61, ADR-011): WebView2 window with every setting, the program and firmware versions; settings sent when changed, no file polling. Open: the Windows and board checks in `docs/hardware.md`
 - [ ] Controls: microphone, lock, shortcuts
 - [ ] The title of the playing track on the media strip
