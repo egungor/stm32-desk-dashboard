@@ -60,7 +60,15 @@ jobs:
           curl -fsSL --retry 3 -o .toolchain/ninja-linux.zip "$NINJA_URL"
 
       - name: Build
-        run: tools/build-firmware-linux.sh ${{ matrix.build_type }}
+        shell: bash
+        run: |
+          # The version in the USB configuration string (ADR-011).
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            export FW_VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            export FW_VERSION="dev+${GITHUB_SHA::7}"
+          fi
+          tools/build-firmware-linux.sh ${{ matrix.build_type }}
 
       - name: Upload firmware
         uses: actions/upload-artifact@v7

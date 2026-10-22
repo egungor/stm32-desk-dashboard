@@ -1024,6 +1024,21 @@ void testPreferenceFileDamaged()
     CHECK(p.order() == std::vector<std::string>({"id1", "id2"}));
 }
 
+// The firmware version in the USB configuration string (ADR-011).
+void testBoardVersion()
+{
+    BoardVersion v = parseBoardVersion("Desk Dashboard fw 0.9.0-beta.5-19-g4ed690d p7");
+    CHECK(v.firmware == "0.9.0-beta.5-19-g4ed690d" && v.protocol == 7U);
+    v = parseBoardVersion("Desk Dashboard fw dev+1a2b3c4 p12");
+    CHECK(v.firmware == "dev+1a2b3c4" && v.protocol == 12U);
+    v = parseBoardVersion("Desk Dashboard fw 1.0.0");  // no protocol part
+    CHECK(v.firmware == "1.0.0" && v.protocol == 0U);
+    v = parseBoardVersion("Desk Dashboard Config");  // firmware before ADR-011
+    CHECK(v.firmware.empty() && v.protocol == 0U);
+    v = parseBoardVersion("");
+    CHECK(v.firmware.empty() && v.protocol == 0U);
+}
+
 void testPreferenceStore()
 {
     FakeFile file;
@@ -3750,6 +3765,7 @@ int main()
     testPreferencesReplacedFromOutside();
     testPreferenceFileRoundTrip();
     testPreferenceFileDamaged();
+    testBoardVersion();
     testPreferenceStore();
     testVolumeLimit();
     testVolumeLimitOnSelect();

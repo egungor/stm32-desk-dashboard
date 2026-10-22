@@ -281,6 +281,16 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             break;
         case HostEvent::HidConnected:
             log("Controller connected: " + link.description());
+            {
+                const BoardVersion v = link.boardVersion();
+                log("Firmware: " + (v.firmware.empty() ? std::string("unknown (older than ADR-011)") : v.firmware) +
+                    (v.protocol != 0U ? ", protocol " + std::to_string(v.protocol) : std::string()));
+                if (v.protocol != 0U && v.protocol != PROTO_VERSION) {
+                    log("WARN: the board speaks protocol " + std::to_string(v.protocol) + ", this program " +
+                        std::to_string(PROTO_VERSION) + ": update the " +
+                        (v.protocol < PROTO_VERSION ? "firmware." : "program."));
+                }
+            }
             controller.onConnected();
             dash.onConnected();
             media.onConnected(GetTickCount64());

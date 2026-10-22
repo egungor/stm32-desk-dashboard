@@ -60,6 +60,10 @@ else()
     target_compile_options(host_core PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Werror)
 endif()
 
+# The program's version for the settings window and "dashboard-host
+# version" (ADR-011): the installer workflow passes the setup's version.
+set(DASHBOARD_VERSION "dev" CACHE STRING "Version shown by the host programs")
+
 if(WIN32)
     enable_language(RC)
 
@@ -91,7 +95,8 @@ if(WIN32)
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
-    target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
+                               DASHBOARD_VERSION="${DASHBOARD_VERSION}")
     target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32 windowscodecs
                           host_media_win)
 

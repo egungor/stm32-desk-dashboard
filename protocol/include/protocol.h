@@ -31,6 +31,8 @@ extern "C" {
 #define PROTO_FRAME_SIZE   64U
 #define PROTO_MAGIC        0xA5U
 #define PROTO_VERSION      7U
+/** PROTO_VERSION as text: the board's USB configuration string (ADR-011). */
+#define PROTO_VERSION_TEXT "7"
 #define PROTO_HEADER_SIZE  5U
 #define PROTO_CRC_OFFSET   62U
 #define PROTO_MAX_PAYLOAD  (PROTO_CRC_OFFSET - PROTO_HEADER_SIZE) /* 57 */
