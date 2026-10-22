@@ -380,8 +380,9 @@ notification; the board does not know that.
   drops banners; a prompt that appears closes a shown banner.
 - A banner does not wake a dark screen (screen timeout, ADR-004) and is
   not shown on it.
-- There is no answer and no `ACTION`; a tap opens the detail with
-  `OPEN_DETAIL slot, 0` as a card does.
+- There is no answer and no `ACTION`; a tap closes it and, on the
+  board's main screen, opens the detail with `OPEN_DETAIL slot, 0` as a
+  card does (on the settings or edit screens a tap only closes it).
 
 ### `ACTION`
 

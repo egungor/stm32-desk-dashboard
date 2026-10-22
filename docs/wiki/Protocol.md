@@ -1,4 +1,4 @@
-# Protocol (v4)
+# Protocol (v5)
 
 Authoritative description: [protocol/protocol.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/protocol/protocol.md).
 Both sides link the same C codec (`protocol/src/protocol.c`).
@@ -10,7 +10,7 @@ Every message is one 64-byte frame, which is exactly one HID report.
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | magic `0xA5` |
-| 1 | 1 | version `4` |
+| 1 | 1 | version `5` |
 | 2 | 1 | command |
 | 3 | 1 | sequence (per sender, wraps) |
 | 4 | 1 | payload length, 0–57 |
@@ -39,6 +39,7 @@ Every message is one 64-byte frame, which is exactly one HID report.
 | `0x26` | `MEDIA_PART` | host → STM32 | what plays: title, artist, album, app (v4) |
 | `0x27` | `MEDIA_STATE` | host → STM32 | playing / paused / none, enabled controls, cover id, position, duration (v4) |
 | `0x28` | `ART_PART` | host → STM32 | one of 534 parts of a 120 × 120 RGB565 cover (v4) |
+| `0x29` | `BANNER_PART` | host → STM32 | a short banner over every screen: a new notification (v5) |
 | `0x30` | `GET_CARDS` | STM32 → host | time and all cards, please |
 | `0x31` | `OPEN_DETAIL` | STM32 → host | slot, previous / next |
 | `0x32` | `ACTION` | STM32 → host | a detail or prompt button, or a media control (previous, play/pause, next) |

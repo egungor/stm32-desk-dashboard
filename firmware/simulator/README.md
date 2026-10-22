@@ -69,6 +69,13 @@ argument):
 | `93-music-paused.png` | Paused, long Turkish title, no cover and no duration, only play/pause enabled |
 | `94-dashboard-playing.png` | Dashboard strip while playing: pause in the middle |
 | `95-music-light.png` | Music tab in the light theme after a rebuild |
+| `96-dashboard-notifications.png` | Dashboard with the notifications card (#34) |
+| `97-banner.png` | A notification banner over the Dashboard (bell, app, countdown, two lines) |
+| `98-banner-audio.png` | The banner over the Audio tab; a tap opens the notifications list |
+| `99-notifications-detail.png` | The notifications list: app and time, sender and text |
+| `100-banner-no-texts.png` | A banner with only the app (a toast without texts) |
+| `101-banner-settings.png` | The banner over the settings page (a tap only closes it) |
+| `102-banner-light.png` | The banner in the light theme after a rebuild |
 | `50-screen-off.png` | Screen timeout of 1 minute run out: black, backlight off |
 | `51-screen-woken.png` | After the waking touch and one more tap |
 
