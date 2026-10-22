@@ -35,6 +35,7 @@
 #include "ApprovalService.h"
 #include "MenuService.h"
 #include "NotificationService.h"
+#include "PictureService.h"
 #include "WeatherCard.h"
 #include "../../host/Tests/WeatherSamples.h"
 #include "dash_client.h"
@@ -164,6 +165,10 @@ struct FirmwareScreen {
     int promptsShown = 0;
     std::string banner;             // last banner text
     int bannersShown = 0;
+    ProtoIndicators indicators{};   // last INDICATORS (ADR-010)
+    int indicatorUpdates = 0;
+    std::vector<std::uint8_t> picture;  // last complete picture, empty: none
+    int picturesShown = 0;
 };
 
 struct WireStats {
@@ -212,8 +217,9 @@ public:
         const DashCallbacks dcb = {&Rig::fwSend, &Rig::fwCard,   &Rig::fwDetail,      &Rig::fwDashNotice,
                                    &Rig::fwTime, &Rig::fwPrompt, &Rig::fwClosePrompt, this,
                                    nullptr,      nullptr,        nullptr,  // now playing: not driven here
-                                   &Rig::fwBanner};
+                                   &Rig::fwBanner, &Rig::fwIndicators, &Rig::fwPicture};
         Dash_Init(&dashClient, &dcb);
+        Dash_SetPictureBuffer(&dashClient, pictureRx_.data());  // link_port.c: SDRAM
         Dash_SetSequenceCounter(&dashClient, &link.sequence);  // link_port.c
     }
 
@@ -479,6 +485,19 @@ private:
         screen.promptId = id;
         ++screen.promptsShown;
     }
+    static void fwIndicators(const ProtoIndicators* ind, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        screen.indicators = *ind;
+        ++screen.indicatorUpdates;
+    }
+    static void fwPicture(const std::uint8_t* pixels, void* ctx)
+    {
+        FirmwareScreen& screen = self(ctx).screen;
+        screen.picture = pixels != nullptr ? std::vector<std::uint8_t>(pixels, pixels + PROTO_PICTURE_BYTES)
+                                           : std::vector<std::uint8_t>();
+        ++screen.picturesShown;
+    }
     static void fwBanner(const char* text, void* ctx)
     {
         FirmwareScreen& screen = self(ctx).screen;
@@ -595,6 +614,7 @@ private:
     bool firmwareConfigured_ = false;
     std::uint32_t firmwareNextRun_ = 0;
     std::uint32_t firmwareBusyUntil_ = 0;
+    std::vector<std::uint8_t> pictureRx_ = std::vector<std::uint8_t>(PROTO_PICTURE_BYTES);  // SDRAM on the board
     std::deque<Frame> hostOut_;
     std::deque<Frame> firmwareRx_;
     std::deque<Frame> firmwareTx_;
@@ -1376,6 +1396,19 @@ public:
     bool write(const std::string&, const std::string&) override { return false; }
 };
 
+class MemoryPreference : public IPreferenceFile {
+public:
+    std::optional<std::string> text;
+    std::optional<std::string> read() override { return text; }
+    bool write(const std::string& content) override
+    {
+        text = content;
+        return true;
+    }
+    void keepUnreadable(const std::string&) override {}
+    std::string location() const override { return "memory"; }
+};
+
 void testMenuOnBoard()
 {
     g_scenario = "menu on the board";
@@ -1395,7 +1428,10 @@ void testMenuOnBoard()
     october.days[5] = monday;
     files.october = formatMonthFile(october);
     const std::uint32_t saturday = localTimeValue(2026, 10, 3, 10, 0, 0);
-    MenuService menu(*r.dash, files, [saturday] { return saturday; }, nullptr);
+    MemoryPreference lists;
+    MemoryPreference warned;
+    lists.text = "[sevmiyorum]\nnohut\n";
+    MenuService menu(*r.dash, files, lists, warned, [saturday] { return saturday; }, nullptr);
     r.dash->setDetailHandler([&menu](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
         return slot == MenuService::kSlot ? menu.detail(arg) : std::nullopt;
     });
@@ -1405,6 +1441,7 @@ void testMenuOnBoard()
 
     CHECK(r.inSync() && r.screen.cards[1] == r.dash->card(1));
     CHECK(r.screen.cards[1].find("Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1") != std::string::npos);  // Monday at the weekend
+    CHECK(r.screen.cards[1].find("3E9B5F") != std::string::npos);  // green: nothing on the lists
     CHECK(Dash_OpenDetail(&r.dashClient, 1, 0, r.now));
     r.run(500);
     CHECK(r.screen.detail.find("5 Ekim Pazartesi") != std::string::npos);
@@ -1412,6 +1449,7 @@ void testMenuOnBoard()
     r.run(500);
     CHECK(r.screen.detail.find("2 Ekim Cuma") != std::string::npos &&
           r.screen.detail.find("Roka \xC2\xB7 Tur\xC5\x9Fu") != std::string::npos);
+    CHECK(r.screen.detail.find("Etli nohut \xC2\xB7 sevmiyorum") != std::string::npos);
     CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 }
 
@@ -1443,7 +1481,10 @@ void testApprovalOnBoard()
     r.run(300);
     CHECK(r.screen.promptId >= 0 && r.screen.prompt.find("npm test") != std::string::npos &&
           r.screen.prompt.find("1/2") != std::string::npos);
-    CHECK(r.screen.cards[3].find("2 onay bekliyor") != std::string::npos);
+    r.dash->setIndicators(ProtoIndicators{1, {approvals.indicator()}});  // HostService does this each tick
+    r.run(100);
+    CHECK(r.screen.indicators.count == 1U && r.screen.indicators.items[0].number == 2U &&
+          r.screen.indicators.items[0].colour == PROTO_INDICATOR_RED);
 
     // Onayla on the board.
     CHECK(Dash_AnswerPrompt(&r.dashClient, static_cast<std::uint8_t>(r.screen.promptId), 1U));
@@ -1455,7 +1496,10 @@ void testApprovalOnBoard()
     CHECK(Dash_AnswerPrompt(&r.dashClient, static_cast<std::uint8_t>(r.screen.promptId), 2U));
     r.run(300);
     CHECK(replies.size() == 2U && replies[1] == std::make_pair(std::uint64_t{2}, HookAnswer::Deny));
-    CHECK(r.screen.promptId == -1 && r.screen.cards[3].find("Onay bekleyen yok") != std::string::npos);
+    r.dash->setIndicators(ProtoIndicators{1, {approvals.indicator()}});
+    r.run(100);
+    CHECK(r.screen.promptId == -1 && r.screen.indicators.items[0].number == 0U &&
+          r.screen.indicators.items[0].colour == PROTO_INDICATOR_GREEN);  // one was allowed
 
     // The board's card detail lists the decisions.
     CHECK(Dash_OpenDetail(&r.dashClient, ApprovalService::kSlot, 0, r.now));
@@ -1513,8 +1557,11 @@ void testNotificationsOnBoard()
     notify.onTick(r.now);
     r.plugIn();
     r.run(3000);
-    CHECK(r.inSync() && r.screen.cards[2] == r.dash->card(2));
-    CHECK(r.screen.cards[2].find("Outlook: Toplant\xC4\xB1") != std::string::npos);
+    r.dash->setIndicators(ProtoIndicators{1, {notify.indicator()}});  // HostService does this each tick
+    r.run(100);
+    CHECK(r.inSync() && r.screen.cards[2].empty());  // no card any more (ADR-010)
+    CHECK(r.screen.indicators.count == 1U && r.screen.indicators.items[0].number == 1U &&
+          r.screen.indicators.items[0].slot == NotificationService::kSlot);
     CHECK(r.screen.bannersShown == 0);  // what was there before is not new
 
     // A new toast: the card changes and a banner reaches the board.
@@ -1523,7 +1570,9 @@ void testNotificationsOnBoard()
     notify.onTick(r.now);
     r.run(300);
     CHECK(r.screen.bannersShown == 1 && r.screen.banner == notify.banner(toasts.snap.toasts[0]));
-    CHECK(r.screen.cards[2].find("WhatsApp: Ay\xC5\x9F" "e") != std::string::npos);
+    r.dash->setIndicators(ProtoIndicators{1, {notify.indicator()}});
+    r.run(100);
+    CHECK(r.screen.indicators.items[0].number == 2U && r.screen.indicators.items[0].colour == PROTO_INDICATOR_RED);
     // A tap on it: the detail lists both.
     CHECK(Dash_OpenDetail(&r.dashClient, NotificationService::kSlot, 0, r.now));
     r.run(300);
@@ -1545,6 +1594,52 @@ void testNotificationsOnBoard()
     notify.onTick(r.now + 5000U);
     r.run(300);
     CHECK(r.screen.bannersShown == 1);
+    CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
+}
+
+// The picture card (ADR-010): PICTURE and 682 parts after the cards; a new
+// picture replaces it; a reconnect sends it again.
+struct FakePictureSource : IPictureSource {
+    PictureSnapshot snap;
+    PictureSnapshot snapshot() const override { return snap; }
+};
+
+void testPictureOnBoard()
+{
+    g_scenario = "picture on the board";
+    Rig r;
+    addHomeSetup(r.audio);
+    r.startHost();
+    FakePictureSource source;
+    auto pixels = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES);
+    for (std::size_t i = 0; i < pixels->size(); ++i) {
+        (*pixels)[i] = static_cast<std::uint8_t>(i * 13U);
+    }
+    source.snap.pixels = pixels;
+    source.snap.version = 1;
+    PictureService picture(r.hostSink, source);
+    r.dash->setCardsSentHandler([&picture] { picture.onRequest(); });
+    r.plugIn();
+    for (int i = 0; i < 400 && r.screen.picturesShown == 0; ++i) {
+        picture.onTick();
+        r.run(10);
+    }
+    CHECK(r.inSync() && r.screen.picturesShown == 1 && r.screen.picture == *pixels);
+
+    // Another picture; then none.
+    auto other = std::make_shared<std::vector<std::uint8_t>>(PROTO_PICTURE_BYTES, std::uint8_t{0x42});
+    source.snap.pixels = other;
+    ++source.snap.version;
+    for (int i = 0; i < 400 && r.screen.picturesShown == 1; ++i) {
+        picture.onTick();
+        r.run(10);
+    }
+    CHECK(r.screen.picturesShown == 2 && r.screen.picture == *other);
+    source.snap.pixels.reset();
+    ++source.snap.version;
+    picture.onTick();
+    r.run(100);
+    CHECK(r.screen.picturesShown == 3 && r.screen.picture.empty());
     CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 }
 
@@ -1574,6 +1669,7 @@ int main()
     testMenuOnBoard();
     testApprovalOnBoard();
     testNotificationsOnBoard();
+    testPictureOnBoard();
     testVolumeFromWindows();
     testVolumeDragOnBoard();
     testMuteFromBoard();

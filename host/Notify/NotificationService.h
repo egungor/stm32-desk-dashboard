@@ -1,8 +1,8 @@
-// Windows notifications on the board (ADR-009): the fourth card (slot 2),
-// its detail, and a banner for each new toast.
+// Windows notifications on the board (ADR-009, ADR-010): the bell at the
+// top right of the Dashboard (a status icon with the count; red while the
+// list has not shown every toast, else normal), its list (the detail of
+// slot 2), and a banner for each new toast.
 //
-//   card:   12 ␟ Bildirimler ␟ count \n app: title \n app: title \n app: title
-//           (the newest three; "Bildirim yok" without any)
 //   detail: Bildirimler ␟ "3 bildirim" ␟ \n then per toast, newest first (at
 //           most kDetailItems): #app · hh:mm \n ␟ title ␟ body
 //   banner: 12 ␟ app ␟ kBannerSeconds ␟ 2 \n title \n body
@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "DashController.h"
@@ -39,9 +40,8 @@ public:
         unsigned bannersDropped = 0;   // not shown: board not synced, or gone before its turn
     };
 
-    static constexpr std::uint8_t kSlot = 2;   // ADR-006: 2 notifications
+    static constexpr std::uint8_t kSlot = 2;   // ADR-006: 2 notifications (its detail)
     static constexpr int kIcon = 12;           // protocol.md "Icon": bell
-    static constexpr std::size_t kCardLines = 3;
     static constexpr std::size_t kDetailItems = 20;
     static constexpr std::size_t kDetailBodyBytes = 240;  // per toast, in the detail
     static constexpr std::uint64_t kBannerIntervalMs = 2000;
@@ -58,9 +58,13 @@ public:
     // The board went away: a banner waiting for its turn is dropped.
     void onDisconnected();
 
-    std::string card() const;
-    // OPEN_DETAIL on kSlot (arg 0; there is no previous / next).
-    std::optional<std::string> detail() const;
+    // The bell now.
+    ProtoIndicator indicator() const;
+    // OPEN_DETAIL on kSlot (arg 0; there is no previous / next); the toasts
+    // it lists count as seen.
+    std::optional<std::string> detail();
+    // A short summary for the console: the access, the count, the newest.
+    std::string summary() const;
     // The banner record of @p n (public for tests).
     std::string banner(const Notification& n) const;
 
@@ -76,6 +80,7 @@ private:
     LogFn log_;
     std::uint8_t language_ = 0;
     NotificationSnapshot shown_;
+    std::set<std::uint32_t> seen_;  // toast ids the list has shown
     std::optional<Notification> pending_;          // banner waiting for its turn
     std::optional<std::uint64_t> lastBannerMs_;
     std::uint8_t bannerId_ = 0;

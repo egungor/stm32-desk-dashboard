@@ -28,13 +28,13 @@ struct Texts {
 };
 
 constexpr Texts kTurkish = {
-    "Hava durumu", "Konum ayarlanmadı", "dashboard-host weather <şehir>", "Bekleniyor…",
+    "Hava durumu", "Konum ayarlanmadı", "dashboard-host weather <şehir>", "Bekleniyor...",
     "Hava durumu alınamadı", "Yağış %%%d", "%d km/s", "Güncellendi", "Şimdi", "Hissedilen", "Nem",
     "Rüzgâr", "%d gün", "Bugün", "Yarın", {"Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"},
 };
 
 constexpr Texts kEnglish = {
-    "Weather", "No location set", "dashboard-host weather <city>", "Waiting…", "Weather unavailable",
+    "Weather", "No location set", "dashboard-host weather <city>", "Waiting...", "Weather unavailable",
     "Rain %d%%", "%d km/h", "Updated", "Now", "Feels like", "Humidity", "Wind", "%d days", "Today",
     "Tomorrow", {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
 };
@@ -142,6 +142,34 @@ bool WeatherCard::onFetched(std::uint64_t nowMs, std::uint32_t localTime, const 
     return true;
 }
 
+const char* weatherColour(int icon)
+{
+    switch (icon) {
+    case 1:
+        return "E59B2E";  // clear, day
+    case 2:
+        return "2B3A67";  // clear, night
+    case 3:
+        return "3D86C6";  // partly cloudy, day
+    case 4:
+        return "3A4A70";  // partly cloudy, night
+    case 5:
+        return "66717F";  // overcast
+    case 6:
+        return "7D838C";  // fog
+    case 7:
+        return "3A6EA5";  // drizzle, rain
+    case 8:
+        return "2D4B7A";  // heavy rain
+    case 9:
+        return "5F8FBF";  // snow
+    case 10:
+        return "4A3B6B";  // thunderstorm
+    default:
+        return "";
+    }
+}
+
 std::string WeatherCard::card(std::uint32_t localTime) const
 {
     const Texts& t = texts(language_);
@@ -155,8 +183,9 @@ std::string WeatherCard::card(std::uint32_t localTime) const
     }
 
     const WeatherNow& now = report_->now;
-    std::string text = recordLine({iconField(weatherIcon(now.code, now.isDay)), place, ""});
-    text += "\n" + formatDegrees(now.temperatureC) + "  " + weatherText(now.code, language_);
+    const int icon = weatherIcon(now.code, now.isDay);
+    std::string text = recordLine({iconField(icon), place, "", weatherColour(icon), "L"});
+    text += "\n" + formatDegrees(now.temperatureC);
 
     // Today's line: the forecast day of the local date, else the first one.
     const long today = static_cast<long>(localTime / 86400U);
@@ -168,14 +197,9 @@ std::string WeatherCard::card(std::uint32_t localTime) const
     }
     if (day != nullptr) {
         text += "\n" + range(*day);
-        if (day->precipitationPercent) {
-            text += " \xC2\xB7 " + format(t.rain, *day->precipitationPercent);
-        }
     }
     if (stale_) {
         text += "\n" + std::string(t.updated) + " " + hhmm(updatedAt_);
-    } else {
-        text += "\n" + std::string(t.windLabel) + " " + format(t.speed, static_cast<int>(now.windKmh + 0.5));
     }
     return text;
 }

@@ -20,6 +20,19 @@ struct SquareCrop {
 // The largest centred square of a @p width x @p height image.
 SquareCrop centerSquare(std::uint32_t width, std::uint32_t height);
 
+struct CropRect {
+    std::uint32_t x = 0;
+    std::uint32_t y = 0;
+    std::uint32_t width = 0;   // 0 for an empty image
+    std::uint32_t height = 0;
+};
+
+// The largest centred rectangle of a @p width x @p height image with the
+// aspect ratio @p targetWidth : @p targetHeight (ADR-010: the picture is
+// cropped at the edges, never distorted).
+CropRect centerCrop(std::uint32_t width, std::uint32_t height, std::uint32_t targetWidth,
+                    std::uint32_t targetHeight);
+
 // @p pixels 32-bit BGRA pixels (B, G, R, A bytes, as WIC's
 // GUID_WICPixelFormat32bppBGRA) as RGB565, two bytes per pixel, little
 // endian (protocol.md, "Cover"). Alpha is ignored. Empty if the size is

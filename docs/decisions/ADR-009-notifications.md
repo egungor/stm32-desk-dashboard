@@ -5,7 +5,8 @@
 Accepted (issue #34, implemented in the same issue). Based on the spike
 #33 (`docs/notification-spike.md`) and the owner's decisions of
 2026-10-22. Open: the Do not disturb check below (REQUIRES WINDOWS) and
-the banner on the board (REQUIRES HARDWARE).
+the banner on the board (REQUIRES HARDWARE). The fourth card was replaced by the bell at
+the top right in ADR-010 (#47); the list and the banner stay.
 
 ## Context
 

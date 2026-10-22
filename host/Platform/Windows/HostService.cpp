@@ -15,6 +15,7 @@
 #include "MediaService.h"
 #include "MenuService.h"
 #include "NotificationService.h"
+#include "PictureService.h"
 #include "SequencedSink.h"
 #include "VolumeLimit.h"
 #include "WinHidLink.h"
@@ -25,6 +26,7 @@
 #include "WinMediaSession.h"
 #include "WinMenuImport.h"
 #include "WinNotificationListener.h"
+#include "WinPicture.h"
 
 namespace stm32_audio::host::win {
 
@@ -144,27 +146,35 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     ApprovalService approvals(
         dash, localTimeNow, [&hookPipe](std::uint64_t ticket, HookAnswer answer) { hookPipe.answer(ticket, answer); },
         log);
-    // The media controls (strip and Music tab) and the prompt's buttons;
-    // card buttons have no feature yet and are answered with ERROR.
-    dash.setActionHandler([&](const ProtoAction& action) {
-        if (action.kind == PROTO_ACTION_PROMPT) {
-            return approvals.onAction(action, GetTickCount64());
-        }
-        return media.onAction(action);
-    });
     // Weather card and detail (slot 0, ADR-006); the forecast is fetched on
     // a worker thread.
     WinHttpClient http;
     WinPreferenceFile weatherFile(L"weather");
     WeatherService weather(dash, weatherFile, http, localTimeNow, log);
-    // Menu card and day detail (slot 1), from the month files (#20).
+    // Menu card and day detail (slot 1), from the month files (#20),
+    // coloured by the food lists; the morning warning (ADR-010).
     WinMenuFiles menuFiles;
-    MenuService menu(dash, menuFiles, localTimeNow, log);
-    // Notifications card, its list and the banners (slot 2, ADR-009): the
+    WinPreferenceFile menuLists(L"menu-lists");
+    WinPreferenceFile menuWarned(L"menu-warned");
+    MenuService menu(dash, menuFiles, menuLists, menuWarned, localTimeNow, log);
+    // The bell, its list and the banners (slot 2, ADR-009, ADR-010): the
     // notification listener, polled on its own thread.
     WinNotificationListener notificationListener(events, log);
     WinFocusState focus;
     NotificationService notifications(dash, notificationListener, focus, log);
+    // The picture card (ADR-010): the file chosen in the tray menu.
+    WinPicture picture(log);
+    PictureService pictureService(sink, picture);
+    dash.setCardsSentHandler([&pictureService] { pictureService.onRequest(); });
+    // The media controls (strip and Music tab) and the prompts' buttons: the
+    // menu warning (id 255) or a Claude Code request; card buttons have no
+    // feature yet and are answered with ERROR.
+    dash.setActionHandler([&](const ProtoAction& action) {
+        if (action.kind == PROTO_ACTION_PROMPT) {
+            return menu.onAction(action) || approvals.onAction(action, GetTickCount64());
+        }
+        return media.onAction(action);
+    });
     dash.setDetailHandler(
         [&weather, &menu, &approvals, &notifications](std::uint8_t slot,
                                                       std::int8_t arg) -> std::optional<std::string> {
@@ -228,7 +238,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     for (;;) {
         // While a cover is being sent, come back at once for its next parts.
         const std::optional<QueuedEvent> item =
-            events.pop(media.sendingArt() ? std::chrono::milliseconds(0) : std::chrono::milliseconds(500));
+            events.pop(media.sendingArt() || pictureService.sending() ? std::chrono::milliseconds(0)
+                                                                       : std::chrono::milliseconds(500));
         if (saving && store.poll(GetTickCount64())) {
             log("Preferences reloaded from " + file.location());
             controller.onPreferencesChanged();
@@ -242,6 +253,16 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         approvals.onTick(GetTickCount64());
         notifications.setLanguage(controller.preferences().settings().language);
         notifications.onTick(GetTickCount64());
+        menu.updateWarning(approvals.waiting() == 0U);  // a Claude Code request goes first
+        {
+            ProtoIndicators indicators{};
+            indicators.count = 2;
+            indicators.items[0] = notifications.indicator();
+            indicators.items[1] = approvals.indicator();
+            dash.setIndicators(indicators);
+        }
+        picture.poll(GetTickCount64());
+        pictureService.onTick();
         dash.onTick(GetTickCount64());
         media.onTick(GetTickCount64());
         if (!item) {
@@ -267,6 +288,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
             approvals.onDisconnected();  // nobody can answer: back to the terminal
             dash.onDisconnected();
             notifications.onDisconnected();
+            pictureService.onDisconnected();
             media.onDisconnected();
             if (hooks.connection) {
                 hooks.connection(false);
@@ -281,6 +303,9 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
         case HostEvent::MediaChanged:
         case HostEvent::NotificationsChanged:
             break;  // the onTicks above took the new snapshot
+        case HostEvent::PictureChanged:
+            picture.reload();
+            break;
         case HostEvent::MenuChanged:
             log("Menu imported; reading the month files again.");
             menu.reload();

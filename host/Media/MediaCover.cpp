@@ -13,6 +13,36 @@ SquareCrop centerSquare(std::uint32_t width, std::uint32_t height)
     return crop;
 }
 
+CropRect centerCrop(std::uint32_t width, std::uint32_t height, std::uint32_t targetWidth,
+                    std::uint32_t targetHeight)
+{
+    CropRect crop;
+    if (width == 0U || height == 0U || targetWidth == 0U || targetHeight == 0U) {
+        return crop;
+    }
+    // Compare width / height with targetWidth / targetHeight without division.
+    const std::uint64_t wide = static_cast<std::uint64_t>(width) * targetHeight;
+    const std::uint64_t tall = static_cast<std::uint64_t>(height) * targetWidth;
+    if (wide > tall) {
+        // Wider than the target: full height, cut left and right.
+        crop.height = height;
+        crop.width = static_cast<std::uint32_t>(static_cast<std::uint64_t>(height) * targetWidth / targetHeight);
+    } else {
+        // Taller (or the same): full width, cut top and bottom.
+        crop.width = width;
+        crop.height = static_cast<std::uint32_t>(static_cast<std::uint64_t>(width) * targetHeight / targetWidth);
+    }
+    if (crop.width == 0U) {
+        crop.width = 1U;
+    }
+    if (crop.height == 0U) {
+        crop.height = 1U;
+    }
+    crop.x = (width - crop.width) / 2U;
+    crop.y = (height - crop.height) / 2U;
+    return crop;
+}
+
 std::vector<std::uint8_t> rgb565FromBgra(const std::uint8_t* pixels, std::size_t bytes)
 {
     std::vector<std::uint8_t> out;

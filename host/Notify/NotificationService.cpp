@@ -59,9 +59,9 @@ std::string shorten(const std::string& text, std::size_t maxBytes)
     return cutUtf8(text, maxBytes - kEllipsis.size()) + kEllipsis;
 }
 
-// What a card line shows of a toast: "app: title" (the body without a
-// title; only the app without texts).
-std::string summary(const Notification& n)
+// One line about a toast: "app: title" (the body without a title; only the
+// app without texts).
+std::string oneLine(const Notification& n)
 {
     const std::string& what = n.title.empty() ? n.body : n.title;
     return what.empty() ? n.app : n.app + ": " + what;
@@ -175,38 +175,60 @@ void NotificationService::take(const NotificationSnapshot& next)
         }
     }
     shown_ = next;
+    // Forget seen ids that left the list (the set stays small).
+    std::set<std::uint32_t> still;
+    for (const Notification& n : shown_.toasts) {
+        if (seen_.count(n.id) != 0U) {
+            still.insert(n.id);
+        }
+    }
+    seen_.swap(still);
     publish();
 }
 
 void NotificationService::publish()
 {
-    dash_.setCard(kSlot, card());
+    // No card any more (ADR-010): the bell is read by the service loop
+    // (indicator()); an open list follows.
     dash_.refreshDetail(kSlot);
 }
 
-std::string NotificationService::card() const
+ProtoIndicator NotificationService::indicator() const
 {
-    const Texts& t = texts(language_);
+    ProtoIndicator ind{};
+    ind.icon = static_cast<std::uint8_t>(kIcon);
+    ind.slot = kSlot;
     const std::size_t n = shown_.toasts.size();
-    std::string text = recordLine({std::to_string(kIcon), t.title, n > 0U ? std::to_string(n) : std::string()});
-    if (shown_.access == NotificationAccess::Denied) {
-        return text + "\n" + t.denied;
+    ind.number = static_cast<std::uint8_t>(n > 255U ? 255U : n);
+    ind.colour = PROTO_INDICATOR_NORMAL;
+    for (const Notification& toast : shown_.toasts) {
+        if (seen_.count(toast.id) == 0U) {
+            ind.colour = PROTO_INDICATOR_RED;
+        }
     }
-    if (shown_.access == NotificationAccess::Failed) {
-        return text + "\n" + t.failed;
-    }
-    if (n == 0U) {
-        return text + "\n" + t.none;
-    }
-    for (std::size_t i = 0; i < n && i < kCardLines; ++i) {
-        // A card line is cut by the board; 80 bytes is far more than fits.
-        text += "\n" + recordLine({shorten(summary(shown_.toasts[i]), 80U)});
-    }
-    return cutUtf8(text, PROTO_CARD_MAX_BYTES);
+    return ind;
 }
 
-std::optional<std::string> NotificationService::detail() const
+std::string NotificationService::summary() const
 {
+    const Texts& t = texts(language_);
+    if (shown_.access == NotificationAccess::Denied) {
+        return t.denied;
+    }
+    if (shown_.access == NotificationAccess::Failed) {
+        return t.failed;
+    }
+    if (shown_.toasts.empty()) {
+        return t.none;
+    }
+    return std::to_string(shown_.toasts.size()) + t.count + "; " + oneLine(shown_.toasts.front());
+}
+
+std::optional<std::string> NotificationService::detail()
+{
+    for (const Notification& toast : shown_.toasts) {
+        seen_.insert(toast.id);
+    }
     const Texts& t = texts(language_);
     const std::size_t n = shown_.toasts.size();
     std::string text =

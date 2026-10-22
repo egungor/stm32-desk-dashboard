@@ -1,6 +1,6 @@
 /**
  * @file    test_protocol.c
- * @brief   Unit tests for the protocol codec, version 5 (no test framework).
+ * @brief   Unit tests for the protocol codec, version 6 (no test framework).
  */
 #include "protocol.h"
 
@@ -67,7 +67,7 @@ static void test_crc_check_value(void)
 static void test_header_and_golden_frame(void)
 {
     /* Byte-exact example documented in protocol.md. */
-    static const uint8_t expected_head[] = { 0xA5, 0x05, 0x03, 0x2A, 0x02, 0x05, 0x02 };
+    static const uint8_t expected_head[] = { 0xA5, 0x06, 0x03, 0x2A, 0x02, 0x05, 0x02 };
     ProtoMessage m = simple(PROTO_CMD_SELECT_DEVICE, 0x2AU);
     uint8_t frame[PROTO_FRAME_SIZE];
 
@@ -79,8 +79,8 @@ static void test_header_and_golden_frame(void)
     {
         CHECK(frame[i] == 0U);
     }
-    CHECK(frame[62] == 0xEBU);
-    CHECK(frame[63] == 0x98U);
+    CHECK(frame[62] == 0x3BU);
+    CHECK(frame[63] == 0x72U);
 }
 
 static void test_round_trip_simple(void)
@@ -1042,7 +1042,7 @@ static void test_v4_frame_rejected(void)
     uint8_t frame[PROTO_FRAME_SIZE];
 
     CHECK(Proto_Encode(&m, frame) == PROTO_OK);
-    CHECK(frame[1] == 5U);
+    CHECK(frame[1] == PROTO_VERSION);
     frame[1] = 4U; /* a version 4 frame (media, #30-#32) */
     reseal(frame);
     CHECK(Proto_Decode(frame, &out) == PROTO_ERR_VERSION);
@@ -1093,6 +1093,131 @@ static void test_banner_record(void)
     CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
 }
 
+/* ------------------------------------------------- version 6 (ADR-010) */
+
+static void test_v5_frame_rejected(void)
+{
+    ProtoMessage m = simple(PROTO_CMD_GET_CARDS, 1U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    CHECK(Proto_Encode(&m, frame) == PROTO_OK);
+    CHECK(frame[1] == 6U);
+    frame[1] = 5U; /* a version 5 frame (notifications, #34) */
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_VERSION);
+}
+
+static void test_indicators(void)
+{
+    ProtoMessage in = simple(PROTO_CMD_INDICATORS, 3U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+
+    /* Bell: 3 toasts, unseen (red), opens slot 2; robot: normal, slot 3. */
+    in.u.indicators.count = 2U;
+    in.u.indicators.items[0] = (ProtoIndicator){ 12U, PROTO_INDICATOR_RED, 3U, 2U };
+    in.u.indicators.items[1] = (ProtoIndicator){ 13U, PROTO_INDICATOR_NORMAL, 0U, 3U };
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    CHECK(frame[2] == 0x2AU && frame[4] == 9U);
+    CHECK(frame[5] == 2U && frame[6] == 12U && frame[7] == 1U && frame[8] == 3U && frame[9] == 2U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.command == PROTO_CMD_INDICATORS);
+    CHECK(out.u.indicators.count == 2U && out.u.indicators.items[1].icon == 13U &&
+          out.u.indicators.items[1].slot == 3U && out.u.indicators.items[0].number == 3U);
+
+    /* None at all; four; PROTO_NO_SLOT. */
+    in.u.indicators.count = 0U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK && frame[4] == 1U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.indicators.count == 0U);
+    in.u.indicators.count = PROTO_MAX_INDICATORS;
+    for (uint8_t i = 0U; i < PROTO_MAX_INDICATORS; i++)
+    {
+        in.u.indicators.items[i] = (ProtoIndicator){ i, PROTO_INDICATOR_GREEN, 255U, PROTO_NO_SLOT };
+    }
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK && frame[4] == 17U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.indicators.items[3].slot == PROTO_NO_SLOT);
+
+    /* Bad: five; a colour out of range; slot 8; a length not matching count. */
+    in.u.indicators.count = PROTO_MAX_INDICATORS + 1U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.indicators.count = 1U;
+    in.u.indicators.items[0].colour = PROTO_INDICATOR_COLOUR_COUNT;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.indicators.items[0].colour = PROTO_INDICATOR_YELLOW;
+    in.u.indicators.items[0].slot = PROTO_MAX_CARDS;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    in.u.indicators.items[0].slot = 1U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK);
+    frame[4] = 6U; /* one entry, six bytes */
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+    frame[4] = 5U;
+    frame[7] = 9U; /* colour */
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+}
+
+static void test_picture(void)
+{
+    static uint8_t pic[PROTO_PICTURE_BYTES];
+    static uint8_t got[PROTO_PICTURE_BYTES];
+    ProtoArtAssembler a;
+    ProtoMessage in = simple(PROTO_CMD_PICTURE, 4U);
+    ProtoMessage out;
+    uint8_t frame[PROTO_FRAME_SIZE];
+    ProtoAsmResult r = PROTO_ASM_PARTIAL;
+
+    CHECK(PROTO_PICTURE_BYTES == 36800U && PROTO_PICTURE_PARTS == 682U);
+    CHECK(Proto_PicturePartBytes(0U) == 54U && Proto_PicturePartBytes(681U) == 26U &&
+          Proto_PicturePartBytes(682U) == 0U);
+
+    /* PICTURE: one byte, any id (0 = none). */
+    in.u.pic_id = 7U;
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK && frame[2] == 0x2CU && frame[4] == 1U && frame[5] == 7U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.pic_id == 7U);
+    frame[4] = 2U;
+    reseal(frame);
+    CHECK(Proto_Decode(frame, &out) == PROTO_ERR_PAYLOAD);
+
+    /* PICTURE_PART: the last part has 26 bytes; a cover's last length is wrong here. */
+    for (uint32_t i = 0U; i < sizeof(pic); i++)
+    {
+        pic[i] = (uint8_t)(i * 7U);
+    }
+    in = simple(PROTO_CMD_PICTURE_PART, 5U);
+    CHECK(Proto_PicturePart(pic, 7U, 681U, &in.u.art) && in.u.art.len == 26U);
+    CHECK(Proto_Encode(&in, frame) == PROTO_OK && frame[2] == 0x2BU && frame[4] == 29U);
+    CHECK(Proto_Decode(frame, &out) == PROTO_OK && out.u.art.index == 681U && out.u.art.len == 26U);
+    CHECK(!Proto_PicturePart(pic, PROTO_NO_PICTURE, 0U, &in.u.art));
+    CHECK(!Proto_PicturePart(pic, 7U, 682U, &in.u.art));
+    CHECK(Proto_ArtPart(pic, 7U, 533U, &in.u.art)); /* a cover's last part: 18 bytes */
+    in.command = PROTO_CMD_PICTURE_PART;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+    /* Index 534..681 only exist for the picture. */
+    CHECK(Proto_PicturePart(pic, 7U, 600U, &in.u.art));
+    in.command = PROTO_CMD_ART_PART;
+    CHECK(Proto_Encode(&in, frame) == PROTO_ERR_PAYLOAD);
+
+    /* The assembler collects all 682 parts, in any order. */
+    Proto_PictureAssemblerInit(&a, got);
+    Proto_ArtAssemblerStart(&a, 7U);
+    for (uint16_t i = PROTO_PICTURE_PARTS; i > 0U; i--)
+    {
+        CHECK(Proto_PicturePart(pic, 7U, (uint16_t)(i - 1U), &in.u.art));
+        r = Proto_ArtAssemblerAdd(&a, &in.u.art);
+        if ((i > 1U) && (r != PROTO_ASM_PARTIAL))
+        {
+            break;
+        }
+    }
+    CHECK(r == PROTO_ASM_COMPLETE);
+    CHECK(memcmp(got, pic, sizeof(pic)) == 0);
+    /* A cover's part is not a picture part. */
+    Proto_ArtAssemblerStart(&a, 8U);
+    CHECK(Proto_ArtPart(pic, 8U, 533U, &in.u.art));
+    CHECK(Proto_ArtAssemblerAdd(&a, &in.u.art) == PROTO_ASM_OVERFLOW);
+}
+
 int main(void)
 {
     test_crc_check_value();
@@ -1118,6 +1243,9 @@ int main(void)
     test_art_parts();
     test_v4_frame_rejected();
     test_banner_record();
+    test_v5_frame_rejected();
+    test_indicators();
+    test_picture();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

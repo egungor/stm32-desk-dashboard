@@ -35,6 +35,9 @@ enum class TrayText {
     MenuImportFailed,  // balloon title after a failed import
     CopyHookSettings,  // menu: copy the Claude Code hook snippet (#26)
     HookSettingsCopied, // balloon after copying it
+    ChoosePicture,     // menu: the picture of the Dashboard's picture card (ADR-010)
+    PictureFiles,      // file dialog filter name
+    EditFoodLists,     // menu: open menu-lists.txt (ADR-010)
 };
 
 const char* trayText(TrayText id, std::uint8_t language);

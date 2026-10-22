@@ -108,6 +108,12 @@ const char* trayText(TrayText id, std::uint8_t language)
         return english ? "Copied. Merge it into %USERPROFILE%\\.claude\\settings.json of this PC."
                        : "Kopyaland\xC4\xB1. Bu bilgisayar\xC4\xB1n %USERPROFILE%\\.claude\\settings.json "
                          "dosyas\xC4\xB1na ekleyin.";
+    case TrayText::ChoosePicture:
+        return english ? "Choose picture\xE2\x80\xA6" : "Resim se\xC3\xA7\xE2\x80\xA6";
+    case TrayText::PictureFiles:
+        return english ? "Pictures" : "Resimler";
+    case TrayText::EditFoodLists:
+        return english ? "Edit food lists\xE2\x80\xA6" : "Yemek listelerini d\xC3\xBCzenle\xE2\x80\xA6";
     }
     return "";
 }

@@ -79,6 +79,7 @@ typedef enum
     TXT_SCREEN_MUSIC,
     TXT_NOTHING_PLAYING,
     TXT_MEDIA_PAUSED,
+    TXT_NO_PICTURE,      /**< picture card placeholder (ADR-010) */
     TXT_COUNT
 } UiTextId;
 

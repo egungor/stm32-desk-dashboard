@@ -110,6 +110,30 @@ static void cb_dash_art(const uint8_t *pixels, void *ctx)
     Ui_SetMediaArt(pixels);
 }
 
+/* Status icons and the picture (ADR-010). */
+static void cb_dash_indicators(const ProtoIndicators *ind, void *ctx)
+{
+    UiIndicator items[UI_MAX_INDICATORS];
+    const uint32_t count = (ind->count > UI_MAX_INDICATORS) ? UI_MAX_INDICATORS : ind->count;
+
+    (void)ctx;
+    for (uint32_t i = 0U; i < count; i++)
+    {
+        items[i].icon = ind->items[i].icon;
+        items[i].colour = ind->items[i].colour;
+        items[i].number = ind->items[i].number;
+        items[i].slot = ind->items[i].slot;
+    }
+    Ui_SetIndicators(items, count);
+}
+
+static void cb_dash_picture(const uint8_t *pixels, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH PICTURE %s", (pixels != NULL) ? "shown" : "none");
+    Ui_SetPicture(pixels);
+}
+
 /* A short banner (ADR-009: a new notification); its texts are not logged. */
 static void cb_dash_banner(const char *text, void *ctx)
 {
@@ -360,7 +384,7 @@ void LinkPort_Init(void)
         static const DashCallbacks dash = { cb_send_frame,  cb_dash_card,   cb_dash_detail,       cb_dash_notice,
                                             cb_dash_time,   cb_dash_prompt, cb_dash_close_prompt, NULL,
                                             cb_dash_media,  cb_dash_media_state, cb_dash_art,
-                                            cb_dash_banner };
+                                            cb_dash_banner, cb_dash_indicators, cb_dash_picture };
         static const UiDashHandlers ui_dash = { on_ui_open_detail, on_ui_close_detail, on_ui_detail_action,
                                                 on_ui_media, on_ui_prompt_action };
 
@@ -369,6 +393,8 @@ void LinkPort_Init(void)
         /* Cover buffers in SDRAM (initialised before this runs, app.c). */
         Dash_SetArtBuffer(&s_dash, (uint8_t *)UI_PORT_ART_RX_ADDR);
         Ui_SetMediaArtBuffer((uint8_t *)UI_PORT_ART_SHOW_ADDR);
+        Dash_SetPictureBuffer(&s_dash, (uint8_t *)UI_PORT_PIC_RX_ADDR);
+        Ui_SetPictureBuffer((uint8_t *)UI_PORT_PIC_SHOW_ADDR);
         Ui_SetDashHandlers(&ui_dash, NULL);
     }
 }

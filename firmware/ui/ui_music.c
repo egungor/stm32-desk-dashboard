@@ -144,6 +144,7 @@ void ui_media_render(void)
     {
         lv_label_set_text_static(g_ui.dash_play_label, playing ? SYM_PAUSE : SYM_PLAY);
     }
+    ui_dash_music_render();
     if (g_ui.music_title == NULL)
     {
         return;

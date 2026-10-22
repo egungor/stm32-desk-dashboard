@@ -1,6 +1,6 @@
 /**
  * @file    protocol.h
- * @brief   STM32 <-> Windows host protocol, version 5 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 6 (see protocol/protocol.md).
  *
  * Portable C99 codec shared by the firmware and the host. Every message is
  * one fixed-size frame of PROTO_FRAME_SIZE bytes:
@@ -30,7 +30,7 @@ extern "C" {
 
 #define PROTO_FRAME_SIZE   64U
 #define PROTO_MAGIC        0xA5U
-#define PROTO_VERSION      5U
+#define PROTO_VERSION      6U
 #define PROTO_HEADER_SIZE  5U
 #define PROTO_CRC_OFFSET   62U
 #define PROTO_MAX_PAYLOAD  (PROTO_CRC_OFFSET - PROTO_HEADER_SIZE) /* 57 */
@@ -91,6 +91,26 @@ extern "C" {
 /** Parts of one cover (ceil(28800 / 54)); the last holds 18 bytes. */
 #define PROTO_ART_PARTS            ((PROTO_ART_BYTES + PROTO_ART_DATA_BYTES - 1U) / PROTO_ART_DATA_BYTES) /* 534 */
 
+/* Dashboard redesign (ADR-010, version 6). */
+/** PICTURE pic_id meaning "no picture". */
+#define PROTO_NO_PICTURE           0U
+/** Picture of the picture card: RGB565 little endian, row by row from the top left. */
+#define PROTO_PICTURE_W            200U
+#define PROTO_PICTURE_H            92U
+#define PROTO_PICTURE_BYTES        (PROTO_PICTURE_W * PROTO_PICTURE_H * 2U) /* 36800 */
+/** PICTURE_PART: the header and data of ART_PART; parts of one picture (the last holds 26 bytes). */
+#define PROTO_PICTURE_PARTS        ((PROTO_PICTURE_BYTES + PROTO_ART_DATA_BYTES - 1U) / PROTO_ART_DATA_BYTES) /* 682 */
+/** INDICATORS: at most this many status icons. */
+#define PROTO_MAX_INDICATORS       4U
+/** Indicator colours. */
+#define PROTO_INDICATOR_NORMAL     0U
+#define PROTO_INDICATOR_RED        1U
+#define PROTO_INDICATOR_YELLOW     2U
+#define PROTO_INDICATOR_GREEN      3U
+#define PROTO_INDICATOR_COLOUR_COUNT 4U
+/** Indicator slot meaning "a tap opens nothing". */
+#define PROTO_NO_SLOT              0xFFU
+
 typedef enum
 {
     PROTO_CMD_GET_DEVICE_LIST = 0x01, /**< STM32 -> host */
@@ -117,6 +137,9 @@ typedef enum
     PROTO_CMD_MEDIA_STATE     = 0x27, /**< host -> STM32 (v4) */
     PROTO_CMD_ART_PART        = 0x28, /**< host -> STM32, part of a cover (v4) */
     PROTO_CMD_BANNER_PART     = 0x29, /**< host -> STM32, part of a banner record (v5) */
+    PROTO_CMD_INDICATORS      = 0x2A, /**< host -> STM32, status icons (v6) */
+    PROTO_CMD_PICTURE_PART    = 0x2B, /**< host -> STM32, part of the picture (v6) */
+    PROTO_CMD_PICTURE         = 0x2C, /**< host -> STM32, the picture's id (v6) */
     PROTO_CMD_GET_CARDS       = 0x30, /**< STM32 -> host */
     PROTO_CMD_OPEN_DETAIL     = 0x31, /**< STM32 -> host */
     PROTO_CMD_ACTION          = 0x32, /**< STM32 -> host */
@@ -266,14 +289,30 @@ typedef struct
     uint32_t duration; /**< seconds; 0 = unknown */
 } ProtoMediaState;
 
-/** ART_PART payload: one part of a cover. */
+/** ART_PART payload: one part of a cover; PICTURE_PART: of the picture. */
 typedef struct
 {
-    uint8_t  art_id; /**< 1..255 */
-    uint16_t index;  /**< 0 .. PROTO_ART_PARTS-1 */
+    uint8_t  art_id; /**< 1..255 (PICTURE_PART: the pic_id) */
+    uint16_t index;  /**< 0 .. PROTO_ART_PARTS-1 (PICTURE_PART: PROTO_PICTURE_PARTS-1) */
     uint8_t  len;    /**< PROTO_ART_DATA_BYTES, or the rest in the last part */
     uint8_t  data[PROTO_ART_DATA_BYTES];
 } ProtoArtPart;
+
+/** One status icon of INDICATORS (ADR-010). */
+typedef struct
+{
+    uint8_t icon;   /**< icon number (protocol.md "Icon") */
+    uint8_t colour; /**< PROTO_INDICATOR_* */
+    uint8_t number; /**< shown next to the icon; 0 = none */
+    uint8_t slot;   /**< detail a tap opens (< PROTO_MAX_CARDS), or PROTO_NO_SLOT */
+} ProtoIndicator;
+
+/** INDICATORS payload. */
+typedef struct
+{
+    uint8_t        count; /**< 0 .. PROTO_MAX_INDICATORS */
+    ProtoIndicator items[PROTO_MAX_INDICATORS];
+} ProtoIndicators;
 
 /** OPEN_DETAIL payload. */
 typedef struct
@@ -315,7 +354,9 @@ typedef struct
         uint32_t           local_time;   /**< TIME: seconds since 1970-01-01 00:00 local time */
         ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART, BANNER_PART */
         ProtoMediaState    media;        /**< MEDIA_STATE */
-        ProtoArtPart       art;          /**< ART_PART */
+        ProtoArtPart       art;          /**< ART_PART, PICTURE_PART */
+        ProtoIndicators    indicators;   /**< INDICATORS */
+        uint8_t            pic_id;       /**< PICTURE: PROTO_NO_PICTURE or 1..255 */
         uint8_t            slot;         /**< CARD_CLEAR */
         uint8_t            prompt_id;    /**< PROMPT_CLOSE */
         ProtoOpenDetail    open_detail;  /**< OPEN_DETAIL */
@@ -426,21 +467,33 @@ uint8_t Proto_ArtPartBytes(uint16_t index);
  */
 int Proto_ArtPart(const uint8_t *art, uint8_t art_id, uint16_t index, ProtoArtPart *out);
 
+/** Bytes in part @p index of the picture (0 if there is no such part). */
+uint8_t Proto_PicturePartBytes(uint16_t index);
+
+/** As Proto_ArtPart, for the picture (PROTO_PICTURE_BYTES bytes). */
+int Proto_PicturePart(const uint8_t *picture, uint8_t pic_id, uint16_t index, ProtoArtPart *out);
+
 /**
- * Collects the parts of one cover into a caller-owned buffer of
- * PROTO_ART_BYTES bytes (receiver side). Parts of another art_id than the
- * one set with Proto_ArtAssemblerStart are dropped.
+ * Collects the parts of one cover (or of the picture, see
+ * Proto_PictureAssemblerInit) into a caller-owned buffer (receiver side).
+ * Parts of another id than the one set with Proto_ArtAssemblerStart are
+ * dropped.
  */
 typedef struct
 {
-    uint8_t *buffer;   /**< PROTO_ART_BYTES bytes */
-    uint8_t  art_id;   /**< cover being collected; PROTO_NO_ART = none */
+    uint8_t *buffer;   /**< PROTO_ART_BYTES (picture: PROTO_PICTURE_BYTES) bytes */
+    uint8_t  art_id;   /**< image being collected; PROTO_NO_ART = none */
+    uint8_t  picture;  /**< 1: collects the picture, 0: a cover */
     uint16_t count;    /**< parts received */
-    uint8_t  received[(PROTO_ART_PARTS + 7U) / 8U]; /**< bit n: part n arrived */
+    uint8_t  received[(PROTO_PICTURE_PARTS + 7U) / 8U]; /**< bit n: part n arrived */
 } ProtoArtAssembler;
 
 /** Prepare @p asm_ with @p buffer (PROTO_ART_BYTES bytes); collects nothing. */
 void Proto_ArtAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer);
+
+/** Prepare @p asm_ for the picture with @p buffer (PROTO_PICTURE_BYTES
+ *  bytes); then use Proto_ArtAssemblerStart / Add as for a cover. */
+void Proto_PictureAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer);
 
 /** Collect the cover @p art_id from now on (PROTO_NO_ART: none); parts
  *  collected for another id are forgotten. The same id again: no change. */

@@ -38,15 +38,17 @@ add_library(host_core STATIC
     Media/MediaCover.cpp
     Media/MediaService.cpp
     Notify/NotificationService.cpp
+    Picture/PictureService.cpp
     Notify/ToastText.cpp
     Menu/MenuData.cpp
     Menu/MenuImport.cpp
+    Menu/MenuLists.cpp
     Menu/MenuService.cpp
     Weather/WeatherCard.cpp
     Weather/WeatherLocation.cpp
     Weather/WeatherReport.cpp
     Weather/WeatherService.cpp)
-target_include_directories(host_core PUBLIC Audio Hid App Hook Media Menu Notify Weather)
+target_include_directories(host_core PUBLIC Audio Hid App Hook Media Menu Notify Picture Weather)
 # nlohmann/json (ADR-006), vendored: no warnings from it.
 target_include_directories(host_core SYSTEM PRIVATE third_party)
 find_package(Threads REQUIRED)
@@ -83,12 +85,13 @@ if(WIN32)
         Platform/Windows/WinHttpClient.cpp
         Platform/Windows/WinMediaKeys.cpp
         Platform/Windows/WinMenuImport.cpp
+        Platform/Windows/WinPicture.cpp
         Platform/Windows/WinPreferenceFile.cpp
         Platform/Windows/WinStartup.cpp
         Platform/Windows/WinStrings.cpp)
     target_include_directories(host_windows PUBLIC Platform/Windows)
     target_compile_definitions(host_windows PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32
+    target_link_libraries(host_windows PUBLIC host_core ole32 setupapi hid shell32 advapi32 user32 winhttp comdlg32 windowscodecs
                           host_media_win)
 
     # Console program: run, list, set-default, volume, mute, watch, alias, startup.

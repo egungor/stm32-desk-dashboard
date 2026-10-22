@@ -1,6 +1,6 @@
 /**
  * @file    dash_client.c
- * @brief   STM32 side of the dashboard commands of protocol v5 (see
+ * @brief   STM32 side of the dashboard commands of protocol v6 (see
  *          dash_client.h).
  */
 #include "dash_client.h"
@@ -241,6 +241,59 @@ static void on_art_part(DashClient *dash, const ProtoArtPart *part, uint32_t now
     }
 }
 
+static void show_picture(DashClient *dash, uint8_t pic_id, const uint8_t *pixels)
+{
+    dash->pic_shown = pic_id;
+    if (dash->cb.show_picture != NULL)
+    {
+        dash->cb.show_picture(pixels, dash->cb.ctx);
+    }
+}
+
+static void on_picture(DashClient *dash, uint8_t pic_id, uint32_t now_ms)
+{
+    if (pic_id == PROTO_NO_PICTURE)
+    {
+        Proto_ArtAssemblerStart(&dash->pic_asm, PROTO_NO_ART);
+        if (dash->pic_shown != PROTO_NO_PICTURE)
+        {
+            show_picture(dash, PROTO_NO_PICTURE, NULL);
+        }
+    }
+    else if (pic_id == dash->pic_shown)
+    {
+        Proto_ArtAssemblerStart(&dash->pic_asm, PROTO_NO_ART);  /* shown already */
+    }
+    else if (dash->pic_asm.buffer != NULL)
+    {
+        if (dash->pic_asm.art_id != pic_id)
+        {
+            dash->pic_part_ms = now_ms;  /* its parts follow */
+        }
+        Proto_ArtAssemblerStart(&dash->pic_asm, pic_id);
+    }
+    else
+    {
+        /* No buffer: pictures are not shown. */
+    }
+}
+
+static void on_picture_part(DashClient *dash, const ProtoArtPart *part, uint32_t now_ms)
+{
+    switch (Proto_ArtAssemblerAdd(&dash->pic_asm, part))
+    {
+    case PROTO_ASM_COMPLETE:
+        show_picture(dash, part->art_id, dash->pic_asm.buffer);
+        break;
+    case PROTO_ASM_PARTIAL:
+        dash->pic_part_ms = now_ms;
+        break;
+    default:
+        dash->frames_ignored++;  /* another picture, or one shown already */
+        break;
+    }
+}
+
 static void on_error(DashClient *dash, const ProtoError *error)
 {
     if ((error->ref_command == PROTO_CMD_OPEN_DETAIL) && dash->detail_waiting)
@@ -282,6 +335,8 @@ void Dash_Init(DashClient *dash, const DashCallbacks *callbacks)
     Proto_AssemblerInit(&dash->prompt_asm, dash->prompt_buf, PROTO_PROMPT_MAX_BYTES);
     Proto_AssemblerInit(&dash->media_asm, dash->media_buf, PROTO_MEDIA_MAX_BYTES);
     Proto_AssemblerInit(&dash->banner_asm, dash->banner_buf, PROTO_BANNER_MAX_BYTES);
+    Proto_PictureAssemblerInit(&dash->pic_asm, NULL);
+    dash->pic_shown = PROTO_NO_PICTURE;
     Proto_ArtAssemblerInit(&dash->art_asm, NULL);
     dash->art_shown = PROTO_NO_ART;
     dash->detail_slot = DASH_NO_SLOT;
@@ -293,6 +348,11 @@ void Dash_SetArtBuffer(DashClient *dash, uint8_t *buffer)
     Proto_ArtAssemblerInit(&dash->art_asm, buffer);
 }
 
+void Dash_SetPictureBuffer(DashClient *dash, uint8_t *buffer)
+{
+    Proto_PictureAssemblerInit(&dash->pic_asm, buffer);
+}
+
 void Dash_OnConnected(DashClient *dash, uint32_t now_ms)
 {
     (void)now_ms;
@@ -300,6 +360,7 @@ void Dash_OnConnected(DashClient *dash, uint32_t now_ms)
     Proto_AssemblerReset(&dash->card_asm);
     Proto_AssemblerReset(&dash->media_asm);
     Proto_ArtAssemblerStart(&dash->art_asm, PROTO_NO_ART);
+    Proto_ArtAssemblerStart(&dash->pic_asm, PROTO_NO_ART);
     send_get_cards(dash);
     send_get_media(dash);
 }
@@ -311,6 +372,7 @@ void Dash_OnDisconnected(DashClient *dash)
     Proto_AssemblerReset(&dash->detail_asm);
     Proto_AssemblerReset(&dash->prompt_asm);
     Proto_AssemblerReset(&dash->banner_asm);
+    Proto_ArtAssemblerStart(&dash->pic_asm, PROTO_NO_ART);  /* the shown picture stays */
     dash->detail_waiting = false;
     dash->detail_slot = DASH_NO_SLOT;
     close_prompt(dash);  /* nobody could receive its answer */
@@ -365,6 +427,18 @@ void Dash_OnMessage(DashClient *dash, const ProtoMessage *msg, uint32_t now_ms)
     case PROTO_CMD_BANNER_PART:
         on_banner_part(dash, &msg->u.part, now_ms);
         break;
+    case PROTO_CMD_INDICATORS:
+        if (dash->cb.show_indicators != NULL)
+        {
+            dash->cb.show_indicators(&msg->u.indicators, dash->cb.ctx);
+        }
+        break;
+    case PROTO_CMD_PICTURE:
+        on_picture(dash, msg->u.pic_id, now_ms);
+        break;
+    case PROTO_CMD_PICTURE_PART:
+        on_picture_part(dash, &msg->u.art, now_ms);
+        break;
     case PROTO_CMD_ERROR:
         on_error(dash, &msg->u.error);
         break;
@@ -381,10 +455,14 @@ void Dash_Poll(DashClient *dash, uint32_t now_ms)
     {
         return;
     }
-    if ((dash->card_asm.active != 0U) && ((now_ms - dash->card_part_ms) >= DASH_RETRY_MS))
+    if (((dash->card_asm.active != 0U) && ((now_ms - dash->card_part_ms) >= DASH_RETRY_MS)) ||
+        ((dash->pic_asm.art_id != PROTO_NO_ART) && ((now_ms - dash->pic_part_ms) >= DASH_RETRY_MS)))
     {
-        /* A card part was lost: ask for all cards again. */
+        /* A card part or a picture part was lost: ask for all cards again
+         * (the picture follows them). Picture parts collected so far are
+         * kept (same pic_id). */
         Proto_AssemblerReset(&dash->card_asm);
+        dash->pic_part_ms = now_ms;
         send_get_cards(dash);
     }
     if (((dash->media_asm.active != 0U) && ((now_ms - dash->media_part_ms) >= DASH_RETRY_MS)) ||

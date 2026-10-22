@@ -69,7 +69,11 @@ argument):
 | `93-music-paused.png` | Paused, long Turkish title, no cover and no duration, only play/pause enabled |
 | `94-dashboard-playing.png` | Dashboard strip while playing: pause in the middle |
 | `95-music-light.png` | Music tab in the light theme after a rebuild |
-| `96-dashboard-notifications.png` | Dashboard with the notifications card (#34) |
+| `96-dashboard-notifications.png` | Dashboard before a notification banner |
+| `103-dashboard-redesign.png` | Dashboard of ADR-010 (#47): sunny weather (dark text), a "never" dish (orange), a cover on the now-playing card, the picture, the bell (5, seen) and a yellow Claude Code icon |
+| `104-dashboard-rain-red.png` | Rain, a "don't like" dish on Monday (yellow, badge), the bell "99+" and two Claude Code requests waiting (red) |
+| `105-dashboard-light.png` | The light theme: the cards keep their colours; one green status icon |
+| `106-menu-warning.png` | The morning menu warning (a prompt with one button) |
 | `97-banner.png` | A notification banner over the Dashboard (bell, app, countdown, two lines) |
 | `98-banner-audio.png` | The banner over the Audio tab; a tap opens the notifications list |
 | `99-notifications-detail.png` | The notifications list: app and time, sender and text |

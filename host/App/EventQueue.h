@@ -37,6 +37,7 @@ enum class HostEvent {
     MenuChanged,      // a menu import wrote the month files
     MediaChanged,     // what plays on the PC changed (ADR-008)
     NotificationsChanged,  // the toasts in the notification centre changed (ADR-009)
+    PictureChanged,   // a picture was chosen in the tray menu (ADR-010)
     HookRequest,      // a Claude Code permission request from the pipe (ticket, text)
     HookCancelled,    // its hook went away before an answer (ticket)
     Quit,
@@ -130,6 +131,7 @@ private:
         return event == HostEvent::DevicesChanged || event == HostEvent::DefaultChanged ||
                event == HostEvent::VolumeChanged || event == HostEvent::MenuChanged ||
                event == HostEvent::MediaChanged || event == HostEvent::NotificationsChanged ||
+               event == HostEvent::PictureChanged ||
                event == HostEvent::Quit;
     }
 

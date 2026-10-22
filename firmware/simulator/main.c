@@ -892,6 +892,10 @@ static void run_layouts_script(void)
  * y 36 / 136; the media buttons at x 86, 142, 198, the mute button at x
  * 258 and the volume slider from about x 300 to 420, y 250 (#32). */
 #define DASH_STRIP_Y 250
+/* Status icons at the top right (ADR-010): the bell with "3", the robot. */
+#define IND_Y        18
+#define IND_BELL_X   408
+#define IND_CLAUDE_X 456
 #define DASH_PREV_X  86
 #define DASH_PLAY_X  142
 #define DASH_NEXT_X  198
@@ -981,11 +985,11 @@ static void run_dashboard_script(void)
 {
     static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media, dash_prompt };
     /* Card and detail as host/Weather/WeatherCard makes them (#18). */
+    /* Card as host/Weather/WeatherCard makes it (ADR-010). */
     static const char *const weather_card =
-        "3" F "\xC4\xB0stanbul" F "\n"
-        "18\xC2\xB0  Par\xC3\xA7" "al\xC4\xB1 bulutlu\n"
-        "11\xC2\xB0 / 21\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %20\n"
-        "R\xC3\xBCzg\xC3\xA2r 12 km/s";
+        "3" F "Ankara" F "" F "3D86C6" F "L\n"
+        "18\xC2\xB0\n"
+        "11\xC2\xB0 / 21\xC2\xB0";
     static const char *const weather_detail =
         "Hava durumu" F "\xC4\xB0stanbul \xC2\xB7 14:00" F "\n"
         "#\xC5\x9Eimdi\n"
@@ -1006,10 +1010,10 @@ static void run_dashboard_script(void)
         "5" F "Cum 30" F "6\xC2\xB0 / 13\xC2\xB0";
     /* Card and detail as host/Menu/MenuService makes them (#20). */
     static const char *const menu_card =
-        "11" F "Yemek" F "\n"
+        "11" F "" F "" F "3E9B5F" F "\n"
         "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
         "Tarhana \xC3\xA7orba\n"
-        "Salata bar: 6 \xC3\xA7" "e\xC5\x9Fit";
+        "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava";
     static const char *const menu_detail =
         "Yemek" F "5 Ekim Pazartesi" F "n\n"
         F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
@@ -1028,9 +1032,13 @@ static void run_dashboard_script(void)
     Ui_SetTime(1792593125U); /* 2026-10-21 14:32:05, a Wednesday */
     Ui_SetCard(0U, weather_card);
     Ui_SetCard(1U, menu_card);
-    Ui_SetCard(2U, "");
-    Ui_SetCard(3U, "0" F "CLAUDE CODE" F "\nOnay bekleyen yok");
     Ui_SetCard(7U, "ignored");
+    {
+        /* The bell (3 toasts, not seen) and the Claude Code icon (ADR-010). */
+        static const UiIndicator ind[2] = { { 12U, UI_INDICATOR_RED, 3U, 2U }, { 13U, UI_INDICATOR_NORMAL, 0U, 3U } };
+
+        Ui_SetIndicators(ind, 2U);
+    }
     tap(RAIL_DASH_X, RAIL_DASH_Y);
     run_ms(50U);
     check(Ui_CurrentAppTab() == UI_APP_TAB_DASHBOARD, "the rail shows the Dashboard tab");
@@ -1038,9 +1046,12 @@ static void run_dashboard_script(void)
     snapshot("80-dashboard");
     report_memory("80-dashboard");
 
-    /* An empty card does nothing. */
+    /* The now-playing card opens the Music tab. */
     tap(164, 182);
-    check((s_dash.open_calls == 0) && (Ui_DashView() == UI_DASH_VIEW_CARDS), "an empty card cannot be opened");
+    run_ms(50U);
+    check((s_dash.open_calls == 0) && (Ui_CurrentAppTab() == UI_APP_TAB_MUSIC), "the now-playing card opens the Music tab");
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
 
     /* Weather: tap, loading, detail. */
     tap(164, 82);
@@ -1093,8 +1104,9 @@ static void run_dashboard_script(void)
 
     /* No detail: back to the cards with a notice. */
     tap(76, 18);
-    tap(372, 182);
-    check(Ui_DashView() == UI_DASH_VIEW_LOADING, "the Claude card asks for its detail");
+    tap(IND_CLAUDE_X, IND_Y);
+    check((Ui_DashView() == UI_DASH_VIEW_LOADING) && (s_dash.open_slot == 3U),
+          "the Claude Code icon asks for its detail (slot 3)");
     Ui_DetailFailed();
     run_ms(50U);
     check(Ui_DashView() == UI_DASH_VIEW_CARDS, "a failed detail returns to the cards");
@@ -1300,11 +1312,6 @@ static void run_music_script(void)
  * over every screen. Texts as host/Notify/NotificationService makes them. */
 static void run_banner_script(void)
 {
-    static const char *const notify_card =
-        "12" F "Bildirimler" F "3\n"
-        "WhatsApp: Ay\xC5\x9F" "e\n"
-        "Outlook: Toplant\xC4\xB1 notlar\xC4\xB1\n"
-        "Microsoft Teams: Ali Y\xC4\xB1lmaz";
     static const char *const notify_detail =
         "Bildirimler" F "3 bildirim" F "\n"
         "#WhatsApp \xC2\xB7 14:32\n"
@@ -1321,7 +1328,6 @@ static void run_banner_script(void)
     UiSettings s = *Ui_Settings();
     int opens;
 
-    Ui_SetCard(2U, notify_card);
     tap(RAIL_DASH_X, RAIL_DASH_Y);
     run_ms(50U);
     snapshot("96-dashboard-notifications");
@@ -1435,6 +1441,137 @@ static void run_banner_script(void)
         check(after <= before + 512U, "banners do not leak memory");
     }
     report_memory("banner-end");
+}
+
+/* Dashboard redesign (ADR-010, #47): the picture card, the cover on the
+ * now-playing card, the colours of the cards and status icons, the light
+ * theme, the morning menu warning. Texts as the host makes them. */
+static uint8_t s_pic_shown[UI_PICTURE_BYTES];
+static uint8_t s_pic_in[UI_PICTURE_BYTES];
+
+static void run_redesign_script(void)
+{
+    static const char *const sunny = "1" F "Ankara" F "" F "E59B2E" F "L\n24\xC2\xB0\n12\xC2\xB0 / 26\xC2\xB0";
+    static const char *const night_rain = "7" F "Ankara" F "" F "3A6EA5" F "L\n9\xC2\xB0\n7\xC2\xB0 / 13\xC2\xB0";
+    static const char *const menu_never =
+        "11" F "" F "" F "E0702F" F "\nEtli bamya\nMercimek \xC3\xA7orba\nS\xC3\xBCtla\xC3\xA7";
+    static const char *const menu_dislike =
+        "11" F "" F "Pzt 26" F "D9A520" F "\nKuru fasulye\nTarhana \xC3\xA7orba\nKazandibi";
+    static const char *const warning =
+        "Bug\xC3\xBCnk\xC3\xBC men\xC3\xBC" "de" F "22 Ekim Per\xC5\x9F" "embe" F "\n"
+        "11" F "\xC4\xB0stemiyorum" F "Etli bamya\n"
+        "11" F "Sevmiyorum" F "Tarhana \xC3\xA7orba\n"
+        "!1" F "Tamam";
+    UiSettings s = *Ui_Settings();
+
+    tap(RAIL_DASH_X, RAIL_DASH_Y);
+    run_ms(50U);
+
+    /* The picture: a test pattern (sky, sun, hills) at the card's size. */
+    for (uint32_t y = 0U; y < UI_PICTURE_H; y++)
+    {
+        for (uint32_t x = 0U; x < UI_PICTURE_W; x++)
+        {
+            const int32_t dx = (int32_t)x - 150;
+            const int32_t dy = (int32_t)y - 30;
+            const bool sun = ((dx * dx) + (dy * dy)) < (16 * 16);
+            const bool hill = (int32_t)y > (60 + (int32_t)((x % 80U) < 40U ? (x % 40U) / 3U : (40U - (x % 40U)) / 3U));
+            uint32_t r = 40U + (y * 120U) / UI_PICTURE_H;
+            uint32_t g = 110U + (y * 100U) / UI_PICTURE_H;
+            uint32_t b = 220U;
+            uint16_t px;
+
+            if (sun)
+            {
+                r = 255U;
+                g = 210U;
+                b = 60U;
+            }
+            else if (hill)
+            {
+                r = 40U;
+                g = 140U - (y - 60U);
+                b = 70U;
+            }
+            px = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            s_pic_in[(y * UI_PICTURE_W + x) * 2U] = (uint8_t)(px & 0xFFU);
+            s_pic_in[(y * UI_PICTURE_W + x) * 2U + 1U] = (uint8_t)(px >> 8);
+        }
+    }
+    Ui_SetPictureBuffer(s_pic_shown);
+    check(!Ui_PictureShown(), "no picture before one arrives");
+    Ui_SetPicture(s_pic_in);
+    run_ms(50U);
+    check(Ui_PictureShown(), "the picture card shows the picture");
+
+    /* A track with a cover on the now-playing card. */
+    Ui_SetMedia("Gidiyorum" F "Sezen Aksu" F "Deniz Y\xC4\xB1ld\xC4\xB1z\xC4\xB1" F "Spotify");
+    Ui_SetMediaState(UI_MEDIA_PLAYING, 7U, 63U, 245U);
+    Ui_SetMediaArt(s_art_in);
+    Ui_SetCard(0U, sunny);
+    Ui_SetCard(1U, menu_never);
+    {
+        static const UiIndicator ind[2] = { { 12U, UI_INDICATOR_NORMAL, 5U, 2U },
+                                            { 13U, UI_INDICATOR_YELLOW, 0U, 3U } };
+
+        Ui_SetIndicators(ind, 2U);
+    }
+    run_ms(50U);
+    check(Ui_IndicatorCount() == 2U, "two status icons");
+    snapshot("103-dashboard-redesign");
+
+    /* The bell opens the notifications list (slot 2). */
+    {
+        const int opens = s_dash.open_calls;
+
+        tap(IND_BELL_X, IND_Y);
+        check((s_dash.open_calls == opens + 1) && (s_dash.open_slot == 2U) &&
+                  (Ui_DashView() == UI_DASH_VIEW_LOADING),
+              "the bell asks for the notifications list");
+        tap(76, 18);
+        run_ms(50U);
+    }
+
+    /* Night rain, "don't like" on Monday, Claude Code waiting (red, 2) and allowed (green). */
+    Ui_SetCard(0U, night_rain);
+    Ui_SetCard(1U, menu_dislike);
+    {
+        static const UiIndicator ind[2] = { { 12U, UI_INDICATOR_RED, 120U, 2U },
+                                            { 13U, UI_INDICATOR_RED, 2U, 3U } };
+
+        Ui_SetIndicators(ind, 2U);
+    }
+    run_ms(50U);
+    snapshot("104-dashboard-rain-red");
+    {
+        static const UiIndicator ind[1] = { { 13U, UI_INDICATOR_GREEN, 0U, 3U } };
+
+        Ui_SetIndicators(ind, 1U);
+    }
+    Ui_SetPicture(NULL);
+    run_ms(50U);
+    check(!Ui_PictureShown() && Ui_IndicatorCount() == 1U, "no picture: the placeholder; one icon");
+
+    /* The light theme keeps the colours of the cards. */
+    Ui_SetPicture(s_pic_in);
+    s.theme = UI_THEME_LIGHT;
+    Ui_ApplySettings(&s);
+    run_ms(50U);
+    check(Ui_PictureShown() && Ui_IndicatorCount() == 1U, "a rebuild keeps the picture and the icons");
+    snapshot("105-dashboard-light");
+    s.theme = UI_THEME_DARK;
+    Ui_ApplySettings(&s);
+    run_ms(50U);
+
+    /* The morning warning: a prompt with one button, it wakes the screen. */
+    Ui_ShowPrompt(255U, warning);
+    run_ms(50U);
+    snapshot("106-menu-warning");
+    tap(240, 236);
+    check((s_dash.prompt_id == 255U) && (s_dash.prompt_action == 1U), "\"Tamam\" answers the warning");
+    Ui_ClosePrompt(255U);
+    run_ms(50U);
+    report_memory("redesign-end");
 }
 
 #undef F
@@ -1603,6 +1740,7 @@ static void run_script(void)
     run_dashboard_script();
     run_music_script();
     run_banner_script();
+    run_redesign_script();
 }
 
 int main(int argc, char **argv)

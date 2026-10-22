@@ -15,8 +15,11 @@
 // prompt shows only Reddet and Terminalde sor: what cannot be read in full
 // on the board cannot be approved there.
 //
-// The Claude Code card (slot 3) shows how many requests wait and the last
-// decisions; its detail lists them. Single threaded, platform independent.
+// The Claude Code status icon (ADR-010, icon 13 at the top right of the
+// Dashboard) shows how many requests wait and, by its colour, what happened
+// since its list (the detail of slot 3) was last opened: red while a
+// request waits, else yellow if one timed out, else green if one was
+// allowed, else normal. Single threaded, platform independent.
 #pragma once
 
 #include <cstdint>
@@ -61,7 +64,10 @@ public:
     using ReplyFn = std::function<void(std::uint64_t ticket, HookAnswer answer)>;
     using LogFn = std::function<void(const std::string& line)>;
 
-    static constexpr std::uint8_t kSlot = 3;  // ADR-006: 3 Claude Code
+    static constexpr std::uint8_t kSlot = 3;  // ADR-006: 3 Claude Code (its detail)
+    static constexpr std::uint8_t kIcon = 13; // protocol.md "Icon": robot
+    // Prompt ids of requests: 0..kMaxPromptId (255 is the menu warning's).
+    static constexpr std::uint8_t kMaxPromptId = 254;
     static constexpr std::uint64_t kAnswerTimeoutMs = 60000;
     static constexpr std::size_t kMaxQueue = 8;
     static constexpr std::size_t kHistory = 5;
@@ -86,8 +92,11 @@ public:
 
     std::size_t waiting() const { return queue_.size(); }
 
-    std::string card() const;
-    std::optional<std::string> detail() const;
+    // The status icon now.
+    ProtoIndicator indicator() const;
+    // OPEN_DETAIL on kSlot: the list; marks timeouts and allowed requests as
+    // seen (the icon's yellow and green go).
+    std::optional<std::string> detail();
 
 private:
     struct Request {
@@ -118,6 +127,8 @@ private:
     std::uint8_t nextPromptId_ = 0;
     std::optional<std::uint8_t> shownId_;
     bool shownApprovable_ = false;
+    bool timedOutUnseen_ = false;
+    bool allowedUnseen_ = false;
 };
 
 }  // namespace stm32_audio::host

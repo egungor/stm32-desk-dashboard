@@ -26,10 +26,17 @@ firmware (`App/Src/ui_port.c`, `App/Src/ui_demo.c`) and into the Linux simulator
   (`startup_screen`: 0 Dashboard, 1 Audio); before them the Dashboard tab
   is shown. A rebuild keeps the shown tab.
 - Dashboard tab (`ui_dash.c`, ADR-006, #14): a clock strip (`Ui_SetTime`,
-  counted on with the LVGL tick, updated once a minute), four cards on a
-  2×2 grid (`Ui_SetCard`, slots 0–3; the host's record text: icon, title,
-  badge, up to three lines; an empty slot is a dim frame that cannot be
-  tapped) and the media strip `<< || >>` (`UiDashHandlers.media`). A tap
+  counted on with the LVGL tick, updated once a minute) with the status
+  icons at its right (`Ui_SetIndicators`, ADR-010: icon, colour, number;
+  a tap opens their detail slot), four cards on a 2×2 grid and the media
+  strip `<< || >>` (`UiDashHandlers.media`). The top row shows the host's
+  cards of slots 0 and 1 (`Ui_SetCard`; record text: icon, title, badge,
+  `RRGGBB` background, flags `L`, up to three lines; a 40 px icon on the
+  left, white or dark text by the background; an empty slot is a dim frame
+  that cannot be tapped); the bottom row is the board's own: now playing
+  (music icon, a 36 px cover, the title; a tap opens the Music tab) and the
+  picture (`Ui_SetPictureBuffer`, `Ui_SetPicture`: 200 × 92 RGB565, or a
+  placeholder). A tap
   on a card shows the detail view in the tab ("Yükleniyor..." with the
   card's title until `Ui_ShowDetail`): a header with back, title,
   subtitle and ‹ › when the record's flags hold `n`; rows (label and

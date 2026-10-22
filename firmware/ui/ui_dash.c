@@ -5,20 +5,22 @@
  *          view.
  *
  *     ┌──────────────────────────────────────────┐
- *     │ 14:32  Çarşamba 21 Ekim                  │  clock strip (36 px)
+ *     │ 14:32  Çarşamba 21 Ekim       (bell) 3 (●) │  clock strip (36 px), status icons
  *     │ ┌ card 0 ─────────┐ ┌ card 1 ─────────┐  │
- *     │ │ TITLE     badge │ │                 │  │  2 x 2 cards
- *     │ │ line            │ │                 │  │
+ *     │ │ [ic] title badge│ │ [ic] line       │  │  host cards (slots 0, 1)
+ *     │ │      line       │ │      line       │  │
  *     │ └─────────────────┘ └─────────────────┘  │
- *     │ ┌ card 2 ─────────┐ ┌ card 3 ─────────┐  │
- *     │ └─────────────────┘ └─────────────────┘  │
+ *     │ ┌ now playing ────┐ ┌ picture ────────┐  │  the board's own cards
+ *     │ └─────────────────┘ └─────────────────┘  │  (ADR-010)
  *     │ [|<] [ > ] [>|]      (vol) ━━━━●──── 45% │  bottom strip (44 px)
  *     └──────────────────────────────────────────┘
  *
  * The board knows nothing about weather or menus: a card and a detail are
  * text records from the host (protocol.md, "Record text"):
  *
- *   card:   icon ␟ title ␟ badge \n line \n line \n line
+ *   card:   icon ␟ title ␟ badge ␟ bg ␟ flags \n line \n line \n line
+ *           (ADR-010: bg RRGGBB, flags "L" = first line large; a 40 px icon
+ *           on the left; only slots 0 and 1 have a place on the screen)
  *   detail: title ␟ subtitle ␟ flags \n rows ...
  *           row:     icon ␟ label ␟ value
  *           section: #title
@@ -59,7 +61,7 @@ static const char *icon_symbol(const char *field)
     static const char *const symbols[] = {
         NULL,          SYM_SUN,  SYM_MOON,       SYM_CLOUD_SUN, SYM_CLOUD_MOON, SYM_CLOUD,
         SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,      SYM_UTENSILS,
-        SYM_BELL,
+        SYM_BELL,      SYM_ROBOT,
     };
     char *end = NULL;
     unsigned long n;
@@ -123,6 +125,51 @@ static void split_fields(char *line, char **fields, uint32_t count)
     }
 }
 
+/* Six hex digits RRGGBB -> colour; false for anything else. */
+static bool parse_rgb(const char *text, uint32_t *rgb)
+{
+    uint32_t v = 0U;
+
+    if ((text == NULL) || (strlen(text) != 6U))
+    {
+        return false;
+    }
+    for (uint32_t i = 0U; i < 6U; i++)
+    {
+        const char c = text[i];
+        uint32_t d;
+
+        if ((c >= '0') && (c <= '9'))
+        {
+            d = (uint32_t)(c - '0');
+        }
+        else if ((c >= 'A') && (c <= 'F'))
+        {
+            d = (uint32_t)(c - 'A') + 10U;
+        }
+        else if ((c >= 'a') && (c <= 'f'))
+        {
+            d = (uint32_t)(c - 'a') + 10U;
+        }
+        else
+        {
+            return false;
+        }
+        v = (v << 4) | d;
+    }
+    *rgb = v;
+    return true;
+}
+
+/* Text on a coloured card: dark on a bright background, white otherwise
+ * (perceived brightness, ITU-R BT.601 weights). */
+static uint32_t text_on(uint32_t bg)
+{
+    const uint32_t y = (((bg >> 16) & 0xFFU) * 299U) + (((bg >> 8) & 0xFFU) * 587U) + ((bg & 0xFFU) * 114U);
+
+    return (y > 160000U) ? 0x1B1B1FU : 0xFFFFFFU;
+}
+
 /* -------------------------------------------------------------- clock */
 
 /* Days since 1970-01-01 -> year, month, day (Howard Hinnant's algorithm). */
@@ -179,61 +226,221 @@ void ui_dash_clock_tick(void)
 
 /* --------------------------------------------------------------- cards */
 
+#define CARD_ICON_W  44        /**< icon column of a card (40 px icons) */
+#define CARD_RECORDS 2U        /**< host cards on the screen (slots 0, 1) */
+#define MUSIC_BG     0x5B4B8AU /**< now-playing card (ADR-010) */
+#define PICTURE_BG   0x2F6F73U /**< picture card without a picture */
+#define THUMB        36        /**< cover on the now-playing card */
+
+/* A card's colours: the background and its text, or the theme's. */
+static void card_colours(lv_obj_t *card, const char *bg_field, uint32_t *fg, bool *coloured)
+{
+    uint32_t bg = 0U;
+
+    *coloured = parse_rgb(bg_field, &bg);
+    ui_style_card(card, BTN_RADIUS);
+    if (*coloured)
+    {
+        lv_obj_set_style_bg_color(card, ui_color(bg), 0);
+        lv_obj_set_style_border_width(card, 0, 0);
+        *fg = text_on(bg);
+    }
+    else
+    {
+        *fg = g_ui.pal.text;
+    }
+}
+
+/* One line of a card: never wrapped, cut with "...". */
+static lv_obj_t *card_line(lv_obj_t *parent, const lv_font_t *font, uint32_t color, bool secondary, const char *text)
+{
+    lv_obj_t *label = ui_make_label(parent, font, color, text);
+
+    lv_obj_set_width(label, LV_PCT(100));
+    lv_obj_set_height(label, lv_font_get_line_height(font));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    if (secondary)
+    {
+        lv_obj_set_style_text_opa(label, LV_OPA_80, 0);
+    }
+    return label;
+}
+
+/* The icon column on the left and the text column on its right. */
+static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t fg)
+{
+    lv_obj_t *col;
+
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(card, 8, 0);
+    if (icon != NULL)
+    {
+        lv_obj_t *label = ui_make_label(card, &ui_icons_40, fg, icon);
+
+        lv_obj_set_width(label, CARD_ICON_W);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    }
+    col = ui_make_box(card);
+    lv_obj_set_height(col, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(col, 1);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(col, 1, 0);
+    return col;
+}
+
 static void render_card(uint32_t slot)
 {
     lv_obj_t *card = g_ui.dash_card_objs[slot];
     char *lines[4];
-    char *head[3];
+    char *head[5];
     uint32_t n;
-    lv_obj_t *top;
-    lv_obj_t *label;
-    const char *icon;
+    uint32_t fg;
+    bool coloured;
+    bool large;
+    lv_obj_t *col;
 
-    if (card == NULL)
+    if ((card == NULL) || (slot >= CARD_RECORDS))
     {
         return;
     }
     lv_obj_clean(card);
     if (g_ui.dash_cards[slot][0] == '\0')
     {
+        ui_style_card(card, BTN_RADIUS);
         lv_obj_set_style_bg_opa(card, LV_OPA_40, 0);
         lv_obj_remove_flag(card, LV_OBJ_FLAG_CLICKABLE);
         return;
     }
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
 
     (void)memcpy(s_scratch, g_ui.dash_cards[slot], sizeof(g_ui.dash_cards[slot]));
     n = split_lines(s_scratch, lines, 4U);
-    split_fields(lines[0], head, 3U);
+    split_fields(lines[0], head, 5U);
+    card_colours(card, head[3], &fg, &coloured);
+    large = (strchr(head[4], 'L') != NULL);
+    col = card_columns(card, icon_symbol(head[0]), fg);
 
-    top = ui_make_box(card);
-    lv_obj_set_size(top, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(top, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(top, 6, 0);
-    icon = icon_symbol(head[0]);
-    if (icon != NULL)
+    if ((head[1][0] != '\0') || (head[2][0] != '\0'))
     {
-        (void)ui_make_label(top, &ui_font_14, g_ui.pal.muted, icon);
-    }
-    label = ui_make_label(top, &ui_font_14, g_ui.pal.muted, head[1]);
-    lv_obj_set_flex_grow(label, 1);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
-    lv_obj_set_height(label, lv_font_get_line_height(&ui_font_14));
-    if (head[2][0] != '\0')
-    {
-        (void)ui_make_label(top, &ui_font_14, g_ui.pal.accent, head[2]);
-    }
+        lv_obj_t *top = ui_make_box(col);
+        lv_obj_t *label;
 
+        lv_obj_set_size(top, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(top, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(top, 6, 0);
+        label = ui_make_label(top, &ui_font_14, coloured ? fg : g_ui.pal.muted, head[1]);
+        lv_obj_set_flex_grow(label, 1);
+        lv_obj_set_height(label, lv_font_get_line_height(&ui_font_14));
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+        if (coloured)
+        {
+            lv_obj_set_style_text_opa(label, LV_OPA_80, 0);
+        }
+        if (head[2][0] != '\0')
+        {
+            (void)ui_make_label(top, &ui_font_14, coloured ? fg : g_ui.pal.accent, head[2]);
+        }
+    }
     for (uint32_t i = 1U; i < n; i++)
     {
-        const lv_font_t *font = (i == 1U) ? &ui_font_16 : &ui_font_14;
+        const lv_font_t *font = (i == 1U) ? (large ? &ui_font_22 : &ui_font_16) : &ui_font_14;
 
-        label = ui_make_label(card, font, (i == 1U) ? g_ui.pal.text : g_ui.pal.muted, lines[i]);
+        (void)card_line(col, font, (coloured || (i == 1U)) ? fg : g_ui.pal.muted, coloured && (i > 1U), lines[i]);
+    }
+}
+
+/* The now-playing card (bottom left, ADR-010): the music icon, a small
+ * cover and the title, from the media record the Music tab shows too. */
+void ui_dash_music_render(void)
+{
+    lv_obj_t *card = g_ui.dash_card_objs[2];
+    const uint32_t fg = text_on(MUSIC_BG);
+    const bool session = (g_ui.media_status != UI_MEDIA_NONE);
+    char *fields[4];
+    lv_obj_t *col;
+
+    if (card == NULL)
+    {
+        return;
+    }
+    lv_obj_clean(card);
+    ui_style_card(card, BTN_RADIUS);
+    lv_obj_set_style_bg_color(card, ui_color(MUSIC_BG), 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    col = card_columns(card, SYM_MUSIC, fg);
+    if (!session)
+    {
+        lv_obj_t *label = ui_make_label(col, &ui_font_16, fg, ui_text(TXT_NOTHING_PLAYING));
+
         lv_obj_set_width(label, LV_PCT(100));
-        lv_obj_set_height(label, lv_font_get_line_height(font));
-        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+        return;
+    }
+    (void)snprintf(s_scratch, sizeof(s_scratch), "%s", g_ui.media_text);
+    split_fields(s_scratch, fields, 4U);
+    {
+        lv_obj_t *top = ui_make_box(col);
+
+        lv_obj_set_size(top, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(top, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(top, 6, 0);
+        if (g_ui.art_valid && (g_ui.art_buf != NULL))
+        {
+            lv_obj_t *img = lv_image_create(top);
+
+            lv_image_set_src(img, &g_ui.art_dsc);
+            lv_obj_set_size(img, THUMB, THUMB);
+            lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
+            lv_obj_set_style_radius(img, 4, 0);
+            lv_obj_set_style_clip_corner(img, true, 0);
+        }
+        (void)card_line(top, &ui_font_14, fg, true,
+                        (g_ui.media_status == UI_MEDIA_PAUSED) ? ui_text(TXT_MEDIA_PAUSED) : fields[3]);
+        lv_obj_set_flex_grow(lv_obj_get_child(top, -1), 1);
+    }
+    (void)card_line(col, &ui_font_16, fg, false, (fields[0][0] != '\0') ? fields[0] : "-");
+    (void)card_line(col, &ui_font_14, fg, true, fields[1]);
+}
+
+/* The picture card (bottom right, ADR-010): the picture chosen on the PC,
+ * already 200 x 92 (the card's size), or a placeholder. */
+static void render_picture_card(void)
+{
+    lv_obj_t *card = g_ui.dash_card_objs[3];
+
+    if (card == NULL)
+    {
+        return;
+    }
+    lv_obj_clean(card);
+    ui_style_card(card, BTN_RADIUS);
+    lv_obj_set_style_border_width(card, 0, 0);
+    if (g_ui.pic_valid && (g_ui.pic_buf != NULL))
+    {
+        lv_obj_t *img = lv_image_create(card);
+
+        lv_obj_set_style_pad_all(card, 0, 0);
+        lv_obj_set_style_clip_corner(card, true, 0);
+        lv_image_set_src(img, &g_ui.pic_dsc);
+        lv_obj_set_size(img, LV_PCT(100), LV_PCT(100));
+        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CENTER);
+        return;
+    }
+    lv_obj_set_style_pad_hor(card, 10, 0);
+    lv_obj_set_style_pad_ver(card, 8, 0);
+    lv_obj_set_style_bg_color(card, ui_color(PICTURE_BG), 0);
+    {
+        const uint32_t fg = text_on(PICTURE_BG);
+        lv_obj_t *col = card_columns(card, SYM_IMAGE, fg);
+
+        lv_obj_t *hint = ui_make_label(col, &ui_font_14, fg, ui_text(TXT_NO_PICTURE));
+
+        lv_obj_set_width(hint, LV_PCT(100));
+        lv_label_set_long_mode(hint, LV_LABEL_LONG_MODE_WRAP);
+        lv_obj_set_style_text_opa(hint, LV_OPA_80, 0);
     }
 }
 
@@ -513,10 +720,10 @@ static void show_view(uint32_t view)
     build_detail_view();
 }
 
-/* Open the detail of card @p slot, as a tap on it (the card and the banner). */
-static void open_card_detail(uint32_t slot)
+/* Open the detail of @p slot (0-7): a card, a status icon or the banner. */
+static void open_detail_of(uint32_t slot)
 {
-    if ((slot >= UI_DASH_CARDS) || (g_ui.dash_cards[slot][0] == '\0'))
+    if (slot >= 8U)
     {
         return;
     }
@@ -530,7 +737,92 @@ static void open_card_detail(uint32_t slot)
 
 static void on_card(lv_event_t *e)
 {
-    open_card_detail((uint32_t)(uintptr_t)lv_event_get_user_data(e));
+    const uint32_t slot = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+
+    if (slot == 2U)
+    {
+        ui_shell_show_tab(UI_APP_TAB_MUSIC);  /* the now-playing card */
+        return;
+    }
+    if ((slot < CARD_RECORDS) && (g_ui.dash_cards[slot][0] != '\0'))
+    {
+        open_detail_of(slot);
+    }
+}
+
+/* ---------------------------------------------------------- status icons */
+
+static uint32_t indicator_colour(uint8_t colour)
+{
+    switch (colour)
+    {
+    case UI_INDICATOR_RED:
+        return 0xE5484DU;
+    case UI_INDICATOR_YELLOW:
+        return 0xE5B000U;
+    case UI_INDICATOR_GREEN:
+        return 0x3FB950U;
+    default:
+        return g_ui.pal.muted;
+    }
+}
+
+static void on_indicator(lv_event_t *e)
+{
+    const uint32_t i = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+
+    if (i < g_ui.ind_count)
+    {
+        open_detail_of(g_ui.indicators[i].slot);
+    }
+}
+
+static void render_indicators(void)
+{
+    if (g_ui.ind_box == NULL)
+    {
+        return;
+    }
+    lv_obj_clean(g_ui.ind_box);
+    for (uint32_t i = 0U; i < g_ui.ind_count; i++)
+    {
+        const UiIndicator *it = &g_ui.indicators[i];
+        const uint32_t color = indicator_colour(it->colour);
+        const char *icon = NULL;
+        char number[8];
+        lv_obj_t *btn = ui_make_box(g_ui.ind_box);
+
+        {
+            char field[4];
+
+            (void)snprintf(field, sizeof(field), "%u", (unsigned)it->icon);
+            icon = icon_symbol(field);
+        }
+        lv_obj_set_size(btn, LV_SIZE_CONTENT, LV_PCT(100));
+        lv_obj_set_style_pad_hor(btn, 6, 0);
+        lv_obj_set_style_pad_column(btn, 4, 0);
+        lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        (void)ui_make_label(btn, &ui_font_22, color, (icon != NULL) ? icon : "?");
+        if (it->number > 0U)
+        {
+            if (it->number > 99U)
+            {
+                (void)snprintf(number, sizeof(number), "99+");
+            }
+            else
+            {
+                (void)snprintf(number, sizeof(number), "%u", (unsigned)it->number);
+            }
+            (void)ui_make_label(btn, &ui_font_16, color, number);
+        }
+        if (it->slot < 8U)
+        {
+            lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_ext_click_area(btn, 6);
+            lv_obj_add_event_cb(btn, on_indicator, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        }
+    }
 }
 
 /* ----------------------------------------------------------------- build */
@@ -546,6 +838,13 @@ static void build_clock_strip(lv_obj_t *parent)
     lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     g_ui.clock_label = ui_make_label(strip, &ui_font_22, g_ui.pal.text, "--:--");
     g_ui.date_label = ui_make_label(strip, &ui_font_14, g_ui.pal.muted, "");
+    lv_obj_set_flex_grow(g_ui.date_label, 1);
+    g_ui.ind_box = ui_make_box(strip);
+    lv_obj_set_size(g_ui.ind_box, LV_SIZE_CONTENT, LV_PCT(100));
+    lv_obj_set_flex_flow(g_ui.ind_box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(g_ui.ind_box, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(g_ui.ind_box, 4, 0);
+    render_indicators();
     g_ui.clock_shown = UINT32_MAX;
     ui_dash_clock_tick();
 }
@@ -570,12 +869,14 @@ static void build_cards(lv_obj_t *parent)
                              (int32_t)(slot / 2U), 1);
         lv_obj_set_style_pad_hor(card, 10, 0);
         lv_obj_set_style_pad_ver(card, 8, 0);
-        lv_obj_set_style_pad_row(card, 2, 0);
-        lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
         lv_obj_add_event_cb(card, on_card, LV_EVENT_CLICKED, (void *)(uintptr_t)slot);
+        lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
         g_ui.dash_card_objs[slot] = card;
         render_card(slot);
     }
+    lv_obj_add_flag(g_ui.dash_card_objs[2], LV_OBJ_FLAG_CLICKABLE);  /* opens the Music tab */
+    ui_dash_music_render();
+    render_picture_card();
 }
 
 /* Bottom strip: media controls on the left (the middle one shows pause
@@ -833,10 +1134,10 @@ static void on_banner_clicked(lv_event_t *e)
     {
         return; /* settings, editing: a tap only closes it */
     }
-    if ((slot < UI_DASH_CARDS) && (g_ui.dash_cards[slot][0] != '\0'))
+    if (slot < 8U)
     {
         ui_shell_show_tab(UI_APP_TAB_DASHBOARD);
-        open_card_detail(slot);
+        open_detail_of(slot);
     }
 }
 
@@ -1025,6 +1326,59 @@ void Ui_SetTime(uint32_t local_time)
 uint32_t Ui_DashView(void)
 {
     return g_ui.dash_view;
+}
+
+void Ui_SetIndicators(const UiIndicator *items, uint32_t count)
+{
+    if (items == NULL)
+    {
+        count = 0U;
+    }
+    g_ui.ind_count = (count > UI_MAX_INDICATORS) ? UI_MAX_INDICATORS : count;
+    for (uint32_t i = 0U; i < g_ui.ind_count; i++)
+    {
+        g_ui.indicators[i] = items[i];
+    }
+    render_indicators();
+}
+
+uint32_t Ui_IndicatorCount(void)
+{
+    return g_ui.ind_count;
+}
+
+void Ui_SetPictureBuffer(uint8_t *buffer)
+{
+    g_ui.pic_buf = buffer;
+    g_ui.pic_valid = false;
+    (void)memset(&g_ui.pic_dsc, 0, sizeof(g_ui.pic_dsc));
+    g_ui.pic_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    g_ui.pic_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+    g_ui.pic_dsc.header.w = UI_PICTURE_W;
+    g_ui.pic_dsc.header.h = UI_PICTURE_H;
+    g_ui.pic_dsc.header.stride = UI_PICTURE_W * 2U;
+    g_ui.pic_dsc.data_size = UI_PICTURE_BYTES;
+    g_ui.pic_dsc.data = buffer;
+    render_picture_card();
+}
+
+void Ui_SetPicture(const uint8_t *pixels)
+{
+    if ((pixels != NULL) && (g_ui.pic_buf != NULL))
+    {
+        (void)memcpy(g_ui.pic_buf, pixels, UI_PICTURE_BYTES);
+        g_ui.pic_valid = true;
+    }
+    else
+    {
+        g_ui.pic_valid = false;
+    }
+    render_picture_card();
+}
+
+bool Ui_PictureShown(void)
+{
+    return g_ui.pic_valid;
 }
 
 void Ui_ShowBanner(const char *text)

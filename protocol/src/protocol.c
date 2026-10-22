@@ -1,6 +1,6 @@
 /**
  * @file    protocol.c
- * @brief   STM32 <-> Windows host protocol, version 5 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 6 (see protocol/protocol.md).
  */
 #include "protocol.h"
 
@@ -67,6 +67,9 @@ static int is_known_command(uint8_t command)
     case PROTO_CMD_MEDIA_STATE:
     case PROTO_CMD_ART_PART:
     case PROTO_CMD_BANNER_PART:
+    case PROTO_CMD_INDICATORS:
+    case PROTO_CMD_PICTURE_PART:
+    case PROTO_CMD_PICTURE:
     case PROTO_CMD_GET_CARDS:
     case PROTO_CMD_OPEN_DETAIL:
     case PROTO_CMD_ACTION:
@@ -342,10 +345,35 @@ static int is_valid_media_state(const ProtoMediaState *m)
     return (m->duration == 0U) || (m->position <= m->duration);
 }
 
-static int is_valid_art_part(const ProtoArtPart *a)
+/* A part of a cover (ART_PART) or of the picture (PICTURE_PART). */
+static int is_valid_image_part(int picture, const ProtoArtPart *a)
 {
+    if (picture)
+    {
+        return (a->art_id != PROTO_NO_PICTURE) && (a->index < PROTO_PICTURE_PARTS) &&
+               (a->len == Proto_PicturePartBytes(a->index));
+    }
     return (a->art_id != PROTO_NO_ART) && (a->index < PROTO_ART_PARTS) &&
            (a->len == Proto_ArtPartBytes(a->index));
+}
+
+static int is_valid_indicators(const ProtoIndicators *ind)
+{
+    if (ind->count > PROTO_MAX_INDICATORS)
+    {
+        return 0;
+    }
+    for (uint8_t i = 0U; i < ind->count; i++)
+    {
+        const ProtoIndicator *it = &ind->items[i];
+
+        if ((it->colour >= PROTO_INDICATOR_COLOUR_COUNT) ||
+            ((it->slot >= PROTO_MAX_CARDS) && (it->slot != PROTO_NO_SLOT)))
+        {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static void put_u32(uint8_t *out, uint32_t v)
@@ -508,6 +536,32 @@ int Proto_ArtPart(const uint8_t *art, uint8_t art_id, uint16_t index, ProtoArtPa
     return 1;
 }
 
+uint8_t Proto_PicturePartBytes(uint16_t index)
+{
+    uint32_t rest;
+
+    if (index >= PROTO_PICTURE_PARTS)
+    {
+        return 0U;
+    }
+    rest = PROTO_PICTURE_BYTES - ((uint32_t)index * PROTO_ART_DATA_BYTES);
+    return (uint8_t)((rest > PROTO_ART_DATA_BYTES) ? PROTO_ART_DATA_BYTES : rest);
+}
+
+int Proto_PicturePart(const uint8_t *picture, uint8_t pic_id, uint16_t index, ProtoArtPart *out)
+{
+    if ((picture == NULL) || (out == NULL) || (pic_id == PROTO_NO_PICTURE) || (index >= PROTO_PICTURE_PARTS))
+    {
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->art_id = pic_id;
+    out->index = index;
+    out->len = Proto_PicturePartBytes(index);
+    memcpy(out->data, &picture[(uint32_t)index * PROTO_ART_DATA_BYTES], out->len);
+    return 1;
+}
+
 void Proto_ArtAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer)
 {
     if (asm_ == NULL)
@@ -516,6 +570,15 @@ void Proto_ArtAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer)
     }
     memset(asm_, 0, sizeof(*asm_));
     asm_->buffer = buffer;
+}
+
+void Proto_PictureAssemblerInit(ProtoArtAssembler *asm_, uint8_t *buffer)
+{
+    Proto_ArtAssemblerInit(asm_, buffer);
+    if (asm_ != NULL)
+    {
+        asm_->picture = 1U;
+    }
 }
 
 void Proto_ArtAssemblerStart(ProtoArtAssembler *asm_, uint8_t art_id)
@@ -535,7 +598,7 @@ ProtoAsmResult Proto_ArtAssemblerAdd(ProtoArtAssembler *asm_, const ProtoArtPart
     uint8_t bit;
 
     if ((asm_ == NULL) || (part == NULL) || (asm_->buffer == NULL) || (asm_->art_id == PROTO_NO_ART) ||
-        (part->art_id != asm_->art_id) || !is_valid_art_part(part))
+        (part->art_id != asm_->art_id) || !is_valid_image_part(asm_->picture != 0U, part))
     {
         return PROTO_ASM_OVERFLOW;
     }
@@ -548,7 +611,7 @@ ProtoAsmResult Proto_ArtAssemblerAdd(ProtoArtAssembler *asm_, const ProtoArtPart
     memcpy(&asm_->buffer[(uint32_t)part->index * PROTO_ART_DATA_BYTES], part->data, part->len);
     asm_->received[byte] = (uint8_t)(asm_->received[byte] | bit);
     asm_->count++;
-    if (asm_->count < PROTO_ART_PARTS)
+    if (asm_->count < ((asm_->picture != 0U) ? PROTO_PICTURE_PARTS : PROTO_ART_PARTS))
     {
         return PROTO_ASM_PARTIAL;
     }
@@ -667,10 +730,11 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
     }
 
     case PROTO_CMD_ART_PART:
+    case PROTO_CMD_PICTURE_PART:
     {
         const ProtoArtPart *a = &msg->u.art;
 
-        if (!is_valid_art_part(a))
+        if (!is_valid_image_part(msg->command == PROTO_CMD_PICTURE_PART, a))
         {
             return -1;
         }
@@ -723,6 +787,29 @@ static int encode_payload(const ProtoMessage *msg, uint8_t *payload)
     case PROTO_CMD_PROMPT_CLOSE:
         payload[0] = msg->u.prompt_id;
         return 1;
+
+    case PROTO_CMD_PICTURE:
+        payload[0] = msg->u.pic_id;
+        return 1;
+
+    case PROTO_CMD_INDICATORS:
+    {
+        const ProtoIndicators *ind = &msg->u.indicators;
+
+        if (!is_valid_indicators(ind))
+        {
+            return -1;
+        }
+        payload[0] = ind->count;
+        for (uint8_t i = 0U; i < ind->count; i++)
+        {
+            payload[1U + (4U * i)] = ind->items[i].icon;
+            payload[2U + (4U * i)] = ind->items[i].colour;
+            payload[3U + (4U * i)] = ind->items[i].number;
+            payload[4U + (4U * i)] = ind->items[i].slot;
+        }
+        return (int)(1U + (4U * ind->count));
+    }
 
     case PROTO_CMD_OPEN_DETAIL:
         if (!is_valid_open_detail(&msg->u.open_detail))
@@ -926,6 +1013,7 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
     }
 
     case PROTO_CMD_ART_PART:
+    case PROTO_CMD_PICTURE_PART:
     {
         ProtoArtPart *a = &msg->u.art;
 
@@ -936,7 +1024,7 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
         a->art_id = payload[0];
         a->index = (uint16_t)(payload[1] | ((uint16_t)payload[2] << 8));
         a->len = (uint8_t)(len - PROTO_ART_HEADER_BYTES);
-        if (!is_valid_art_part(a))
+        if (!is_valid_image_part(msg->command == PROTO_CMD_PICTURE_PART, a))
         {
             return 0;
         }
@@ -993,6 +1081,33 @@ static int decode_payload(const uint8_t *payload, uint8_t len, ProtoMessage *msg
         }
         msg->u.prompt_id = payload[0];
         return 1;
+
+    case PROTO_CMD_PICTURE:
+        if (len != 1U)
+        {
+            return 0;
+        }
+        msg->u.pic_id = payload[0];
+        return 1;
+
+    case PROTO_CMD_INDICATORS:
+    {
+        ProtoIndicators *ind = &msg->u.indicators;
+
+        if ((len == 0U) || (payload[0] > PROTO_MAX_INDICATORS) || (len != (uint8_t)(1U + (4U * payload[0]))))
+        {
+            return 0;
+        }
+        ind->count = payload[0];
+        for (uint8_t i = 0U; i < ind->count; i++)
+        {
+            ind->items[i].icon = payload[1U + (4U * i)];
+            ind->items[i].colour = payload[2U + (4U * i)];
+            ind->items[i].number = payload[3U + (4U * i)];
+            ind->items[i].slot = payload[4U + (4U * i)];
+        }
+        return is_valid_indicators(ind);
+    }
 
     case PROTO_CMD_OPEN_DETAIL:
         if (len != 2U)
