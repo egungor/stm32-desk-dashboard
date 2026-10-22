@@ -895,6 +895,8 @@ static void run_layouts_script(void)
 /* Status icons at the top right (ADR-010): the bell with "3", the robot. */
 #define IND_Y        18
 #define IND_BELL_X   408
+#define PIC_CARD_X   374 /* the picture card, bottom right */
+#define PIC_CARD_Y   180
 #define IND_CLAUDE_X 456
 #define DASH_PREV_X  86
 #define DASH_PLAY_X  142
@@ -1470,15 +1472,19 @@ static void run_redesign_script(void)
     tap(RAIL_DASH_X, RAIL_DASH_Y);
     run_ms(50U);
 
-    /* The picture: a test pattern (sky, sun, hills) at the card's size. */
+    /* The picture: a test pattern (sky, sun, hills) drawn on a 200 x 92
+     * grid, stretched to the picture's 480 x 272. */
     for (uint32_t y = 0U; y < UI_PICTURE_H; y++)
     {
         for (uint32_t x = 0U; x < UI_PICTURE_W; x++)
         {
-            const int32_t dx = (int32_t)x - 150;
-            const int32_t dy = (int32_t)y - 30;
+            const uint32_t gx = (x * 200U) / UI_PICTURE_W;
+            const uint32_t gy = (y * 92U) / UI_PICTURE_H;
+            const int32_t dx = (int32_t)gx - 150;
+            const int32_t dy = (int32_t)gy - 30;
             const bool sun = ((dx * dx) + (dy * dy)) < (16 * 16);
-            const bool hill = (int32_t)y > (60 + (int32_t)((x % 80U) < 40U ? (x % 40U) / 3U : (40U - (x % 40U)) / 3U));
+            const bool hill =
+                (int32_t)gy > (60 + (int32_t)((gx % 80U) < 40U ? (gx % 40U) / 3U : (40U - (gx % 40U)) / 3U));
             uint32_t r = 40U + (y * 120U) / UI_PICTURE_H;
             uint32_t g = 110U + (y * 100U) / UI_PICTURE_H;
             uint32_t b = 220U;
@@ -1493,7 +1499,7 @@ static void run_redesign_script(void)
             else if (hill)
             {
                 r = 40U;
-                g = 140U - (y - 60U);
+                g = 140U - (gy - 60U);
                 b = 70U;
             }
             px = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
@@ -1523,6 +1529,15 @@ static void run_redesign_script(void)
     check(Ui_IndicatorCount() == 2U, "two status icons");
     snapshot("103-dashboard-redesign");
 
+    /* A tap on the picture card shows the picture full screen; a tap closes it (#53). */
+    tap(PIC_CARD_X, PIC_CARD_Y);
+    run_ms(50U);
+    check(Ui_PhotoShown(), "a tap on the picture card opens the full-screen picture");
+    snapshot("107-picture-full-screen");
+    tap(240, 136);
+    run_ms(50U);
+    check(!Ui_PhotoShown() && (Ui_DashView() == UI_DASH_VIEW_CARDS), "a tap closes it");
+
     /* The bell opens the notifications list (slot 2). */
     {
         const int opens = s_dash.open_calls;
@@ -1551,9 +1566,15 @@ static void run_redesign_script(void)
 
         Ui_SetIndicators(ind, 1U);
     }
+    tap(PIC_CARD_X, PIC_CARD_Y);
+    run_ms(50U);
     Ui_SetPicture(NULL);
     run_ms(50U);
     check(!Ui_PictureShown() && Ui_IndicatorCount() == 1U, "no picture: the placeholder; one icon");
+    check(!Ui_PhotoShown(), "no picture: the full-screen picture closes");
+    tap(PIC_CARD_X, PIC_CARD_Y);
+    run_ms(50U);
+    check(!Ui_PhotoShown(), "the placeholder opens nothing");
 
     /* The light theme keeps the colours of the cards. */
     Ui_SetPicture(s_pic_in);

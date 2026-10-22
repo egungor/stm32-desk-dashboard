@@ -1,4 +1,4 @@
-// Dashboard side of protocol v6 on the host (ADR-006; protocol.md,
+// Dashboard side of protocol v7 on the host (ADR-006; protocol.md,
 // "Dashboard records" and "Exchanges").
 //
 // Holds the text record of every card slot and sends it to the board:

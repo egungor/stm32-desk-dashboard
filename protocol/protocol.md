@@ -2,14 +2,16 @@
 
 ## Status
 
-**Protocol version 6.** Version 2 (audio: device list, selection,
+**Protocol version 7.** Version 2 (audio: device list, selection,
 volume, mute, preferences and settings; ADR-004) plus the dashboard of
 version 3: time, cards, details, prompts and actions sent as chunked
 text records, and one more byte in the settings record
 (`startup_screen`); plus, in version 4, what plays now: a media record,
 the playback state and a small cover (ADR-008); plus, in version 5, a
 short banner over every screen (notifications, ADR-009); plus, in
-version 6, coloured cards, status icons and a picture (ADR-010). Design:
+version 6, coloured cards, status icons and a picture (ADR-010); and, in
+version 7, the picture at the screen's size, so a tap can show it full
+screen (ADR-010, #53). Design:
 `docs/decisions/ADR-006-cards-and-protocol-v3.md`,
 `docs/decisions/ADR-005-tabbed-shell-and-global-settings.md`,
 `docs/decisions/ADR-008-media-session-and-music-tab.md`,
@@ -93,9 +95,9 @@ Senders must zero the padding. Receivers do not check it beyond the CRC.
 `SELECT_DEVICE` with sequence `0x2A`, `generation` = 5, `device_index` = 2:
 
 ```text
-offset 0..6:   A5 06 03 2A 02 05 02
+offset 0..6:   A5 07 03 2A 02 05 02
 offset 7..61:  00 (55 bytes)
-offset 62..63: 3B 72            (CRC 0x723B)
+offset 62..63: 8B 2B            (CRC 0x2B8B)
 ```
 
 ## Message set
@@ -398,7 +400,7 @@ notification; the board does not know that.
   board's main screen, opens the detail with `OPEN_DETAIL slot, 0` as a
   card does (on the settings or edit screens a tap only closes it).
 
-## Status icons and picture (version 6)
+## Status icons and picture (versions 6 and 7)
 
 ### `INDICATORS`
 
@@ -418,10 +420,13 @@ changes; each one replaces the last.
 
 ### Picture
 
-The picture card shows one picture of 200 × 92 pixels, RGB565 as the
-cover: 36 800 bytes in 682 `PICTURE_PART`s with the layout of `ART_PART`
-(`pic_id` 1–255, `index` u16 0–681, 54 data bytes; 26 in part 681; a part
-of another length is `BAD_PAYLOAD`). `PICTURE` (one byte, `pic_id`) names
+The picture has the screen's size, 480 × 272 pixels (version 7; 200 × 92
+in version 6), RGB565 as the cover: 261 120 bytes in 4 836
+`PICTURE_PART`s with the layout of `ART_PART` (`pic_id` 1–255, `index`
+u16 0–4835, 54 data bytes; 30 in part 4835; a part of another length is
+`BAD_PAYLOAD`). The picture card shows it scaled down and cropped at the
+edges; a tap on the card shows it full screen. At one report per 4 ms
+(bInterval 5 ms, ADR-003) a picture takes about 20 s. `PICTURE` (one byte, `pic_id`) names
 the picture to show; 0 = none (the card shows a placeholder). The board
 collects the parts of the last `PICTURE`'s id (in any order; repeats
 ignored; parts of another id dropped) and shows it when all have arrived;
@@ -502,7 +507,7 @@ A rejected frame is dropped. The receiver may answer with `ERROR`:
 | Code | Name | Meaning |
 |---|---|---|
 | `0x01` | `BAD_FRAME` | magic, CRC or length wrong |
-| `0x02` | `UNSUPPORTED_VERSION` | version is not 6 |
+| `0x02` | `UNSUPPORTED_VERSION` | version is not 7 |
 | `0x03` | `UNKNOWN_COMMAND` | command code not in the message set |
 | `0x04` | `BAD_PAYLOAD` | payload length or a field value invalid |
 | `0x05` | `UNKNOWN_DEVICE` | `device_index` not in the current list |

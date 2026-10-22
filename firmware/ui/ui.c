@@ -947,6 +947,7 @@ static void build_all(void)
         ui_keyboard_build();
     }
     build_notice();
+    ui_photo_close();
     ui_prompt_rebuild();
     ui_banner_rebuild();
     ui_shell_show_tab(g_ui.app_tab);
@@ -1141,6 +1142,7 @@ void Ui_Init(UiSelectCallback on_select, void *user)
 
 void Ui_ShowWaiting(void)
 {
+    ui_photo_close();
     lv_screen_load(g_ui.waiting_screen);
     drop_settings_screen();
     ui_edit_drop();

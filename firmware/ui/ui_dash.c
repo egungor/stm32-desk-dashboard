@@ -406,7 +406,8 @@ void ui_dash_music_render(void)
 }
 
 /* The picture card (bottom right, ADR-010): the picture chosen on the PC,
- * already 200 x 92 (the card's size), or a placeholder. */
+ * 480 x 272 (protocol v7), scaled down to cover the card (the edges are
+ * cut), or a placeholder. A tap shows the picture full screen. */
 static void render_picture_card(void)
 {
     lv_obj_t *card = g_ui.dash_card_objs[3];
@@ -424,11 +425,13 @@ static void render_picture_card(void)
 
         lv_obj_set_style_pad_all(card, 0, 0);
         lv_obj_set_style_clip_corner(card, true, 0);
+        lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
         lv_image_set_src(img, &g_ui.pic_dsc);
         lv_obj_set_size(img, LV_PCT(100), LV_PCT(100));
-        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CENTER);
+        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_COVER);
         return;
     }
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_pad_hor(card, 10, 0);
     lv_obj_set_style_pad_ver(card, 8, 0);
     lv_obj_set_style_bg_color(card, ui_color(PICTURE_BG), 0);
@@ -441,6 +444,48 @@ static void render_picture_card(void)
         lv_obj_set_width(hint, LV_PCT(100));
         lv_label_set_long_mode(hint, LV_LABEL_LONG_MODE_WRAP);
         lv_obj_set_style_text_opa(hint, LV_OPA_80, 0);
+    }
+}
+
+/* The picture full screen, 1:1, on lv_layer_top() behind a prompt or a
+ * banner (they stay usable). A tap anywhere closes it. */
+static void on_photo_clicked(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    ui_photo_close();
+}
+
+static void open_photo(void)
+{
+    lv_obj_t *page;
+    lv_obj_t *img;
+
+    if ((g_ui.photo_obj != NULL) || !g_ui.pic_valid || (g_ui.pic_buf == NULL))
+    {
+        return;
+    }
+    page = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(page);
+    lv_obj_set_size(page, UI_WIDTH, UI_HEIGHT);
+    lv_obj_set_style_bg_color(page, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(page, LV_OPA_COVER, 0);
+    lv_obj_add_flag(page, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(page, on_photo_clicked, LV_EVENT_CLICKED, NULL);
+    img = lv_image_create(page);
+    lv_image_set_src(img, &g_ui.pic_dsc);
+    lv_obj_center(img);
+    lv_obj_move_to_index(page, 0);
+    g_ui.photo_obj = page;
+}
+
+void ui_photo_close(void)
+{
+    if (g_ui.photo_obj != NULL)
+    {
+        /* May run inside its own click event. */
+        lv_obj_delete_async(g_ui.photo_obj);
+        g_ui.photo_obj = NULL;
     }
 }
 
@@ -781,6 +826,11 @@ static void on_card(lv_event_t *e)
     if (slot == 2U)
     {
         ui_shell_show_tab(UI_APP_TAB_MUSIC);  /* the now-playing card */
+        return;
+    }
+    if (slot == 3U)
+    {
+        open_photo();  /* the picture card */
         return;
     }
     if ((slot < CARD_RECORDS) && (g_ui.dash_cards[slot][0] != '\0'))
@@ -1407,10 +1457,15 @@ void Ui_SetPicture(const uint8_t *pixels)
     {
         (void)memcpy(g_ui.pic_buf, pixels, UI_PICTURE_BYTES);
         g_ui.pic_valid = true;
+        if (g_ui.photo_obj != NULL)
+        {
+            lv_obj_invalidate(g_ui.photo_obj);  /* the open page shows the new one */
+        }
     }
     else
     {
         g_ui.pic_valid = false;
+        ui_photo_close();
     }
     render_picture_card();
 }
@@ -1418,6 +1473,11 @@ void Ui_SetPicture(const uint8_t *pixels)
 bool Ui_PictureShown(void)
 {
     return g_ui.pic_valid;
+}
+
+bool Ui_PhotoShown(void)
+{
+    return g_ui.photo_obj != NULL;
 }
 
 void Ui_ShowBanner(const char *text)

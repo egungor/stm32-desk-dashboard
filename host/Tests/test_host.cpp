@@ -3578,7 +3578,7 @@ void testPictureService()
     CHECK(sink.sent.size() == PictureService::kPartsPerTick && pic.sending());
     std::vector<std::uint16_t> indices;
     unsigned ticks = 0;
-    while (pic.sending() && ticks < 200U) {
+    while (pic.sending() && ticks < 1000U) {
         while (!sink.sent.empty()) {
             m = sink.pop();
             CHECK(m.command == PROTO_CMD_PICTURE_PART && m.u.art.art_id == 1U);

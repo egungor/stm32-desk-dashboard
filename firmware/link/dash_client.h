@@ -1,6 +1,6 @@
 /**
  * @file    dash_client.h
- * @brief   STM32 side of the dashboard commands of protocol v6 (ADR-006,
+ * @brief   STM32 side of the dashboard commands of protocol v7 (ADR-006,
  *          ADR-008, ADR-009, ADR-010; protocol/protocol.md, "Dashboard
  *          records", "Now playing", "Banner", "Status icons and picture").
  *

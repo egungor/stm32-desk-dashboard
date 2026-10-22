@@ -1,6 +1,6 @@
 /**
  * @file    protocol.h
- * @brief   STM32 <-> Windows host protocol, version 6 (see protocol/protocol.md).
+ * @brief   STM32 <-> Windows host protocol, version 7 (see protocol/protocol.md).
  *
  * Portable C99 codec shared by the firmware and the host. Every message is
  * one fixed-size frame of PROTO_FRAME_SIZE bytes:
@@ -30,7 +30,7 @@ extern "C" {
 
 #define PROTO_FRAME_SIZE   64U
 #define PROTO_MAGIC        0xA5U
-#define PROTO_VERSION      6U
+#define PROTO_VERSION      7U
 #define PROTO_HEADER_SIZE  5U
 #define PROTO_CRC_OFFSET   62U
 #define PROTO_MAX_PAYLOAD  (PROTO_CRC_OFFSET - PROTO_HEADER_SIZE) /* 57 */
@@ -94,12 +94,14 @@ extern "C" {
 /* Dashboard redesign (ADR-010, version 6). */
 /** PICTURE pic_id meaning "no picture". */
 #define PROTO_NO_PICTURE           0U
-/** Picture of the picture card: RGB565 little endian, row by row from the top left. */
-#define PROTO_PICTURE_W            200U
-#define PROTO_PICTURE_H            92U
-#define PROTO_PICTURE_BYTES        (PROTO_PICTURE_W * PROTO_PICTURE_H * 2U) /* 36800 */
-/** PICTURE_PART: the header and data of ART_PART; parts of one picture (the last holds 26 bytes). */
-#define PROTO_PICTURE_PARTS        ((PROTO_PICTURE_BYTES + PROTO_ART_DATA_BYTES - 1U) / PROTO_ART_DATA_BYTES) /* 682 */
+/** The picture: the screen's size (version 7: the card shows it scaled
+ *  down, a tap shows it full screen), RGB565 little endian, row by row
+ *  from the top left. */
+#define PROTO_PICTURE_W            480U
+#define PROTO_PICTURE_H            272U
+#define PROTO_PICTURE_BYTES        (PROTO_PICTURE_W * PROTO_PICTURE_H * 2U) /* 261120 */
+/** PICTURE_PART: the header and data of ART_PART; parts of one picture (the last holds 30 bytes). */
+#define PROTO_PICTURE_PARTS        ((PROTO_PICTURE_BYTES + PROTO_ART_DATA_BYTES - 1U) / PROTO_ART_DATA_BYTES) /* 4836 */
 /** INDICATORS: at most this many status icons. */
 #define PROTO_MAX_INDICATORS       4U
 /** Indicator colours. */

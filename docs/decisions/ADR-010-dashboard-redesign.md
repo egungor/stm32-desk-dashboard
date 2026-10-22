@@ -7,6 +7,10 @@ the morning menu warning stays until "Tamam"; the Claude Code icon's
 yellow and green turn grey once its list was opened; the picture is
 chosen from the tray menu ("Resim seç…").
 
+Amended by issue #53 (2026-10-22): protocol version 7 sends the picture
+at the screen's size and a tap on the picture card shows it full screen
+("Amendment: full-screen picture" below).
+
 ## Context
 
 The Dashboard (ADR-006) shows four text cards on the theme's card colour:
@@ -146,6 +150,30 @@ The picture: one 36 800-byte buffer being collected and one shown, both in
 SDRAM next to the cover's (`UI_PORT_PIC_RX_ADDR`, `UI_PORT_PIC_SHOW_ADDR`).
 The status: 4 × 4 bytes in `g_ui`. Larger 40 px icon font in flash.
 
+### Amendment: full-screen picture (protocol version 7, #53)
+
+The owner asked for a tap on the picture card to open the photo full
+screen. Of two ways (one 480 × 272 picture for both, or the small
+picture plus a full-size one fetched on a tap) the owner chose the
+first: no new command, no wait on a tap.
+
+- `PROTO_PICTURE_W` × `PROTO_PICTURE_H` become 480 × 272: 261 120 bytes
+  in 4 836 `PICTURE_PART`s (30 data bytes in the last). The frames do
+  not change; the version goes to 7 because a version 6 peer would
+  reject the part indices and lengths.
+- The host crops the largest centred 480:272 rectangle and scales it to
+  480 × 272 (as before, at the new size; WIC also turns the photo
+  upright by its EXIF orientation, #51).
+- The board keeps the picture being received and the one shown in
+  SDRAM (256 KB each, `ui_port.h`). The card shows the picture scaled
+  down to cover the card (`LV_IMAGE_ALIGN_COVER`, the edges are cut).
+  A tap on the card shows it 1:1 on `lv_layer_top()`, below a prompt
+  or a banner; a tap closes it, as do no picture, the waiting screen
+  and a rebuild (theme change).
+- A picture takes about 7 times as many frames: about 20 s at one report
+  per 4 ms (bInterval 5 ms, ADR-003), after the cards (it does not hold
+  them up). It is sent again on every connect.
+
 ## Alternatives
 
 - **Colour names instead of `RRGGBB`** (a palette in the firmware): every
@@ -172,3 +200,5 @@ The status: 4 × 4 bytes in `g_ui`. Larger 40 px icon font in flash.
   now-playing and picture cards, `dash_client.c` (`INDICATORS`, picture).
 - REQUIRES WINDOWS: the WIC picture import, the tray menu items.
   REQUIRES HARDWARE: the new Dashboard on the LCD.
+- Version 7 (#53): host and firmware must be updated together; the
+  full-screen picture and the transfer time REQUIRE HARDWARE.
