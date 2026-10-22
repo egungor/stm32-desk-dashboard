@@ -23,7 +23,7 @@ constexpr Texts kTurkish = {
     "Bildirim erişimi kapalı",
     "Bildirimler okunamıyor",
     " bildirim",
-    "Windows Ayarlar → Gizlilik ve güvenlik → Bildirimler: uygulamaların bildirimlere erişmesine izin verin.",
+    "Windows Ayarlar > Gizlilik ve güvenlik > Bildirimler: uygulamaların bildirimlere erişmesine izin verin.",
 };
 
 constexpr Texts kEnglish = {
@@ -32,7 +32,7 @@ constexpr Texts kEnglish = {
     "Notification access is off",
     "Cannot read notifications",
     " notifications",
-    "Windows Settings → Privacy & security → Notifications: let apps access your notifications.",
+    "Windows Settings > Privacy & security > Notifications: let apps access your notifications.",
 };
 
 const Texts& texts(std::uint8_t language)
@@ -48,10 +48,11 @@ std::string hhmm(std::uint32_t localTime)
     return buffer;
 }
 
-// @p text cut to @p maxBytes with "…" when it does not fit.
+// @p text cut to @p maxBytes with "..." when it does not fit (the board's
+// fonts have no "…").
 std::string shorten(const std::string& text, std::size_t maxBytes)
 {
-    static const std::string kEllipsis = "\xE2\x80\xA6";
+    static const std::string kEllipsis = "...";
     if (text.size() <= maxBytes) {
         return text;
     }

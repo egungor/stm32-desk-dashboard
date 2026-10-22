@@ -3153,7 +3153,7 @@ void testNotificationDetailLimits()
     }
     CHECK(sections >= 5U && sections <= NotificationService::kDetailItems);
     CHECK(d.find(std::string(NotificationService::kDetailBodyBytes, 'x')) == std::string::npos);  // bodies cut
-    CHECK(d.find("\xE2\x80\xA6") != std::string::npos);
+    CHECK(d.find("x...") != std::string::npos);
     // The last section has its row: whole toasts only.
     CHECK(d.rfind("\n#") < d.rfind("\n\x1F"));
 
