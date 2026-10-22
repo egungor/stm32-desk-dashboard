@@ -99,7 +99,10 @@ N4, the owner, with Do not disturb on: Windows showed no pop-up, but
 both test toasts (ids 45668, 45669) were in the listener and in the
 database as usual. So Do not disturb only hides Windows' own pop-up; if
 the board is to stay quiet too, the host has to learn the state itself
-(open point for the ADR, e.g. `SHQueryUserNotificationState`).
+(ADR-009: `SHQueryUserNotificationState` returns 5 with it on and off;
+the state is the profile name in the CloudStore value
+`…$windows.data.donotdisturb.quiethourssettings`, `PriorityOnly` on,
+`Unrestricted` off, compared on the owner's PC on 2026-10-22).
 
 **Result:** way 1, `UserNotificationListener` polled every 500 ms, is
 enough: documented, no package identity, no administrator rights; app

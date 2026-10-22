@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed (issue #34). Based on the spike #33 (`docs/notification-spike.md`)
-and the owner's decisions of 2026-10-22.
+Accepted (issue #34, the owner's decisions of 2026-10-22). Based on the
+spike #33 (`docs/notification-spike.md`).
 
 ## Context
 
@@ -39,15 +39,25 @@ pop-up on the board, but the card and the list still update.
   as `WinMediaSession`): `UserNotificationListener` polled every 500 ms
   on a worker thread; a change queues `HostEvent::NotificationsChanged`.
   The rest of the host does not see WinRT.
-- An interface `IFocusState` (Do not disturb on or off) with a Windows
-  implementation; the candidate is `SHQueryUserNotificationState`
-  (documented, shell32): `QUNS_ACCEPTS_NOTIFICATIONS` (5) means pop-ups
-  may show. On the owner's PC it returns 5 with Do not disturb off; what
-  it returns with it on is checked in #34 before the pop-up is built on
-  it. If it does not follow Do not disturb, the fallback is the
-  `NOC_GLOBAL_SETTING_TOASTS_ENABLED` value under
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`
-  (undocumented), or no Do not disturb rule.
+- An interface `IFocusState` (Do not disturb on, off, or unknown) with a
+  Windows implementation. Checked on the owner's PC (2026-10-22):
+  - `SHQueryUserNotificationState` (documented) returns
+    `QUNS_ACCEPTS_NOTIFICATIONS` (5) with Do not disturb on **and** off:
+    it does not follow it. Not used.
+  - The state is in the user's CloudStore, under
+    `HKCU\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current`,
+    in the key whose name ends in
+    `$windows.data.donotdisturb.quiethourssettings` (on this PC prefixed
+    `{37e9ced0-6221-422a-a3d4-670308808328}`), its sub-key of the same
+    name, value `Data` (binary). It holds the active profile as UTF-16
+    text: `Microsoft.QuietHoursProfile.Unrestricted` with Do not disturb
+    off, `Microsoft.QuietHoursProfile.PriorityOnly` with it on (and
+    `AlarmsOnly`, the other profile, also counts as on).
+  - Undocumented, so: the key is found by the end of its name (not the
+    GUID), read every few seconds, and when it is missing or holds
+    another profile name the state is **unknown**, which shows the
+    banner (as without the rule). The parser of the value is platform
+    independent and tested with both recorded values.
 - A `NotificationService` (platform independent, tested):
   - card slot 2: "BİLDİRİMLER", the count as badge, the newest three as
     `app: title` lines; "Bildirim yok" without any;
@@ -91,8 +101,8 @@ Banner record, at most 256 bytes (5 parts), first line
 
 A newer banner replaces the one shown. A banner never covers a prompt:
 while a prompt is shown, the board drops banners. The banner does not
-wake a dark screen (the screen timeout, ADR-004); the card still
-changes.
+wake a dark screen (the screen timeout, ADR-004; the owner's decision):
+the card still changes.
 
 Why a version: an older board answers `BANNER_PART` with
 `UNKNOWN_COMMAND`. Firmware and host are released together (ADR-008),
@@ -127,9 +137,12 @@ shown. No change to the cover buffers.
   (`INotificationSource`, `WinNotificationListener`, `IFocusState`,
   `NotificationService`); board (banner, icon 12, `dash_client.c`).
 - Notification texts are shown on a desk display: anyone at the desk can
-  read them. A setting to hide the texts (only the app) could follow if
-  the owner wants it.
-- REQUIRES WINDOWS: the Do not disturb state through
-  `SHQueryUserNotificationState`; which apps' toasts carry `ToastGeneric`
+  read them. The owner chose the full texts; a setting to show only the
+  app could follow later.
+- The Do not disturb rule rests on an undocumented value; a Windows
+  update may move it, and then banners show during Do not disturb
+  (never the other way round).
+- REQUIRES WINDOWS: the Do not disturb value on other Windows builds and
+  scheduled Do not disturb; which apps' toasts carry `ToastGeneric`
   texts (some may show only the app name). REQUIRES HARDWARE: the banner
   over every screen, never over a prompt.
