@@ -51,6 +51,8 @@ static struct
     ProtoMediaState state;
     int     art_calls;
     const uint8_t *art;
+    int     banner_calls;
+    char    banner_text[PROTO_BANNER_MAX_BYTES + 1U];
 } g;
 
 static bool fake_send(const uint8_t frame[PROTO_FRAME_SIZE], void *ctx)
@@ -135,6 +137,13 @@ static void fake_art(const uint8_t *pixels, void *ctx)
     g.art = pixels;
 }
 
+static void fake_banner(const char *text, void *ctx)
+{
+    (void)ctx;
+    g.banner_calls++;
+    (void)snprintf(g.banner_text, sizeof(g.banner_text), "%s", text);
+}
+
 static DashClient s_dash;
 static uint8_t s_art_buf[PROTO_ART_BYTES];
 
@@ -142,7 +151,7 @@ static void reset(void)
 {
     static const DashCallbacks cb = { fake_send,  fake_card,  fake_detail, fake_notice, fake_time,
                                       fake_prompt, fake_close, NULL,        fake_media,  fake_state,
-                                      fake_art };
+                                      fake_art,   fake_banner };
 
     memset(&g, 0, sizeof(g));
     Dash_Init(&s_dash, &cb);
@@ -539,6 +548,53 @@ static void test_media(void)
     CHECK(sent(PROTO_CMD_GET_MEDIA) == 0);
 }
 
+/* ---------------------------------------------------------------- banner */
+
+static void test_banner(void)
+{
+    static char big[PROTO_BANNER_MAX_BYTES + 1U];
+    ProtoMessage close = simple(PROTO_CMD_PROMPT_CLOSE);
+    const char *text = "12\x1FWhatsApp\x1F" "5\x1F" "2\nAy\xC5\x9F" "e\nAk\xC5\x9F" "am geliyor musun? Saat yedide kap\xC4\xB1" "da.";
+    const char *prompt = "Claude Code izin istiyor\x1F\x1F" "60\n!1\x1FOnayla";
+
+    reset();
+    CHECK(Dash_Owns(&(ProtoMessage){ .command = PROTO_CMD_BANNER_PART }));
+    Dash_OnConnected(&s_dash, 0U);
+    g.sent_count = 0;
+
+    /* A complete banner (2 parts) is shown; nothing is sent back. */
+    feed_record(PROTO_CMD_BANNER_PART, text, 200U, 1U, 100U, -1);
+    CHECK(g.banner_calls == 1 && strcmp(g.banner_text, text) == 0 && g.sent_count == 0);
+    /* The largest one (5 parts). */
+    memset(big, 'b', PROTO_BANNER_MAX_BYTES);
+    big[PROTO_BANNER_MAX_BYTES] = '\0';
+    feed_record(PROTO_CMD_BANNER_PART, big, 201U, 2U, 200U, -1);
+    CHECK(g.banner_calls == 2 && strlen(g.banner_text) == PROTO_BANNER_MAX_BYTES);
+
+    /* A lost part: dropped after the retry time, never asked for again. */
+    feed_record(PROTO_CMD_BANNER_PART, text, 202U, 3U, 300U, 1);
+    CHECK(g.banner_calls == 2);
+    Dash_Poll(&s_dash, 300U + DASH_RETRY_MS);
+    CHECK(g.sent_count == 0 && s_dash.banner_asm.active == 0U);
+    feed_record(PROTO_CMD_BANNER_PART, text, 202U, 3U, 2000U, 0); /* the rest alone: not complete */
+    CHECK(g.banner_calls == 2);
+
+    /* While a prompt is shown, banners are dropped. */
+    feed_record(PROTO_CMD_PROMPT_PART, prompt, 9U, 1U, 3000U, -1);
+    CHECK(g.prompt_calls == 1);
+    feed_record(PROTO_CMD_BANNER_PART, text, 203U, 4U, 3100U, -1);
+    CHECK(g.banner_calls == 2);
+    close.u.prompt_id = 9U;
+    Dash_OnMessage(&s_dash, &close, 3200U);
+    feed_record(PROTO_CMD_BANNER_PART, text, 204U, 5U, 3300U, -1);
+    CHECK(g.banner_calls == 3);
+
+    /* A disconnect forgets a half banner. */
+    feed_record(PROTO_CMD_BANNER_PART, text, 205U, 6U, 4000U, 1);
+    Dash_OnDisconnected(&s_dash);
+    CHECK(s_dash.banner_asm.active == 0U);
+}
+
 int main(void)
 {
     test_owns();
@@ -551,6 +607,7 @@ int main(void)
     test_action_and_time();
     test_prompt();
     test_media();
+    test_banner();
 
     printf("%d checks, %d failures\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

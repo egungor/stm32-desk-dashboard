@@ -27,6 +27,11 @@
  *
  * The detail replaces the cards in the tab (the rail stays); it is built
  * when shown and deleted when closed.
+ *
+ * Over every screen: the prompt (ADR-007, modal) and the banner (ADR-009,
+ * a strip at the top that closes itself):
+ *
+ *   banner: icon ␟ title ␟ seconds ␟ slot \n line \n line
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,6 +59,7 @@ static const char *icon_symbol(const char *field)
     static const char *const symbols[] = {
         NULL,          SYM_SUN,  SYM_MOON,       SYM_CLOUD_SUN, SYM_CLOUD_MOON, SYM_CLOUD,
         SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,      SYM_UTENSILS,
+        SYM_BELL,
     };
     char *end = NULL;
     unsigned long n;
@@ -507,11 +513,10 @@ static void show_view(uint32_t view)
     build_detail_view();
 }
 
-static void on_card(lv_event_t *e)
+/* Open the detail of card @p slot, as a tap on it (the card and the banner). */
+static void open_card_detail(uint32_t slot)
 {
-    const uint32_t slot = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
-
-    if (g_ui.dash_cards[slot][0] == '\0')
+    if ((slot >= UI_DASH_CARDS) || (g_ui.dash_cards[slot][0] == '\0'))
     {
         return;
     }
@@ -521,6 +526,11 @@ static void on_card(lv_event_t *e)
     {
         g_ui.dash.open_detail((uint8_t)slot, 0, g_ui.dash_user);
     }
+}
+
+static void on_card(lv_event_t *e)
+{
+    open_card_detail((uint32_t)(uintptr_t)lv_event_get_user_data(e));
 }
 
 /* ----------------------------------------------------------------- build */
@@ -778,6 +788,156 @@ static void build_prompt_view(void)
     }
 }
 
+/* ---------------------------------------------------------------- banner */
+
+#define BANNER_MARGIN     6
+#define BANNER_DEFAULT_S  5U
+#define BANNER_MAX_S      30U
+
+static char s_banner_scratch[UI_BANNER_BYTES + 1U];
+
+void ui_banner_close(void)
+{
+    g_ui.banner_on = false;
+    if (g_ui.banner_timer != NULL)
+    {
+        lv_timer_pause(g_ui.banner_timer);
+    }
+    if (g_ui.banner_obj != NULL)
+    {
+        /* May run inside the banner's own click event. */
+        lv_obj_delete_async(g_ui.banner_obj);
+        g_ui.banner_obj = NULL;
+        g_ui.banner_count = NULL;
+    }
+}
+
+static void update_banner_count(void)
+{
+    const uint32_t elapsed = lv_tick_elaps(g_ui.banner_tick);
+    const uint32_t left = (elapsed < g_ui.banner_ms) ? (g_ui.banner_ms - elapsed + 999U) / 1000U : 0U;
+
+    if (g_ui.banner_count != NULL)
+    {
+        lv_label_set_text_fmt(g_ui.banner_count, "%us", (unsigned)left);
+    }
+}
+
+static void on_banner_clicked(lv_event_t *e)
+{
+    const uint8_t slot = g_ui.banner_slot;
+
+    LV_UNUSED(e);
+    ui_banner_close();
+    if (Ui_CurrentScreen() != UI_SCREEN_MAIN)
+    {
+        return; /* settings, editing: a tap only closes it */
+    }
+    if ((slot < UI_DASH_CARDS) && (g_ui.dash_cards[slot][0] != '\0'))
+    {
+        ui_shell_show_tab(UI_APP_TAB_DASHBOARD);
+        open_card_detail(slot);
+    }
+}
+
+/* One text line of the banner, cut with "..." (never wrapped). */
+static void add_banner_line(lv_obj_t *parent, const lv_font_t *font, uint32_t color, const char *text)
+{
+    lv_obj_t *label = ui_make_label(parent, font, color, text);
+
+    lv_obj_set_width(label, LV_PCT(100));
+    lv_obj_set_height(label, lv_font_get_line_height(font));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+}
+
+/* A panel at the top of lv_layer_top(): icon, title and countdown, then up
+ * to two lines. Only the panel takes touches; the screen below stays usable. */
+static void build_banner_view(void)
+{
+    char *lines[3];
+    char *head[4];
+    uint32_t n;
+    lv_obj_t *panel = lv_obj_create(lv_layer_top());
+    lv_obj_t *bar;
+    lv_obj_t *label;
+    const char *icon;
+
+    lv_obj_remove_style_all(panel);
+    ui_style_card(panel, BTN_RADIUS);
+    lv_obj_set_size(panel, UI_WIDTH - (2 * BANNER_MARGIN), LV_SIZE_CONTENT);
+    lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, BANNER_MARGIN);
+    lv_obj_set_style_bg_color(panel, ui_color(g_ui.pal.bar), 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(panel, ui_color(g_ui.pal.accent), 0);
+    lv_obj_set_style_border_width(panel, 2, 0);
+    lv_obj_set_style_pad_hor(panel, 10, 0);
+    lv_obj_set_style_pad_ver(panel, 6, 0);
+    lv_obj_set_style_pad_row(panel, 2, 0);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_add_flag(panel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(panel, on_banner_clicked, LV_EVENT_CLICKED, NULL);
+    g_ui.banner_obj = panel;
+
+    (void)memcpy(s_banner_scratch, g_ui.banner_text, sizeof(s_banner_scratch));
+    n = split_lines(s_banner_scratch, lines, 3U);
+    split_fields(lines[0], head, 4U);
+
+    bar = ui_make_box(panel);
+    lv_obj_set_size(bar, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(bar, 8, 0);
+    icon = icon_symbol(head[0]);
+    if (icon != NULL)
+    {
+        (void)ui_make_label(bar, &ui_font_16, g_ui.pal.accent, icon);
+    }
+    label = ui_make_label(bar, &ui_font_16, g_ui.pal.accent, head[1]);
+    lv_obj_set_flex_grow(label, 1);
+    lv_obj_set_height(label, lv_font_get_line_height(&ui_font_16));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+    g_ui.banner_count = ui_make_label(bar, &ui_font_14, g_ui.pal.muted, "");
+    update_banner_count();
+
+    if (n > 1U)
+    {
+        add_banner_line(panel, &ui_font_16, g_ui.pal.text, lines[1]);
+    }
+    if (n > 2U)
+    {
+        add_banner_line(panel, &ui_font_14, g_ui.pal.muted, lines[2]);
+    }
+}
+
+void ui_banner_rebuild(void)
+{
+    if (g_ui.banner_obj != NULL)
+    {
+        lv_obj_delete(g_ui.banner_obj);
+        g_ui.banner_obj = NULL;
+        g_ui.banner_count = NULL;
+    }
+    if (g_ui.banner_on)
+    {
+        build_banner_view();
+    }
+}
+
+void ui_banner_tick(void)
+{
+    if (!g_ui.banner_on)
+    {
+        return;
+    }
+    if (g_ui.screen_off || (g_ui.prompt_id != UI_NO_PROMPT) || (lv_tick_elaps(g_ui.banner_tick) >= g_ui.banner_ms))
+    {
+        ui_banner_close();
+        return;
+    }
+    update_banner_count();
+}
+
 void ui_prompt_rebuild(void)
 {
     if (g_ui.prompt_obj != NULL)
@@ -867,8 +1027,59 @@ uint32_t Ui_DashView(void)
     return g_ui.dash_view;
 }
 
+void Ui_ShowBanner(const char *text)
+{
+    char *head[4];
+    char *nl;
+    unsigned long seconds;
+    unsigned long slot;
+
+    if ((text == NULL) || (g_ui.prompt_id != UI_NO_PROMPT) || g_ui.screen_off)
+    {
+        return; /* never over a prompt; does not wake a dark screen */
+    }
+    (void)snprintf(g_ui.banner_text, sizeof(g_ui.banner_text), "%s", text);
+
+    /* The header fields: seconds and slot. */
+    (void)memcpy(s_banner_scratch, g_ui.banner_text, sizeof(s_banner_scratch));
+    nl = strchr(s_banner_scratch, '\n');
+    if (nl != NULL)
+    {
+        *nl = '\0';
+    }
+    split_fields(s_banner_scratch, head, 4U);
+    seconds = strtoul(head[2], NULL, 10);
+    if ((seconds == 0UL) || (seconds > BANNER_MAX_S))
+    {
+        seconds = BANNER_DEFAULT_S;
+    }
+    slot = ((head[3][0] >= '0') && (head[3][0] <= '9')) ? strtoul(head[3], NULL, 10) : UI_DASH_NO_SLOT;
+    g_ui.banner_ms = (uint32_t)seconds * 1000U;
+    g_ui.banner_slot = (slot < UI_DASH_CARDS) ? (uint8_t)slot : (uint8_t)UI_DASH_NO_SLOT;
+    g_ui.banner_tick = lv_tick_get();
+    g_ui.banner_on = true;
+
+    if (g_ui.banner_obj != NULL)
+    {
+        lv_obj_delete(g_ui.banner_obj);
+        g_ui.banner_obj = NULL;
+        g_ui.banner_count = NULL;
+    }
+    build_banner_view();
+    if (g_ui.banner_timer != NULL)
+    {
+        lv_timer_resume(g_ui.banner_timer);
+    }
+}
+
+bool Ui_BannerShown(void)
+{
+    return g_ui.banner_on;
+}
+
 void Ui_ShowPrompt(uint8_t id, const char *text)
 {
+    ui_banner_close(); /* a banner never covers a prompt */
     (void)snprintf(g_ui.prompt_text, sizeof(g_ui.prompt_text), "%s", (text != NULL) ? text : "");
     g_ui.prompt_id = id;
     g_ui.prompt_answered = false;

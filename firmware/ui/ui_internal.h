@@ -65,6 +65,7 @@
 #define SYM_STORM      "\xEF\x83\xA7" /* bolt */
 /* Menu of the day ("Icon" 11, #20) */
 #define SYM_UTENSILS   "\xEF\x8B\xA7" /* utensils */
+#define SYM_BELL       "\xEF\x83\xB3" /* bell (notifications, #34) */
 /* Media controls and the Music tab (#32); play and pause also in ui_icons_40 */
 #define SYM_MUSIC      "\xEF\x80\x81" /* music */
 #define SYM_PLAY       "\xEF\x81\x8B" /* play */
@@ -262,6 +263,16 @@ typedef struct
     lv_obj_t      *prompt_count;       /**< countdown label */
     lv_timer_t    *prompt_timer;       /**< created once in Ui_Init */
 
+    /* Banner over every screen (ui_dash.c, ADR-009); kept over a rebuild. */
+    char           banner_text[UI_BANNER_BYTES + 1U];
+    bool           banner_on;          /**< a banner is shown */
+    uint32_t       banner_ms;          /**< how long it stays */
+    uint32_t       banner_tick;        /**< lv_tick_get() when it arrived */
+    uint8_t        banner_slot;        /**< card whose detail a tap opens, UI_DASH_NO_SLOT */
+    lv_obj_t      *banner_obj;         /**< on lv_layer_top() */
+    lv_obj_t      *banner_count;       /**< countdown label */
+    lv_timer_t    *banner_timer;       /**< created once in Ui_Init, paused without a banner */
+
     /* Now playing (ui_music.c, ADR-008); state kept over a rebuild. */
     char           media_text[UI_MEDIA_BYTES + 1U];
     uint8_t        media_status;       /**< UI_MEDIA_* */
@@ -321,6 +332,9 @@ void ui_dash_build(void);           /**< build g_ui.dash_tab's content from the 
 void ui_dash_clock_tick(void);      /**< update the clock strip (timer, Ui_SetTime) */
 void ui_prompt_rebuild(void);       /**< build the shown prompt again (theme change) */
 void ui_prompt_tick(void);          /**< countdown (timer, once a second) */
+void ui_banner_rebuild(void);       /**< build the shown banner again (theme change) */
+void ui_banner_tick(void);          /**< countdown and time-out (banner_timer) */
+void ui_banner_close(void);         /**< hide the banner (a prompt, a dark screen) */
 
 /** Light the screen if it is dark (screen timeout), as a touch would. */
 void ui_wake_screen(void);

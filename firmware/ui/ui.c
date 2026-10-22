@@ -948,6 +948,7 @@ static void build_all(void)
     }
     build_notice();
     ui_prompt_rebuild();
+    ui_banner_rebuild();
     ui_shell_show_tab(g_ui.app_tab);
 
     clamp_page();
@@ -1038,6 +1039,7 @@ static void set_screen_on(bool on)
     }
     else
     {
+        ui_banner_close(); /* it would only come back stale */
         lv_obj_remove_flag(g_ui.wake_catcher, LV_OBJ_FLAG_HIDDEN);
     }
     if (g_ui.on_backlight != NULL)
@@ -1078,6 +1080,12 @@ static void on_prompt_timer(lv_timer_t *timer)
 {
     LV_UNUSED(timer);
     ui_prompt_tick();
+}
+
+static void on_banner_timer(lv_timer_t *timer)
+{
+    LV_UNUSED(timer);
+    ui_banner_tick();
 }
 
 /* A press on the dark screen lands on the wake catcher (system layer, over
@@ -1122,6 +1130,9 @@ void Ui_Init(UiSelectCallback on_select, void *user)
     g_ui.dash_slot = UI_DASH_NO_SLOT;
     g_ui.prompt_id = UI_NO_PROMPT;
     g_ui.prompt_timer = lv_timer_create(on_prompt_timer, 1000U, NULL);
+    g_ui.banner_slot = UI_DASH_NO_SLOT;
+    g_ui.banner_timer = lv_timer_create(on_banner_timer, 200U, NULL);
+    lv_timer_pause(g_ui.banner_timer);
     build_wake_catcher();
 
     build_all();

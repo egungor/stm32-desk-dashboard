@@ -110,6 +110,14 @@ static void cb_dash_art(const uint8_t *pixels, void *ctx)
     Ui_SetMediaArt(pixels);
 }
 
+/* A short banner (ADR-009: a new notification); its texts are not logged. */
+static void cb_dash_banner(const char *text, void *ctx)
+{
+    (void)ctx;
+    Log_Line("DASH BANNER bytes=%u", (unsigned)strlen(text));
+    Ui_ShowBanner(text);
+}
+
 static void on_ui_prompt_action(uint8_t id, uint8_t action, void *user)
 {
     (void)user;
@@ -351,7 +359,8 @@ void LinkPort_Init(void)
     {
         static const DashCallbacks dash = { cb_send_frame,  cb_dash_card,   cb_dash_detail,       cb_dash_notice,
                                             cb_dash_time,   cb_dash_prompt, cb_dash_close_prompt, NULL,
-                                            cb_dash_media,  cb_dash_media_state, cb_dash_art };
+                                            cb_dash_media,  cb_dash_media_state, cb_dash_art,
+                                            cb_dash_banner };
         static const UiDashHandlers ui_dash = { on_ui_open_detail, on_ui_close_detail, on_ui_detail_action,
                                                 on_ui_media, on_ui_prompt_action };
 
