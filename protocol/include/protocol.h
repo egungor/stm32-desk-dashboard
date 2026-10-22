@@ -79,7 +79,8 @@ extern "C" {
 #define PROTO_MEDIA_CAN_PREVIOUS   0x01U
 #define PROTO_MEDIA_CAN_PLAY_PAUSE 0x02U
 #define PROTO_MEDIA_CAN_NEXT       0x04U
-#define PROTO_MEDIA_CONTROLS_MASK  0x07U
+#define PROTO_MEDIA_CAN_SEEK       0x08U /**< SEEK works (version 7) */
+#define PROTO_MEDIA_CONTROLS_MASK  0x0FU
 /** MEDIA_STATE art_id meaning "no cover". */
 #define PROTO_NO_ART               0U
 /** Cover: square, RGB565 little endian, row by row from the top left. */
@@ -146,6 +147,7 @@ typedef enum
     PROTO_CMD_OPEN_DETAIL     = 0x31, /**< STM32 -> host */
     PROTO_CMD_ACTION          = 0x32, /**< STM32 -> host */
     PROTO_CMD_GET_MEDIA       = 0x33, /**< STM32 -> host (v4) */
+    PROTO_CMD_SEEK            = 0x34, /**< STM32 -> host, jump in the track (v7) */
     PROTO_CMD_ERROR           = 0x7F  /**< either direction */
 } ProtoCommand;
 
@@ -354,6 +356,7 @@ typedef struct
         uint8_t            muted;        /**< SET_MUTE, MUTE_CHANGED: 0 or 1 */
         ProtoError         error;        /**< ERROR */
         uint32_t           local_time;   /**< TIME: seconds since 1970-01-01 00:00 local time */
+        uint32_t           seek_s;       /**< SEEK: position to jump to, seconds from the start */
         ProtoRecordPart    part;         /**< CARD_PART, DETAIL_PART, PROMPT_PART, MEDIA_PART, BANNER_PART */
         ProtoMediaState    media;        /**< MEDIA_STATE */
         ProtoArtPart       art;          /**< ART_PART, PICTURE_PART */

@@ -188,6 +188,16 @@ static void on_ui_media(uint8_t action, void *user)
     }
 }
 
+static void on_ui_seek(uint32_t seconds, void *user)
+{
+    (void)user;
+    Log_Line("UI SEEK %lu s", (unsigned long)seconds);
+    if (!Dash_Seek(&s_dash, seconds))
+    {
+        Ui_ShowNotice(UI_NOTICE_ACTION_FAILED);
+    }
+}
+
 /* --------------------------------------------------------------- audio */
 
 static void cb_show_waiting(void *ctx)
@@ -386,7 +396,7 @@ void LinkPort_Init(void)
                                             cb_dash_media,  cb_dash_media_state, cb_dash_art,
                                             cb_dash_banner, cb_dash_indicators, cb_dash_picture };
         static const UiDashHandlers ui_dash = { on_ui_open_detail, on_ui_close_detail, on_ui_detail_action,
-                                                on_ui_media, on_ui_prompt_action };
+                                                on_ui_media, on_ui_prompt_action, on_ui_seek };
 
         Dash_Init(&s_dash, &dash);
         Dash_SetSequenceCounter(&s_dash, &s_link.sequence);

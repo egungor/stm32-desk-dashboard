@@ -66,6 +66,8 @@ const char* commandName(std::uint8_t command)
         return "ART_PART";
     case PROTO_CMD_GET_MEDIA:
         return "GET_MEDIA";
+    case PROTO_CMD_SEEK:
+        return "SEEK";
     case PROTO_CMD_ERROR:
         return "ERROR";
     default:
@@ -196,6 +198,9 @@ std::string describeMessage(const ProtoMessage& msg)
         break;
     case PROTO_CMD_OPEN_DETAIL:
         out += " slot=" + std::to_string(msg.u.open_detail.slot) + " arg=" + std::to_string(msg.u.open_detail.arg);
+        break;
+    case PROTO_CMD_SEEK:
+        out += " pos=" + std::to_string(msg.u.seek_s);
         break;
     case PROTO_CMD_ACTION:
         out += " kind=" + std::to_string(msg.u.action.kind) + " ref=" + std::to_string(msg.u.action.ref) +

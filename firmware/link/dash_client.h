@@ -23,6 +23,7 @@
  *     another slot than the one open are ignored. Dash_CloseDetail()
  *     forgets the open slot.
  *   - Dash_Action() sends ACTION; an ERROR about it is a notice.
+ *   - Dash_Seek() sends SEEK; an ERROR about it is a notice and GET_MEDIA.
  *   - A complete PROMPT_PART record is shown (ADR-007: a Claude Code
  *     permission request); PROMPT_CLOSE closes it. A prompt still
  *     incomplete DASH_RETRY_MS after its last part is dropped (the host
@@ -201,6 +202,11 @@ void Dash_CloseDetail(DashClient *dash);
 
 /** Send ACTION. False if not connected, invalid or not queued. */
 bool Dash_Action(DashClient *dash, uint8_t kind, uint8_t ref, uint8_t action);
+
+/** Send SEEK (v7): jump to @p seconds in the playing track. False if not
+ *  connected or not queued. An ERROR about it is a notice, and the client
+ *  asks for the media state again (GET_MEDIA) to put the bar back. */
+bool Dash_Seek(DashClient *dash, uint32_t seconds);
 
 /** Answer the shown prompt @p id with button @p action (1..255): ACTION
  *  kind 1. False if not connected, not the shown prompt, or not queued. The

@@ -167,6 +167,19 @@ bool WinMediaSession::command(MediaKey key)
     return true;
 }
 
+bool WinMediaSession::seek(std::uint32_t seconds)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (snapshot_.status == PROTO_MEDIA_STATUS_NONE || !thread_.joinable()) {
+            return false;
+        }
+        seek_ = seconds;
+    }
+    cv_.notify_all();
+    return true;
+}
+
 bool WinMediaSession::publish(const MediaSnapshot& next)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -196,15 +209,18 @@ void WinMediaSession::run()
 
     for (;;) {
         std::deque<MediaKey> commands;
+        std::optional<std::uint32_t> seekTo;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            cv_.wait_for(lock, wait, [this] { return stop_ || !commands_.empty(); });
+            cv_.wait_for(lock, wait, [this] { return stop_ || !commands_.empty() || seek_.has_value(); });
             if (stop_) {
                 break;
             }
             commands.swap(commands_);
+            seekTo = seek_;
+            seek_.reset();
         }
-        wait = commands.empty() ? kPollInterval : kAfterCommand;
+        wait = commands.empty() && !seekTo ? kPollInterval : kAfterCommand;
 
         MediaSnapshot next;
         try {
@@ -225,6 +241,15 @@ void WinMediaSession::run()
                     }
                 }
 
+                if (seekTo) {
+                    // Ticks of 100 ns from the timeline's start.
+                    const auto start = session.GetTimelineProperties().StartTime();
+                    const std::int64_t ticks = start.count() + static_cast<std::int64_t>(*seekTo) * 10000000LL;
+                    if (!session.TryChangePlaybackPositionAsync(ticks).get()) {
+                        log_("WARN: media session: the player refused the seek");
+                    }
+                }
+
                 const auto info = session.GetPlaybackInfo();
                 next.status = statusOf(info.PlaybackStatus(), last.status);
                 const auto controls = info.Controls();
@@ -236,6 +261,9 @@ void WinMediaSession::run()
                 }
                 if (controls.IsNextEnabled()) {
                     next.controls = static_cast<std::uint8_t>(next.controls | PROTO_MEDIA_CAN_NEXT);
+                }
+                if (controls.IsPlaybackPositionEnabled()) {
+                    next.controls = static_cast<std::uint8_t>(next.controls | PROTO_MEDIA_CAN_SEEK);
                 }
 
                 const auto props = session.TryGetMediaPropertiesAsync().get();

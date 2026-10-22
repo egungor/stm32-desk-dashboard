@@ -907,6 +907,8 @@ static void run_layouts_script(void)
 #define MUSIC_PREV_X 166
 #define MUSIC_PLAY_X 268
 #define MUSIC_NEXT_X 370
+#define MUSIC_BAR_Y  166 /* the progress bar, x 124 to 412 (#55) */
+#define MUSIC_BAR_MID_X 268
 
 static struct
 {
@@ -919,6 +921,8 @@ static struct
     uint8_t action;
     int     media_calls;
     uint8_t media;
+    int     seek_calls;
+    uint32_t seek_s;
     int     prompt_calls;
     uint8_t prompt_id;
     uint8_t prompt_action;
@@ -953,6 +957,13 @@ static void dash_media(uint8_t action, void *user)
     s_dash.media = action;
 }
 
+static void dash_seek(uint32_t seconds, void *user)
+{
+    (void)user;
+    s_dash.seek_calls++;
+    s_dash.seek_s = seconds;
+}
+
 #define F "\x1F"
 
 static void dash_prompt(uint8_t id, uint8_t action, void *user)
@@ -985,7 +996,7 @@ static void run_prompt_script(UiSettings *s);
 
 static void run_dashboard_script(void)
 {
-    static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media, dash_prompt };
+    static const UiDashHandlers handlers = { dash_open, dash_close, dash_action, dash_media, dash_prompt, dash_seek };
     /* Card and detail as host/Weather/WeatherCard makes them (#18). */
     /* Card as host/Weather/WeatherCard makes it (ADR-010). */
     static const char *const weather_card =
@@ -1269,6 +1280,23 @@ static void run_music_script(void)
     check(s_dash.media == UI_MEDIA_PREVIOUS, "|< on the Music tab sends previous track");
     tap(MUSIC_NEXT_X, MUSIC_CTRL_Y);
     check(s_dash.media == UI_MEDIA_NEXT, ">| on the Music tab sends next track");
+
+    /* The progress bar (#55): only a session that can seek takes a tap. */
+    calls = s_dash.seek_calls;
+    tap(MUSIC_BAR_MID_X, MUSIC_BAR_Y);
+    check(s_dash.seek_calls == calls, "the bar ignores taps when the session cannot seek");
+    Ui_SetMediaState(UI_MEDIA_PLAYING,
+                     UI_MEDIA_CAN_PREVIOUS | UI_MEDIA_CAN_PLAY_PAUSE | UI_MEDIA_CAN_NEXT | UI_MEDIA_CAN_SEEK, 83U, 354U);
+    run_ms(50U);
+    snapshot("92-music-seekable");
+    tap(MUSIC_BAR_MID_X, MUSIC_BAR_Y);
+    run_ms(50U);
+    check((s_dash.seek_calls == calls + 1) && (s_dash.seek_s >= 170U) && (s_dash.seek_s <= 184U),
+          "a tap in the middle of the bar seeks to the middle of the track");
+    check((Ui_MediaPosition() >= 170U) && (Ui_MediaPosition() <= 184U), "the bar shows the new position at once");
+    tap(MUSIC_BAR_MID_X + 84, MUSIC_BAR_Y - 12); /* within the larger touch area */
+    run_ms(50U);
+    check((s_dash.seek_calls == calls + 2) && (s_dash.seek_s > 250U), "a tap just above the bar, further right");
 
     /* Paused, long Turkish texts, no cover, no duration, only play/pause. */
     Ui_SetMedia("\xC3\x87ok uzun bir \xC5\x9F" "ark\xC4\xB1 ad\xC4\xB1: G\xC3\xBCl\xC3\xBC Soldurmam - "

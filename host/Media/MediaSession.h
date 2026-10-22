@@ -40,6 +40,10 @@ public:
     // Previous / play-pause / next for the current session. False if there
     // is no session (the caller may fall back to the media keys).
     virtual bool command(MediaKey key) = 0;
+
+    // Jump to @p seconds from the start of the current track. False if
+    // there is no session.
+    virtual bool seek(std::uint32_t seconds) = 0;
 };
 
 }  // namespace stm32_audio::host

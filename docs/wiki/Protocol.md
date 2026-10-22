@@ -47,6 +47,7 @@ Every message is one 64-byte frame, which is exactly one HID report.
 | `0x31` | `OPEN_DETAIL` | STM32 → host | slot, previous / next |
 | `0x32` | `ACTION` | STM32 → host | a detail or prompt button, or a media control (previous, play/pause, next) |
 | `0x33` | `GET_MEDIA` | STM32 → host | what plays, please (v4) |
+| `0x34` | `SEEK` | STM32 → host | jump to a position in the track: the Music tab's progress bar (v7) |
 | `0x7F` | `ERROR` | either | code, referenced command, referenced sequence |
 
 A list of *n* devices is *n* `DEVICE_LIST` frames with the same

@@ -4,7 +4,8 @@
 // thread reads the current session: texts, status, controls, timeline and,
 // for a new track, the thumbnail, cropped to a centred square and scaled
 // to 120 x 120 with WIC, as RGB565. When anything changed it queues
-// HostEvent::MediaChanged. Commands are carried out on the same thread.
+// HostEvent::MediaChanged. Commands (and seeks) are carried out on the
+// same thread.
 //
 // WinRT stays inside WinMediaSession.cpp.
 #pragma once
@@ -13,6 +14,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -37,6 +39,7 @@ public:
 
     MediaSnapshot snapshot() const override;
     bool command(MediaKey key) override;
+    bool seek(std::uint32_t seconds) override;
 
 private:
     void run();
@@ -50,6 +53,7 @@ private:
     std::condition_variable cv_;
     bool stop_ = false;
     std::deque<MediaKey> commands_;
+    std::optional<std::uint32_t> seek_;  // the last seek not carried out yet
     MediaSnapshot snapshot_;
 };
 

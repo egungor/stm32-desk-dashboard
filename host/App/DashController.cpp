@@ -100,6 +100,11 @@ void DashController::onMessage(const ProtoMessage& msg)
             sendError(PROTO_ERROR_OPERATION_FAILED, msg.command, msg.sequence);
         }
         break;
+    case PROTO_CMD_SEEK:
+        if (!seek_ || !seek_(msg.u.seek_s)) {
+            sendError(PROTO_ERROR_OPERATION_FAILED, msg.command, msg.sequence);
+        }
+        break;
     case PROTO_CMD_ERROR:
         ++stats_.errorsReceived;
         break;

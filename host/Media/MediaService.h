@@ -11,6 +11,10 @@
 // - The cover goes out kArtPartsPerTick parts per onTick, so other frames
 //   are not held up; a new cover stops an older one.
 // - The controls go to the session; without one, to the media keys.
+// - SEEK goes to the session when it can seek (PROTO_MEDIA_CAN_SEEK). The
+//   board shows the new position at once, so for kSeekGraceMs the
+//   session's position is taken from the seek (players update their
+//   timeline late), and no MEDIA_STATE pulls the bar back.
 //
 // Platform independent; single threaded (the service loop). Call onTick
 // often while sendingArt() is true.
@@ -42,6 +46,7 @@ public:
     static constexpr std::uint64_t kStateIntervalMs = 30U * 1000U;
     static constexpr std::uint32_t kJumpSeconds = 2U;
     static constexpr unsigned kArtPartsPerTick = 8U;
+    static constexpr std::uint64_t kSeekGraceMs = 3000U;
 
     MediaService(IFrameSink& sink, IMediaSession& session, IMediaKeys& keys);
 
@@ -60,6 +65,10 @@ public:
     // An ACTION: true if it was the media strip's and was carried out;
     // false otherwise (also for other kinds, for the caller to try).
     bool onAction(const ProtoAction& action);
+
+    // A SEEK to @p seconds: true if the session took it; false without a
+    // session or when it cannot seek (the caller answers ERROR).
+    bool onSeek(std::uint32_t seconds, std::uint64_t nowMs);
 
     std::uint8_t artId() const { return artId_; }
     const Stats& stats() const { return stats_; }
@@ -97,6 +106,12 @@ private:
         std::uint64_t atMs = 0;
     };
     std::optional<Sent> sent_;  // the last MEDIA_STATE
+
+    struct Seek {
+        std::uint32_t seconds = 0;
+        std::uint64_t atMs = 0;
+    };
+    std::optional<Seek> seek_;  // the last SEEK, within kSeekGraceMs
 };
 
 }  // namespace stm32_audio::host
