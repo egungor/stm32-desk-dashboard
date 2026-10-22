@@ -61,7 +61,7 @@ host/
 │   ├── MenuLists.*         # menu-lists.txt: "never" / "don't like" dishes, Turkish case rules (ADR-010)
 │   └── MenuService.*       # card slot 1 (coloured by the lists), the day detail, the 08:00 warning
 ├── Picture/                # the picture card (ADR-010, #47)
-│   ├── PictureSource.h     # IPictureSource: the 200 x 92 RGB565 picture, or none
+│   ├── PictureSource.h     # IPictureSource: the 480 x 272 RGB565 picture, or none
 │   └── PictureService.*    # PICTURE and its PICTURE_PARTs after the cards
 ├── Weather/                # the weather card (#18)
 │   ├── WeatherReport.*     # Open-Meteo URL and answer, WMO code -> icon and text
@@ -80,7 +80,7 @@ host/
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
 │   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
-│   ├── WinPicture.*        # picture.txt and the WIC import (centre crop, 200 x 92)
+│   ├── WinPicture.*        # picture.txt and the WIC import (centre crop, 480 x 272)
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
 │   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt, ...
 │   ├── WinStrings.*        # UTF-16 <-> UTF-8

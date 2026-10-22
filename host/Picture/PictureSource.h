@@ -13,7 +13,7 @@ namespace stm32_audio::host {
 struct PictureSnapshot {
     // Changes with every new picture (also to "none"); 0: nothing read yet.
     std::uint32_t version = 0;
-    // PROTO_PICTURE_BYTES of RGB565 (200 x 92), or null: no picture.
+    // PROTO_PICTURE_BYTES of RGB565 (480 x 272), or null: no picture.
     std::shared_ptr<const std::vector<std::uint8_t>> pixels;
 };
 

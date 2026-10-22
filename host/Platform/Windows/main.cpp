@@ -689,7 +689,7 @@ int cmdPicture(const std::vector<std::string>& args)
         return 0;
     }
     const win::PictureLoad loaded = win::loadPicture(win::toWide(*path));
-    const std::string state = loaded.pixels ? std::string("OK (200 x 92)") : "FAIL: " + loaded.error;
+    const std::string state = loaded.pixels ? std::string("OK (480 x 272)") : "FAIL: " + loaded.error;
     std::printf("%s: %s\n", path->c_str(), state.c_str());
     return loaded.pixels ? 0 : 1;
 }
