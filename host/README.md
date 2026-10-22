@@ -280,6 +280,12 @@ The controls (`ACTION` kind 2) go to the session (skip previous, toggle
 play/pause, skip next); without a session, or when it refuses, to the
 media keys of step 7.
 
+`SEEK` (the Music tab's progress bar, #55) goes to the session
+(`TryChangePlaybackPositionAsync`) when it can seek (`controls` bit 3,
+`IsPlaybackPositionEnabled`); otherwise `ERROR`. For 3 s after a seek
+`MediaService` counts from the new position, as the board does, because
+players update their timeline late.
+
 `dashboard-host media` prints what the reader sees (useful to check a
 player), `dashboard-host media next` etc. sends a control.
 

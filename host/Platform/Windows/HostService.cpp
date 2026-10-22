@@ -140,6 +140,7 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     WinMediaSession mediaSession(events, log);
     MediaService media(sink, mediaSession, mediaKeys);
     dash.setMediaRequestHandler([&media] { media.onRequest(GetTickCount64()); });
+    dash.setSeekHandler([&media](std::uint32_t seconds) { return media.onSeek(seconds, GetTickCount64()); });
     // Claude Code permission requests (ADR-007): the pipe from
     // "dashboard-host hook permission", the queue, the prompt and card 3.
     WinHookPipe hookPipe(events, log);

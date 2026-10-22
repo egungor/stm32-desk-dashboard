@@ -61,6 +61,7 @@ public:
     using ActionFn = std::function<bool(const ProtoAction& action)>;
     // GET_MEDIA (ADR-008): the media side sends what plays.
     using MediaRequestFn = std::function<void()>;
+    using SeekFn = std::function<bool(std::uint32_t seconds)>;
     // Every card went out (GET_CARDS or a new connection): the picture side
     // sends PICTURE and its parts (ADR-010).
     using CardsSentFn = std::function<void()>;
@@ -116,6 +117,8 @@ public:
     void setDetailHandler(DetailFn handler) { detail_ = std::move(handler); }
     void setActionHandler(ActionFn handler) { action_ = std::move(handler); }
     void setMediaRequestHandler(MediaRequestFn handler) { mediaRequest_ = std::move(handler); }
+    // SEEK (v7): true if carried out; false (or no handler) answers ERROR.
+    void setSeekHandler(SeekFn handler) { seek_ = std::move(handler); }
     void setCardsSentHandler(CardsSentFn handler) { cardsSent_ = std::move(handler); }
 
     const Stats& stats() const { return stats_; }
@@ -140,6 +143,7 @@ private:
     DetailFn detail_;
     ActionFn action_;
     MediaRequestFn mediaRequest_;
+    SeekFn seek_;
     CardsSentFn cardsSent_;
     ProtoIndicators indicators_{};
     Stats stats_;

@@ -2696,6 +2696,12 @@ struct FakeMediaSession : IMediaSession {
         commands.push_back(key);
         return ok;
     }
+    std::vector<std::uint32_t> seeks;
+    bool seek(std::uint32_t seconds) override
+    {
+        seeks.push_back(seconds);
+        return ok;
+    }
 };
 
 std::shared_ptr<const std::vector<std::uint8_t>> testCover(std::uint8_t seed)
@@ -2921,6 +2927,82 @@ void testMediaServiceChanges()
         previous = ids.media.artId();
     }
     CHECK(neverZero);
+}
+
+// SEEK (v7, #55): to the session when it can seek; the board's bar is not
+// pulled back while the player's timeline catches up.
+void testMediaServiceSeek()
+{
+    MediaRig r;
+    r.session.snap.status = PROTO_MEDIA_STATUS_PLAYING;
+    r.session.snap.controls = PROTO_MEDIA_CAN_PLAY_PAUSE;
+    r.session.snap.title = "A";
+    r.session.snap.positionS = 30;
+    r.session.snap.durationS = 200;
+    r.session.snap.sampledAtMs = 1000;
+    r.media.onConnected(1000);
+
+    // The session cannot seek: false (ERROR), nothing asked.
+    CHECK(!r.media.onSeek(100, 2000) && r.session.seeks.empty());
+
+    r.session.snap.controls = PROTO_MEDIA_CAN_PLAY_PAUSE | PROTO_MEDIA_CAN_SEEK;
+    r.media.onTick(2000);
+    CHECK(r.lastState()->controls == (PROTO_MEDIA_CAN_PLAY_PAUSE | PROTO_MEDIA_CAN_SEEK));
+
+    // A seek: the session gets it; beyond the end it is cut to the duration.
+    r.sink.sent.clear();
+    CHECK(r.media.onSeek(120, 3000));
+    CHECK(r.session.seeks.size() == 1U && r.session.seeks[0] == 120U);
+    CHECK(r.media.onSeek(500, 3000) && r.session.seeks[1] == 200U);
+    CHECK(r.media.onSeek(120, 3000));
+
+    // The player still reports the old position: no MEDIA_STATE pulls the
+    // bar back within the grace time.
+    r.session.snap.sampledAtMs = 3500;  // 32.5 s by the old timeline
+    r.session.snap.positionS = 32;
+    r.media.onTick(4000);
+    CHECK(r.count(PROTO_CMD_MEDIA_STATE) == 0U);
+
+    // The timeline caught up: still nothing.
+    r.session.snap.positionS = 121;
+    r.session.snap.sampledAtMs = 4100;
+    r.media.onTick(4100);
+    CHECK(r.count(PROTO_CMD_MEDIA_STATE) == 0U);
+
+    // After the grace time the player's position counts: it refused the
+    // seek, so a MEDIA_STATE puts the bar back.
+    r.session.snap.positionS = 40;
+    r.session.snap.sampledAtMs = 3000 + MediaService::kSeekGraceMs + 1U;
+    r.media.onTick(3000 + MediaService::kSeekGraceMs + 1U);
+    CHECK(r.count(PROTO_CMD_MEDIA_STATE) == 1U && r.lastState()->position == 40U);
+
+    // No session: false.
+    r.session.snap.status = PROTO_MEDIA_STATUS_NONE;
+    r.media.onTick(9000);
+    CHECK(!r.media.onSeek(10, 9000));
+
+    // SEEK through DashController: the handler, or ERROR without one or when it fails.
+    DashRig d;
+    d.dash.onConnected();
+    d.sink.sent.clear();
+    ProtoMessage seek = dashMessage(PROTO_CMD_SEEK, 4);
+    seek.u.seek_s = 77;
+    d.dash.onMessage(seek);
+    ProtoMessage m = d.sink.pop();
+    CHECK(m.command == PROTO_CMD_ERROR && m.u.error.code == PROTO_ERROR_OPERATION_FAILED &&
+          m.u.error.ref_command == PROTO_CMD_SEEK);
+    std::vector<std::uint32_t> asked;
+    bool accept = true;
+    d.dash.setSeekHandler([&](std::uint32_t s) {
+        asked.push_back(s);
+        return accept;
+    });
+    d.dash.onMessage(seek);
+    CHECK(asked.size() == 1U && asked[0] == 77U && d.sink.sent.empty());
+    accept = false;
+    d.dash.onMessage(seek);
+    CHECK(d.sink.pop().command == PROTO_CMD_ERROR);
+    CHECK(FrameRouter::isDashboardCommand(PROTO_CMD_SEEK));
 }
 
 void testMediaServiceActions()
@@ -3698,6 +3780,7 @@ int main()
     testMediaServiceConnect();
     testMediaServiceChanges();
     testMediaServiceActions();
+    testMediaServiceSeek();
     testToastText();
     testDashBanner();
     testNotificationCardAndDetail();

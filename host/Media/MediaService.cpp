@@ -65,6 +65,28 @@ bool MediaService::onAction(const ProtoAction& action)
     return keys_.press(*key);
 }
 
+bool MediaService::onSeek(std::uint32_t seconds, std::uint64_t nowMs)
+{
+    if (shown_.status == PROTO_MEDIA_STATUS_NONE || (shown_.controls & PROTO_MEDIA_CAN_SEEK) == 0U) {
+        return false;
+    }
+    if (shown_.durationS != 0U && seconds > shown_.durationS) {
+        seconds = shown_.durationS;
+    }
+    if (!session_.seek(seconds)) {
+        return false;
+    }
+    seek_ = Seek{seconds, nowMs};
+    shown_.positionS = seconds;
+    shown_.sampledAtMs = nowMs;
+    if (sent_) {
+        // The board moved its bar already.
+        sent_->state.position = seconds;
+        sent_->atMs = nowMs;
+    }
+    return true;
+}
+
 MediaService::Changes MediaService::take(const MediaSnapshot& snap)
 {
     Changes changes;
@@ -84,7 +106,15 @@ MediaService::Changes MediaService::take(const MediaSnapshot& snap)
             artId_ = PROTO_NO_ART;
         }
     }
+    const bool sameTrack = !changes.record && !changes.cover;
     shown_ = snap;
+    if (seek_ && sameTrack && snap.sampledAtMs < seek_->atMs + kSeekGraceMs) {
+        // Count on from the seek until the player's timeline caught up.
+        shown_.positionS = seek_->seconds;
+        shown_.sampledAtMs = seek_->atMs;
+    } else {
+        seek_.reset();
+    }
     return changes;
 }
 
