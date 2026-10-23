@@ -1523,6 +1523,11 @@ void testApprovalOnBoard()
 struct FakeToasts : INotificationSource {
     NotificationSnapshot snap;
     NotificationSnapshot snapshot() const override { return snap; }
+    void clearAll() override
+    {
+        snap.toasts.clear();
+        ++snap.version;
+    }
 };
 struct AlwaysFocus : IFocusState {
     bool acceptsPopups() const override { return true; }
@@ -1584,6 +1589,17 @@ void testNotificationsOnBoard()
     notify.onTick(r.now);
     r.run(300);
     CHECK(r.screen.detail.find("#Outlook") == std::string::npos);
+
+    // The clear button (flag c): ACTION 255 empties the list on the PC and
+    // the open detail follows.
+    CHECK(r.screen.detail.rfind("Bildirimler\x1F" "1 bildirim\x1F" "c\n", 0) == 0U);
+    r.dash->setActionHandler([&notify](const ProtoAction& a) { return notify.onAction(a); });
+    CHECK(Dash_Action(&r.dashClient, PROTO_ACTION_CARD, NotificationService::kSlot, PROTO_DETAIL_ACTION_CLEAR));
+    r.run(300);
+    notify.onTick(r.now);
+    r.run(300);
+    CHECK(toasts.snap.toasts.empty() && r.screen.detail.find("#WhatsApp") == std::string::npos &&
+          r.screen.detail.find("Bildirim yok") != std::string::npos);
 
     // While a prompt is shown, the board drops banners.
     r.dash->showPrompt(1, "Claude Code\x1F\x1F" "60\n!1\x1FOnayla");

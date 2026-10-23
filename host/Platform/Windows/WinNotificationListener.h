@@ -35,6 +35,9 @@ public:
     void stop();
 
     NotificationSnapshot snapshot() const override;
+    // Wakes the reader thread, which calls ClearNotifications and reads the
+    // list again at once.
+    void clearAll() override;
 
 private:
     void run();
@@ -47,6 +50,7 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     bool stop_ = false;
+    bool clear_ = false;  // clearAll() asked; done by the reader thread
     NotificationSnapshot snapshot_;
 };
 

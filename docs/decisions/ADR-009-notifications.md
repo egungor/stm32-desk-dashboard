@@ -57,7 +57,11 @@ pop-up on the board, but the card and the list still update.
     `app: title` lines; "Bildirim yok" without any;
   - its detail: the newest 20, each a section `#app · hh:mm` and a row
     with the title and the body; no buttons (the list mirrors Windows:
-    a toast dismissed on the PC leaves the board at the next poll);
+    a toast dismissed on the PC leaves the board at the next poll).
+    Amendment (2026-10-23): with toasts, a clear button at the top right
+    of the list (detail flag `c`, `ACTION` 255) clears Windows'
+    notification centre (`UserNotificationListener.ClearNotifications`);
+    the list follows at the next read, as for a dismissal on the PC;
   - a pop-up (below) for each toast that is new since the last poll,
     not when the host starts or reconnects (those are not new), not
     while Do not disturb is on, and at most one every 2 s (a burst shows

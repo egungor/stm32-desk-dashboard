@@ -1358,7 +1358,7 @@ static void run_music_script(void)
 static void run_banner_script(void)
 {
     static const char *const notify_detail =
-        "Bildirimler" F "3 bildirim" F "\n"
+        "Bildirimler" F "3 bildirim" F "c\n"
         "#WhatsApp \xC2\xB7 14:32\n"
         F "Ay\xC5\x9F" "e" F "Ak\xC5\x9F" "am geliyor musun? Saat yedide kap\xC4\xB1n\xC4\xB1n \xC3\xB6n\xC3\xBC" "nde olal\xC4\xB1m.\n"
         "#Outlook \xC2\xB7 14:13\n"
@@ -1372,6 +1372,7 @@ static void run_banner_script(void)
     static const char *const banner_no_slot = "12" F "Snipping Tool" F "" F "";
     UiSettings s = *Ui_Settings();
     int opens;
+    int actions;
 
     tap(RAIL_DASH_X, RAIL_DASH_Y);
     run_ms(50U);
@@ -1402,6 +1403,13 @@ static void run_banner_script(void)
     run_ms(50U);
     check(Ui_DashView() == UI_DASH_VIEW_DETAIL, "the notifications detail is shown");
     snapshot("99-notifications-detail");
+    /* The clear button at the top right (flag "c"). */
+    actions = s_dash.action_calls;
+    tap(452, 18);
+    run_ms(50U);
+    check((s_dash.action_calls == actions + 1) && (s_dash.action_slot == 2U) &&
+              (s_dash.action == UI_DASH_ACTION_CLEAR),
+          "the clear button sends ACTION 255 for the notifications");
     tap(76, 18);
     run_ms(50U);
 

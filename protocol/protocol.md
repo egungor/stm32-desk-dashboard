@@ -253,7 +253,7 @@ missing trailing fields count as empty.
 | Record | Max bytes | Lines |
 |---|---|---|
 | Card | 256 | 1: `icon` ␟ `title` ␟ `badge` ␟ `bg` ␟ `flags` (version 6); 2–4: text lines |
-| Detail | 2048 | 1: `title` ␟ `subtitle` ␟ `flags`; then rows, section titles and buttons. `flags`: letters, `n` = show previous / next (`OPEN_DETAIL` −1 / +1) in the header; others are ignored |
+| Detail | 2048 | 1: `title` ␟ `subtitle` ␟ `flags`; then rows, section titles and buttons. `flags`: letters, `n` = show previous / next (`OPEN_DETAIL` −1 / +1) in the header, `c` = a clear button at the right of the header (`ACTION` 255); others are ignored |
 | Prompt | 1024 | 1: `title` ␟ `subtitle` ␟ `seconds` (countdown, decimal; empty = none); then as a detail |
 
 Card fields of version 6 (ADR-010): `bg` is the card's background as six
@@ -453,7 +453,7 @@ then its parts after anything else (as cover parts).
 
 | `kind` | `ref` | `action` |
 |---|---|---|
-| 0 card detail | card slot 0–7 | the button's `action` (1–255) |
+| 0 card detail | card slot 0–7 | the button's `action` (1–255); 255 also: the header's clear button (flag `c`) |
 | 1 prompt | prompt id | the button's `action` (1–255) |
 | 2 media strip, Music tab | 0 | 1 previous track, 2 play/pause, 3 next track |
 
@@ -555,4 +555,4 @@ A receiver rejects frames of any other version (`UNSUPPORTED_VERSION`).
 | 4 | ADR-008: `MEDIA_PART`, `MEDIA_STATE`, `ART_PART`, `GET_MEDIA` (now playing, 120 × 120 RGB565 cover); `startup_screen` 2 = Music. |
 | 5 | ADR-009: `BANNER_PART` (a short banner over every screen, used for new notifications); icon 12 = bell. |
 | 6 | ADR-010: `INDICATORS`, `PICTURE`, `PICTURE_PART` (200 × 92 RGB565); card record fields `bg` and `flags`; icon 13 = robot. |
-| 7 | ADR-010 amendment: the picture at 480 × 272 (#53). ADR-008 amendment: `SEEK`, `MEDIA_STATE` `controls` bit 3 (#55). |
+| 7 | ADR-010 amendment: the picture at 480 × 272 (#53). ADR-008 amendment: `SEEK`, `MEDIA_STATE` `controls` bit 3 (#55). Later, without a new version: detail flag `c` (the header's clear button, `ACTION` 255; an older board ignores the flag). |

@@ -157,6 +157,15 @@ NotificationSnapshot WinNotificationListener::snapshot() const
     return snapshot_;
 }
 
+void WinNotificationListener::clearAll()
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        clear_ = true;
+    }
+    cv_.notify_all();
+}
+
 bool WinNotificationListener::publish(NotificationAccess access, std::vector<Notification> toasts)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -182,11 +191,15 @@ void WinNotificationListener::run()
     std::chrono::milliseconds wait(0);  // the first read at once
 
     for (;;) {
+        bool clear = false;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            if (cv_.wait_for(lock, wait, [this] { return stop_; })) {
+            cv_.wait_for(lock, wait, [this] { return stop_ || clear_; });
+            if (stop_) {
                 break;
             }
+            clear = clear_;
+            clear_ = false;
         }
         wait = kPollInterval;
 
@@ -205,6 +218,15 @@ void WinNotificationListener::run()
                 access = NotificationAccess::Denied;
                 wait = kDeniedInterval;
             } else {
+                if (clear) {
+                    try {
+                        listener.ClearNotifications();
+                    } catch (const winrt::hresult_error& e) {
+                        if (log_) {
+                            log_("WARN: cannot clear Windows notifications (" + hresultText(e) + ").");
+                        }
+                    }
+                }
                 std::vector<Read> read;
                 for (const auto& n : listener.GetNotificationsAsync(NotificationKinds::Toast).get()) {
                     read.push_back(readToast(n));

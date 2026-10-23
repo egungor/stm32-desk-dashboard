@@ -308,6 +308,7 @@ uint32_t Ui_CurrentAppTab(void);
 #define UI_DASH_CARD_BYTES   256U  /**< = PROTO_CARD_MAX_BYTES */
 #define UI_DASH_DETAIL_BYTES 2048U /**< = PROTO_DETAIL_MAX_BYTES */
 #define UI_DASH_NO_SLOT      0xFFU
+#define UI_DASH_ACTION_CLEAR 255U  /**< = PROTO_DETAIL_ACTION_CLEAR: a detail's clear button (flag "c") */
 
 /** Media strip actions; values match PROTO_MEDIA_*. */
 enum
