@@ -276,8 +276,9 @@ std::vector<std::wstring> chooseImages(const std::wstring& name, const std::wstr
     if (g_app.importing) {
         return;
     }
-    const std::vector<std::wstring> paths = chooseImages(text(TrayText::MenuImages) + L" (*.png, *.jpg, *.webp, *.gif)",
-                                                         L"*.png;*.jpg;*.jpeg;*.webp;*.gif", text(TrayText::LoadMenu));
+    const std::vector<std::wstring> paths =
+        chooseImages(text(TrayText::MenuImages) + L" (*.png, *.jpg, *.webp, *.gif, *.html)",
+                     L"*.png;*.jpg;*.jpeg;*.webp;*.gif;*.html;*.htm", text(TrayText::LoadMenu));
     if (paths.empty()) {
         return;
     }
@@ -286,7 +287,7 @@ std::vector<std::wstring> chooseImages(const std::wstring& name, const std::wstr
     }
     g_app.importing = true;
     const std::uint8_t language = g_app.language.load();
-    logLine("Menu import: " + std::to_string(paths.size()) + " image(s).");
+    logLine("Menu import: " + std::to_string(paths.size()) + " file(s).");
     showBalloon(text(TrayText::Title), text(TrayText::MenuImporting), false);
     g_app.importer = std::thread([paths, language] {
         HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);

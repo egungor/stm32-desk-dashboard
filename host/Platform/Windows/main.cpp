@@ -44,10 +44,11 @@
 //                                      the picture card's file (ADR-010): print it
 //                                      and check that it loads, or set / remove it
 //   dashboard-host menu              print the menu card and today's detail
-//   dashboard-host menu import <image> [<image> ...]
-//                                      read menu images with the Claude API into
-//                                      menu-YYYY-MM.json (key: claude.txt or
-//                                      ANTHROPIC_API_KEY)
+//   dashboard-host menu import <file> [<file> ...]
+//                                      read menu images with the Claude API (key:
+//                                      claude.txt or ANTHROPIC_API_KEY), or saved
+//                                      portal pages (.html) without it, into
+//                                      menu-YYYY-MM.json
 //
 // Aliases, the device order, favorites and the board's settings are kept in
 // %APPDATA%\stm32-desk-dashboard\preferences.txt (ADR-004). "run" saves
@@ -583,9 +584,11 @@ int cmdMenu(const std::vector<std::string>& args)
         for (std::size_t i = 3; i < args.size(); ++i) {
             paths.push_back(win::toWide(args[i]));
         }
-        std::printf("Sending %lu image(s) to the Claude API; this can take a minute...\n",
-                    static_cast<unsigned long>(paths.size()));
-        std::fflush(stdout);
+        if (!win::areMenuPages(paths)) {
+            std::printf("Sending %lu image(s) to the Claude API; this can take a minute...\n",
+                        static_cast<unsigned long>(paths.size()));
+            std::fflush(stdout);
+        }
         const MenuImportResult result = win::importMenuFiles(paths, 0);
         if (result.ok) {
             (void)win::notifySettingsChanged();
@@ -825,7 +828,7 @@ int usage()
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
-        "                        menu | menu import <image> [<image> ...] | hook permission | hook probe |\n"
+        "                        menu | menu import <file> [<file> ...] | hook permission | hook probe |\n"
         "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n"
         "                        notify | notify focus | picture [add <file>] | version\n");
     return 2;

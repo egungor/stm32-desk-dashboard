@@ -57,6 +57,7 @@ host/
 │   └── ToastText.*         # spike: <text> lines of a toast payload, FILETIME -> Unix time
 ├── Menu/                   # the menu of the day (#20)
 │   ├── MenuData.*          # menu-YYYY-MM.json, merge by date, summary, dates
+│   ├── MenuHtmlImport.*    # saved portal pages (.html) -> days, without the Claude API
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
 │   ├── MenuLists.*         # menu-lists.txt: "never" / "don't like" dishes, Turkish case rules (ADR-010)
 │   └── MenuService.*       # card slot 1 (coloured by the lists), the day detail, the 08:00 warning
@@ -80,7 +81,7 @@ host/
 │   ├── WinNotificationProbe.* # spike #33: UserNotificationListener and wpndatabase.db (winsqlite3)
 │   ├── WinHookPipe.*       # \\.\pipe\stm32-desk-dashboard-hook server, current user only (#26)
 │   ├── WinHttpClient.*     # IHttpClient on WinHTTP (HTTPS, system proxy)
-│   ├── WinMenuImport.*     # menu import from image files; month files in %APPDATA%
+│   ├── WinMenuImport.*     # menu import from images or saved pages; month files in %APPDATA%
 │   ├── WinPicture.*        # the library's files, the shown picture, the shuffle, WIC (ADR-012)
 │   ├── PolicyConfig.h      # undocumented IPolicyConfig (ADR-002)
 │   ├── WinPreferenceFile.* # %APPDATA%\stm32-desk-dashboard\preferences.txt, weather.txt, ...
@@ -177,8 +178,9 @@ dashboard-host picture [add <file>]
                                    check that the shown picture loads, or add
                                    a photo (a running tray reads it at once)
 dashboard-host menu              print the menu card and the day's detail
-dashboard-host menu import <image> [<image> ...]
-                                   read menu images with the Claude API into
+dashboard-host menu import <file> [<file> ...]
+                                   read menu images with the Claude API, or
+                                   saved portal pages (.html) without it, into
                                    menu-YYYY-MM.json
 ```
 
@@ -230,6 +232,17 @@ images can be imported separately). A balloon shows a summary, e.g.
 "Ekim 2026: 20 gün yemek, 17 gün salata bar, 2 tatil; salata bar eksik:
 26, 27, 30 Ekim". The month file can be corrected in Notepad; the tray
 reads it again within a minute.
+
+Saved portal pages instead of images: open "Aylık Yemek Menüsü" in the
+browser, choose the "Öğle" tab and save the page (Ctrl+S), then the
+"Salatabar" tab into a second file, and load both `.html` files the same
+way (`Menu/MenuHtmlImport`). No Claude API call and no key: each day
+column (`portal-food-menu-table-column`: "05 Ekim / Pazartesi" and its
+lines) is read directly, the text put into sentence case ("MEYVE/FISTIKLI
+BAKLAVA" -> "Meyve / fıstıklı baklava"); "RESMİ TATİL" is a holiday,
+"Yemek listesi bulunamadı" is left out. The page's active tab tells the
+meal from the salad bar; a page saved on another tab ("Akşam", "Diyet",
+...) is refused. Images and pages are loaded separately.
 
 The API key: `%APPDATA%\stm32-desk-dashboard\claude.txt`
 

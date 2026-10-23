@@ -43,6 +43,7 @@ add_library(host_core STATIC
     Picture/PictureService.cpp
     Notify/ToastText.cpp
     Menu/MenuData.cpp
+    Menu/MenuHtmlImport.cpp
     Menu/MenuImport.cpp
     Menu/MenuLists.cpp
     Menu/MenuService.cpp

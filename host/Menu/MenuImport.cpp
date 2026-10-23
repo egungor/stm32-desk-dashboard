@@ -74,21 +74,6 @@ std::string message(std::uint8_t language, const char* tr, const char* en)
     return language == 1U ? en : tr;
 }
 
-// The year of @p month closest to the import month.
-int yearFor(int month, int importYear, int importMonth)
-{
-    int best = importYear;
-    int bestDistance = 1000;
-    for (int y = importYear - 1; y <= importYear + 1; ++y) {
-        const int distance = std::abs((y * 12 + month) - (importYear * 12 + importMonth));
-        if (distance < bestDistance) {
-            best = y;
-            bestDistance = distance;
-        }
-    }
-    return best;
-}
-
 json schema()
 {
     const json text = {{"type", "string"}};
@@ -116,6 +101,20 @@ json schema()
 }
 
 }  // namespace
+
+int menuYearFor(int month, int importYear, int importMonth)
+{
+    int best = importYear;
+    int bestDistance = 1000;
+    for (int y = importYear - 1; y <= importYear + 1; ++y) {
+        const int distance = std::abs((y * 12 + month) - (importYear * 12 + importMonth));
+        if (distance < bestDistance) {
+            best = y;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
 
 ClaudeConfig parseClaudeConfig(const std::optional<std::string>& fileText, const std::string& environmentKey)
 {
@@ -282,7 +281,7 @@ MenuAnswer parseMenuAnswer(const HttpResponse& response, int importYear, int imp
         if (month < 1 || month > 12 || status == "none") {
             continue;
         }
-        const int year = yearFor(month, importYear, importMonth);
+        const int year = menuYearFor(month, importYear, importMonth);
         if (!validDate(year, month, day) || !seen.insert({month, day}).second) {
             continue;
         }
@@ -361,10 +360,15 @@ MenuImportResult importMenu(const std::vector<MenuImage>& images, const ClaudeCo
         result.message = answer.error;
         return result;
     }
+    return saveMenuDays(answer.days, files, language);
+}
 
+MenuImportResult saveMenuDays(const std::vector<DatedMenuDay>& days, IMenuFiles& files, std::uint8_t language)
+{
+    MenuImportResult result;
     // Merge month by month.
     std::map<std::pair<int, int>, MenuMonth> months;
-    for (const DatedMenuDay& d : answer.days) {
+    for (const DatedMenuDay& d : days) {
         const std::pair<int, int> key{d.year, d.month};
         auto it = months.find(key);
         if (it == months.end()) {

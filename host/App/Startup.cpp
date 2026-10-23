@@ -93,10 +93,10 @@ const char* trayText(TrayText id, std::uint8_t language)
     case TrayText::LoadMenu:
         return english ? "Load menu images\xE2\x80\xA6" : "Men\xC3\xBC g\xC3\xB6r\xC3\xBCnt\xC3\xBClerini y\xC3\xBCkle\xE2\x80\xA6";
     case TrayText::MenuImages:
-        return english ? "Images" : "G\xC3\xB6r\xC3\xBCnt\xC3\xBCler";
+        return english ? "Images or saved pages"
+                       : "G\xC3\xB6r\xC3\xBCnt\xC3\xBCler ya da kaydedilmi\xC5\x9F sayfalar";
     case TrayText::MenuImporting:
-        return english ? "Claude is reading the menu images\xE2\x80\xA6"
-                       : "Claude men\xC3\xBC g\xC3\xB6r\xC3\xBCnt\xC3\xBClerini okuyor\xE2\x80\xA6";
+        return english ? "Reading the menu\xE2\x80\xA6" : "Men\xC3\xBC okunuyor\xE2\x80\xA6";
     case TrayText::MenuImported:
         return english ? "Menu loaded" : "Men\xC3\xBC y\xC3\xBCklendi";
     case TrayText::MenuImportFailed:
