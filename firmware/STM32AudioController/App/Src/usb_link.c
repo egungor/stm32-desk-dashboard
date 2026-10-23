@@ -106,6 +106,7 @@ static struct
     uint8_t           protocol;
     uint8_t           alt_setting;
     volatile bool     tx_busy;
+    volatile bool     rx_paused; /**< queue full: OUT not armed, the host is NAKed (#68) */
     __ALIGN_BEGIN uint8_t rx_buf[EP_SIZE] __ALIGN_END;
     __ALIGN_BEGIN uint8_t tx_buf[EP_SIZE] __ALIGN_END;
 } s_class;
@@ -129,6 +130,7 @@ static uint8_t link_init(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
     pdev->pClassDataCmsit[pdev->classId] = &s_class;
     pdev->pClassData = &s_class;
     s_class.tx_busy = false;
+    s_class.rx_paused = false;
     s_config_count++;
 
     pdev->ep_in[EP_IN_ADDR & 0xFU].bInterval = EP_INTERVAL_MS;
@@ -243,7 +245,11 @@ static uint8_t link_data_in(USBD_HandleTypeDef *pdev, uint8_t epnum)
 }
 
 /* Interrupt context: an output report arrived. Copy it into the queue and
- * re-arm the endpoint; nothing else happens here. */
+ * re-arm the endpoint, unless the queue is now full: then the endpoint
+ * stays unarmed, the host's next report is NAKed (it waits, USB flow
+ * control) and UsbLink_Receive arms it again once a frame was taken
+ * (#68). Before, a full queue threw frames away and a lone card update
+ * could be lost for good. */
 static uint8_t link_data_out(USBD_HandleTypeDef *pdev, uint8_t epnum)
 {
     BaseType_t woken = pdFALSE;
@@ -255,9 +261,17 @@ static uint8_t link_data_out(USBD_HandleTypeDef *pdev, uint8_t epnum)
     }
     else
     {
-        s_stats.rx_dropped++;
+        s_stats.rx_dropped++;  /* wrong length, or no queue */
     }
-    (void)USBD_LL_PrepareReceive(pdev, EP_OUT_ADDR, s_class.rx_buf, EP_SIZE);
+    if ((s_rx_queue != NULL) && (xQueueIsQueueFullFromISR(s_rx_queue) != pdFALSE))
+    {
+        s_class.rx_paused = true;
+        s_stats.rx_paused++;
+    }
+    else
+    {
+        (void)USBD_LL_PrepareReceive(pdev, EP_OUT_ADDR, s_class.rx_buf, EP_SIZE);
+    }
     portYIELD_FROM_ISR(woken);
     return (uint8_t)USBD_OK;
 }
@@ -380,7 +394,21 @@ uint32_t UsbLink_ConfigCount(void)
 
 bool UsbLink_Receive(uint8_t frame[PROTO_FRAME_SIZE], uint32_t timeout_ms)
 {
-    return (s_rx_queue != NULL) && (xQueueReceive(s_rx_queue, frame, pdMS_TO_TICKS(timeout_ms)) == pdPASS);
+    if ((s_rx_queue == NULL) || (xQueueReceive(s_rx_queue, frame, pdMS_TO_TICKS(timeout_ms)) != pdPASS))
+    {
+        return false;
+    }
+    /* A place is free again: arm the endpoint the interrupt left unarmed.
+     * The USB interrupt is masked meanwhile (it uses the FromISR API, so
+     * its priority is within configMAX_SYSCALL_INTERRUPT_PRIORITY). */
+    taskENTER_CRITICAL();
+    if (s_class.rx_paused && (s_pdev != NULL))
+    {
+        s_class.rx_paused = false;
+        (void)USBD_LL_PrepareReceive(s_pdev, EP_OUT_ADDR, s_class.rx_buf, EP_SIZE);
+    }
+    taskEXIT_CRITICAL();
+    return true;
 }
 
 bool UsbLink_Send(const uint8_t frame[PROTO_FRAME_SIZE], uint32_t timeout_ms)
@@ -415,6 +443,7 @@ void UsbLink_GetStats(UsbLinkStats *stats)
 {
     stats->rx_frames = s_stats.rx_frames;
     stats->rx_dropped = s_stats.rx_dropped;
+    stats->rx_paused = s_stats.rx_paused;
     stats->tx_frames = s_stats.tx_frames;
     stats->tx_timeouts = s_stats.tx_timeouts;
 }

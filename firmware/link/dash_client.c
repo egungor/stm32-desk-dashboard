@@ -235,6 +235,11 @@ static void on_art_part(DashClient *dash, const ProtoArtPart *part, uint32_t now
     case PROTO_ASM_PARTIAL:
         dash->art_part_ms = now_ms;
         break;
+    case PROTO_ASM_DUPLICATE:
+        /* Sent again after GET_MEDIA: the cover is still coming. */
+        dash->art_part_ms = now_ms;
+        dash->frames_ignored++;
+        break;
     default:
         dash->frames_ignored++;  /* another cover, or one shown already */
         break;
@@ -287,6 +292,15 @@ static void on_picture_part(DashClient *dash, const ProtoArtPart *part, uint32_t
         break;
     case PROTO_ASM_PARTIAL:
         dash->pic_part_ms = now_ms;
+        break;
+    case PROTO_ASM_DUPLICATE:
+        /* After GET_CARDS the host sends the picture again from part 0;
+         * the parts kept so far come again for a few seconds (about 250 a
+         * second). They show the picture is still coming: without this the
+         * client asked again every DASH_RETRY_MS and the picture never
+         * completed (#68). */
+        dash->pic_part_ms = now_ms;
+        dash->frames_ignored++;
         break;
     default:
         dash->frames_ignored++;  /* another picture, or one shown already */

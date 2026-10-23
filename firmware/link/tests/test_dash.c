@@ -717,6 +717,23 @@ static void test_indicators_and_picture(void)
     feed_picture(PROTO_NO_PICTURE, 9200U);
     CHECK(g.pic_calls == 3 && g.pic == NULL);
 
+    /* No parts for a while: GET_CARDS; the host starts over from part 0.
+     * The parts kept so far come again for longer than the retry time;
+     * they do not make the client ask again (#68). */
+    g.sent_count = 0;
+    feed_picture(8U, 10000U);
+    feed_picture_parts(8U, 0x44U, 0U, 1000U, 10010U);
+    Dash_Poll(&s_dash, 10010U + DASH_RETRY_MS);
+    CHECK(count_sent(PROTO_CMD_GET_CARDS) == 1);
+    feed_picture(8U, 11100U);
+    feed_picture_parts(8U, 0x44U, 0U, 500U, 11800U);
+    Dash_Poll(&s_dash, 11800U + DASH_RETRY_MS - 1U);
+    feed_picture_parts(8U, 0x44U, 500U, 1000U, 12700U);
+    Dash_Poll(&s_dash, 12700U + DASH_RETRY_MS - 1U);
+    CHECK(count_sent(PROTO_CMD_GET_CARDS) == 1);
+    feed_picture_parts(8U, 0x44U, 1000U, PROTO_PICTURE_PARTS, 13000U);
+    CHECK(g.pic_calls == 4 && s_pic_buf[100] == 0x44U);
+
     /* Without a buffer pictures are ignored. */
     reset();
     Dash_OnConnected(&s_dash, 0U);

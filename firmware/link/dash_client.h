@@ -47,7 +47,9 @@
  *     buffer given with Dash_SetPictureBuffer and handed to show_picture when
  *     complete (NULL: PICTURE 0, no picture); a picture already shown is not
  *     collected again; one still incomplete DASH_RETRY_MS after its last
- *     part (or its PICTURE) makes the client send GET_CARDS.
+ *     part (or its PICTURE) makes the client send GET_CARDS. A part that
+ *     arrives again (the host starts over after GET_CARDS) counts as a
+ *     part for this timer, as it does for the cover.
  *
  * Sequence numbers: the client numbers its frames from a counter it is
  * given (Dash_SetSequenceCounter), so that it can share the audio

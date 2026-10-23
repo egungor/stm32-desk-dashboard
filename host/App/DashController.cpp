@@ -119,6 +119,14 @@ void DashController::onTick(std::uint64_t nowMs)
     if (!synced_) {
         return;
     }
+    // A card whose frames could not all be written (the board held the
+    // host off too long) goes out again, else it would wait for its next
+    // change (#68: the weather card stayed "Bekleniyor").
+    for (std::uint8_t slot = 0; slot < PROTO_MAX_CARDS; ++slot) {
+        if (cards_[slot].unsent) {
+            (void)sendCard(slot);
+        }
+    }
     if (!timeSentAtMs_) {
         timeSentAtMs_ = nowMs;  // the time went out before the first tick
     }
@@ -240,18 +248,19 @@ void DashController::showBanner(std::uint8_t id, std::string text)
     sendRecord(PROTO_CMD_BANNER_PART, id, ++bannerGeneration_, cutUtf8(std::move(text), PROTO_BANNER_MAX_BYTES));
 }
 
-void DashController::sendCard(std::uint8_t slot)
+bool DashController::sendCard(std::uint8_t slot)
 {
-    const Slot& s = cards_[slot];
+    Slot& s = cards_[slot];
 
     if (s.text.empty()) {
         ProtoMessage msg{};
         msg.command = PROTO_CMD_CARD_CLEAR;
         msg.u.slot = slot;
-        send(msg);
-        return;
+        s.unsent = !send(msg);
+    } else {
+        s.unsent = !sendRecord(PROTO_CMD_CARD_PART, slot, s.generation, s.text);
     }
-    sendRecord(PROTO_CMD_CARD_PART, slot, s.generation, s.text);
+    return !s.unsent;
 }
 
 void DashController::sendTime(std::optional<std::uint64_t> nowMs)
@@ -280,7 +289,7 @@ bool DashController::sendDetail(std::uint8_t slot, std::int8_t arg)
     return true;
 }
 
-void DashController::sendRecord(std::uint8_t command, std::uint8_t id, std::uint8_t generation,
+bool DashController::sendRecord(std::uint8_t command, std::uint8_t id, std::uint8_t generation,
                                 const std::string& text)
 {
     // NUL bytes would make the record invalid; they cannot come from
@@ -293,16 +302,18 @@ void DashController::sendRecord(std::uint8_t command, std::uint8_t id, std::uint
     }
     const auto length = static_cast<std::uint16_t>(clean.size());
     const std::uint8_t parts = Proto_RecordPartCount(length);
+    bool all = true;
     for (std::uint8_t part = 0; part < parts; ++part) {
         ProtoMessage msg{};
         msg.command = command;
         if (Proto_RecordPart(reinterpret_cast<const std::uint8_t*>(clean.data()), length, id, generation, part,
                              &msg.u.part) == 0) {
             ++stats_.sendFailures;
-            return;
+            return false;
         }
-        send(msg);
+        all = send(msg) && all;
     }
+    return all;
 }
 
 void DashController::sendError(ProtoErrorCode code, std::uint8_t refCommand, std::uint8_t refSequence)
@@ -315,19 +326,20 @@ void DashController::sendError(ProtoErrorCode code, std::uint8_t refCommand, std
     send(msg);
 }
 
-void DashController::send(const ProtoMessage& msg)
+bool DashController::send(const ProtoMessage& msg)
 {
     Frame frame{};
     if (Proto_Encode(&msg, frame.data()) != PROTO_OK) {
         // Only reachable through a bug in this class; never send garbage.
         ++stats_.sendFailures;
-        return;
+        return false;
     }
     if (sink_.sendFrame(frame)) {
         ++stats_.framesSent;
-    } else {
-        ++stats_.sendFailures;
+        return true;
     }
+    ++stats_.sendFailures;
+    return false;
 }
 
 }  // namespace stm32_audio::host
