@@ -51,8 +51,42 @@ bool WinMenuFiles::write(const std::string& name, const std::string& text)
     return file.write(text);
 }
 
+bool areMenuPages(const std::vector<std::wstring>& paths)
+{
+    if (paths.empty()) {
+        return false;
+    }
+    for (const std::wstring& path : paths) {
+        if (!isMenuPageName(toUtf8(path.c_str()))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 MenuImportResult importMenuFiles(const std::vector<std::wstring>& paths, std::uint8_t language)
 {
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    if (areMenuPages(paths)) {
+        std::vector<MenuPageFile> pages;
+        for (const std::wstring& path : paths) {
+            MenuPageFile page;
+            page.name = toUtf8(path.c_str());
+            std::optional<std::string> html = readFile(path, kMaxMenuPageBytes);
+            if (!html) {
+                MenuImportResult r;
+                r.message = page.name + (language == 1U ? ": cannot be read or larger than 4 MB."
+                                                        : ": okunamadı ya da 4 MB'tan büyük.");
+                return r;
+            }
+            page.html = std::move(*html);
+            pages.push_back(std::move(page));
+        }
+        WinMenuFiles files;
+        return importMenuPages(pages, files, t.wYear, t.wMonth, language);
+    }
+
     std::vector<MenuImage> images;
     for (const std::wstring& path : paths) {
         MenuImage image;
@@ -60,8 +94,11 @@ MenuImportResult importMenuFiles(const std::vector<std::wstring>& paths, std::ui
         const std::optional<std::string> type = imageMediaType(image.name);
         if (!type) {
             MenuImportResult r;
-            r.message = image.name + (language == 1U ? ": not a PNG, JPEG, WebP or GIF image."
-                                                     : ": PNG, JPEG, WebP ya da GIF görüntüsü değil.");
+            r.message = image.name + (isMenuPageName(image.name)
+                                          ? (language == 1U ? ": load the pages without images."
+                                                            : ": sayfaları görüntüsüz yükleyin.")
+                                          : (language == 1U ? ": not a PNG, JPEG, WebP or GIF image."
+                                                            : ": PNG, JPEG, WebP ya da GIF görüntüsü değil."));
             return r;
         }
         image.mediaType = *type;
@@ -80,8 +117,6 @@ MenuImportResult importMenuFiles(const std::vector<std::wstring>& paths, std::ui
     const ClaudeConfig config = parseClaudeConfig(claudeFile.read(), environmentKey());
     WinHttpClient http;
     WinMenuFiles files;
-    SYSTEMTIME t{};
-    GetLocalTime(&t);
     return importMenu(images, config, http, files, t.wYear, t.wMonth, language);
 }
 

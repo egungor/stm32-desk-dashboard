@@ -100,6 +100,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Media/MediaCover` | no | Square crop, BGRA → RGB565, app name of a media session |
 | `App/HttpClient.h`, `App/BackgroundFetch` | no | `IHttpClient` (GET, POST); one GET at a time on a worker thread, result polled by the loop |
 | `Menu/MenuData`, `MenuImport` | no | Month files `menu-YYYY-MM.json`, merge by date; menu images → Claude API request and answer (nlohmann/json) |
+| `Menu/MenuHtmlImport` | no | Saved portal menu pages (.html, Öğle / Salatabar tab) → days, without the Claude API |
 | `Hook/ApprovalService` | no | Claude Code requests: queue, prompt record (cut rule), timeouts, `ACTION` kind 1, card slot 3 (ADR-007) |
 | `Hook/ClaudeHook` | no | Claude Code `PermissionRequest` decision JSON; the step 10 probe's config and log lines (ADR-007) |
 | `Menu/MenuService` | no | Menu card (slot 1) and day detail, from the month files |
@@ -113,7 +114,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Platform/Windows/WinMediaSession` | yes | `IMediaSession` on `Windows.Media.Control` (C++/WinRT) on a worker thread; thumbnail → 120 × 120 RGB565 with WIC |
 | `Platform/Windows/WinHookPipe` | yes | Named pipe server for `dashboard-host hook permission`, current user only; requests into `EventQueue` |
 | `Platform/Windows/WinHttpClient` | yes | `IHttpClient` on WinHTTP (HTTPS, system proxy) |
-| `Platform/Windows/WinMenuImport` | yes | Menu import from image files (console and tray); month files in `%APPDATA%` |
+| `Platform/Windows/WinMenuImport` | yes | Menu import from image files or saved pages (console and tray); month files in `%APPDATA%` |
 | `Platform/Windows/WinHidLink` | yes | Finds and opens the controller, reader thread, writes frames |
 | `Platform/Windows/main.cpp` | yes | Console program `dashboard-host` |
 

@@ -29,6 +29,7 @@
 #include "MediaService.h"
 #include "MediaSession.h"
 #include "MenuData.h"
+#include "MenuHtmlImport.h"
 #include "MenuImport.h"
 #include "MenuLists.h"
 #include "NotificationService.h"
@@ -2542,6 +2543,112 @@ void testMenuImport()
     CHECK(r.ok && parseMonthFile(files.files["menu-2026-10"]).has_value());
 }
 
+// A saved portal page in the shape of the real one: tabs, then one column
+// per day (made-up dishes).
+std::string menuPage(const char* activeTab, const std::string& columns)
+{
+    const std::string tab = activeTab;
+    std::string page = "<html><body><button type=\"button\" class=\"Chatbot active\"> </button>"
+                       "<div class=\"portal-food-menu-modal-title\"><button type=\"button\" class=\"active\">Ankara</button>";
+    for (const char* name : {"Öğle", "Salatabar", "Akşam", "Diyet"}) {
+        page += std::string("<button type=\"button\" class=\"") + (tab == name ? "active" : "") + "\">" + name +
+                "</button>";
+    }
+    return page + "</div><div class=\"portal-food-menu-table\"><div class=\"portal-food-menu-table-row\">" + columns +
+           "</div></div><footer><div>2026 © Portal</div></footer></body></html>";
+}
+
+std::string menuColumn(const char* header, std::vector<std::string> items, const char* style = "")
+{
+    std::string c = std::string("<div class=\"portal-food-menu-table-column\"") + style + "><h1>" + header + "</h1>";
+    for (const std::string& item : items) {
+        c += item.rfind("<div", 0) == 0 ? item : "<div>" + item + "</div>";
+    }
+    return c + "</div>";
+}
+
+void testMenuPage()
+{
+    CHECK(isMenuPageName("yemek.html") && isMenuPageName("C:\\a\\Salata.HTM") && !isMenuPageName("menu.png"));
+    CHECK(!isMenuPageName("html"));
+    CHECK(menuSentenceCase("  MEYVE/FISTIKLI   BAKLAVA ") == "Meyve / fıstıklı baklava");
+    CHECK(menuSentenceCase("İÇLİ KÖFTE") == "İçli köfte" && menuSentenceCase("ŞEHRİYE ÇORBA") == "Şehriye çorba");
+    CHECK(menuSentenceCase("ıSPANAK") == "Ispanak" && menuSentenceCase("ZYT.BROKOLİ") == "Zyt.brokoli");
+    CHECK(menuSentenceCase("") == "" && menuSentenceCase(std::string(300, 'A')).size() <= 120U);
+
+    const std::string columns =
+        menuColumn("30 Eylül<br>Çarşamba", {"<div class=\"empty\">Yemek listesi bulunamadı</div>"},
+                   " style=\"opacity: 0.4;\"") +
+        menuColumn("05 Ekim<br>Pazartesi",
+                   {"KAĞIT KEBABI", "KALEM BÖREK", "TARHANA ÇORBA", "MEYVE/FISTIKLI BAKLAVA", "YOĞURT/AYRAN"}) +
+        menuColumn("06 Ekim<br>Salı", {"ETLİ&nbsp; NOHUT", "PİLAV &amp; <b>BULGUR</b>", "&#199;ORBA"}) +
+        menuColumn("05 Ekim<br>Pazartesi", {"TEKRAR"}) + menuColumn("31 Kasım<br>Salı", {"YOK"}) +
+        menuColumn("Başlık yok", {"YOK"}) + menuColumn("07 Ekim<br>Çarşamba", {" ", ""}) +
+        menuColumn("28 Ekim<br>Çarşamba", {"RESMİ TATİL", "RESMİ TATİL"}) +
+        menuColumn("04 Ocak<br>Pazartesi", {"OCAK YEMEĞİ"});
+
+    MenuPage meal = parseMenuPage(menuPage("Öğle", columns), 2026, 12, 0);
+    CHECK(meal.error.empty() && meal.kind == MenuPageKind::Meal && meal.days.size() == 4U);
+    if (meal.days.size() == 4U) {
+        const MenuDay& d5 = meal.days[0].content;
+        CHECK(meal.days[0].year == 2026 && meal.days[0].month == 10 && meal.days[0].day == 5);
+        CHECK(d5.main == "Kağıt kebabı" && d5.side == "Kalem börek" && d5.soup == "Tarhana çorba" &&
+              d5.dessert == "Meyve / fıstıklı baklava" && d5.extra == "Yoğurt / ayran" && d5.saladBar.empty());
+        const MenuDay& d6 = meal.days[1].content;
+        CHECK(d6.main == "Etli nohut" && d6.side == "Pilav & bulgur" && d6.soup == "Çorba" && d6.dessert.empty());
+        CHECK(meal.days[2].day == 28 && meal.days[2].content.holiday && meal.days[2].content.main.empty());
+        CHECK(meal.days[3].year == 2027 && meal.days[3].month == 1);  // January after a December import
+    }
+
+    const MenuPage salad = parseMenuPage(
+        menuPage("Salatabar", menuColumn("05 Ekim<br>Pazartesi", {"ÇOBAN SALATA", "YOĞ. KABAK", "TURŞU"})), 2026, 10,
+        1);
+    CHECK(salad.error.empty() && salad.kind == MenuPageKind::SaladBar && salad.days.size() == 1U);
+    CHECK(!salad.days.empty() && salad.days[0].content.saladBar ==
+                                     std::vector<std::string>({"Çoban salata", "Yoğ. kabak", "Turşu"}) &&
+          !salad.days[0].content.hasMeal());
+
+    CHECK(parseMenuPage(menuPage("Akşam", columns), 2026, 10, 0).error ==
+          "Sayfada \"Akşam\" menüsü var; Öğle ya da Salatabar sekmesinde kaydedin.");
+    CHECK(parseMenuPage(menuPage("", columns), 2026, 10, 1).error ==
+          "Neither the Öğle nor the Salatabar tab is selected on the page.");
+    CHECK(parseMenuPage("<html><button class=\"active\">Öğle</button></html>", 2026, 10, 1).error ==
+          "Not a menu page.");
+    CHECK(parseMenuPage(menuPage("Öğle", menuColumn("05 Ekim<br>Pazartesi",
+                                                    {"<div class=\"empty\">Yemek listesi bulunamadı</div>"})),
+                        2026, 10, 1)
+              .error == "No day with a menu on the page.");
+}
+
+void testMenuPageImport()
+{
+    MemoryMenuFiles files;
+    files.files["menu-2026-10"] = kMonthFile;
+    const MenuPageFile meal{"yemek.html",
+                            menuPage("Öğle", menuColumn("06 Ekim<br>Salı", {"ETLİ NOHUT", "PİLAV", "EZOGELİN ÇORBA"}) +
+                                                 menuColumn("02 Kasım<br>Pazartesi", {"MANTI"}))};
+    const MenuPageFile salad{"salata.html", menuPage("Salatabar", menuColumn("05 Ekim<br>Pazartesi", {"ROKA", "TURŞU"}) +
+                                                                       menuColumn("06 Ekim<br>Salı", {"CACIK"}))};
+
+    MenuImportResult r = importMenuPages({meal, salad}, files, 2026, 10, 0);
+    CHECK(r.ok);
+    CHECK(r.message == "Ekim 2026: 2 gün yemek, 2 gün salata bar, 1 tatil\n"
+                       "Kasım 2026: 1 gün yemek, 0 gün salata bar, 0 tatil; salata bar eksik: 2 Kasım");
+    const std::optional<MenuMonth> oct = parseMonthFile(files.files["menu-2026-10"]);
+    CHECK(oct.has_value() && oct->days.at(5).main == "Kağıt kebabı" &&  // the meal kept, the salad bar replaced
+          oct->days.at(5).saladBar == std::vector<std::string>({"Roka", "Turşu"}));
+    CHECK(oct.has_value() && oct->days.at(6).main == "Etli nohut" &&
+          oct->days.at(6).saladBar == std::vector<std::string>({"Cacık"}));
+
+    // One bad page: nothing written.
+    files.files.clear();
+    r = importMenuPages({meal, MenuPageFile{"aksam.html", menuPage("Akşam", "")}}, files, 2026, 10, 1);
+    CHECK(!r.ok && r.message.rfind("aksam.html: ", 0) == 0 && files.files.empty());
+    CHECK(!importMenuPages({}, files, 2026, 10, 0).ok);
+    CHECK(!importMenuPages({MenuPageFile{"big.html", std::string(kMaxMenuPageBytes + 1U, ' ')}}, files, 2026, 10, 0)
+               .ok);
+}
+
 void testMenuService()
 {
     DashRig r;
@@ -4045,6 +4152,8 @@ int main()
     testMenuRequest();
     testMenuAnswer();
     testMenuImport();
+    testMenuPage();
+    testMenuPageImport();
     testMenuService();
     testClaudeHook();
     testHookPipeAndSnippet();
