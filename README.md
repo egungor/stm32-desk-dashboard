@@ -25,10 +25,10 @@ The project consists of:
 
 Releases are on the
 **[Releases page](https://github.com/egungor/stm32-desk-dashboard/releases)**.
-The latest, `v0.9.0-beta.2`, is a test pre-release of Dashboard v1
-steps 1–11: clock, weather, menu of the day, media keys and Claude Code
-approvals (`v0.9.0-beta.1`, steps 1–9, has its checklist in issue #22).
-There is no v1.0.0 yet.
+The latest are test pre-releases of Dashboard v1 (`v0.9.0-beta.*`):
+clock, weather, menu of the day, now playing, notifications, the picture,
+Claude Code approvals and the settings window (`v0.9.0-beta.1` has its
+checklist in issue #22). There is no v1.0.0 yet.
 
 | File | What |
 |---|---|
@@ -43,14 +43,79 @@ STM32_Programmer_CLI -c port=SWD -w stm32-desk-dashboard-firmware-<version>.elf 
 ```
 
 Then connect the board's USB OTG FS connector to the PC and run the
-installed tray program. The setup is not code-signed, so Windows
-SmartScreen may warn ("More info" → "Run anyway"). A `v*` tag builds both
+installed tray program. Until the setup is signed (see
+[Code signing policy](#code-signing-policy)), Windows SmartScreen may warn
+("More info" → "Run anyway"); a newly signed program may also warn for a
+while, until it has a reputation. A `v*` tag builds both
 files in CI and attaches them to the release
 ([`installer/README.md`](installer/README.md), "Where to get it").
 
 The board uses USB VID:PID `1209:0002`; the audio controller uses
 `1209:0001`, so the two products and their host programs do not take each
 other's board.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/),
+certificate by [SignPath Foundation](https://signpath.org/).
+
+What is signed: the Windows installer `stm32-desk-dashboard-setup-<version>.exe`
+of a release, built in GitHub Actions from this repository
+(`.github/workflows/host-installer.yml`). Every signing request is
+approved by hand. The firmware files are not signed (the board does not
+check signatures).
+
+Team roles:
+
+| Role | Members |
+|---|---|
+| Authors (commit without further review) | [egungor](https://github.com/egungor) |
+| Reviewers (review changes from others) | [egungor](https://github.com/egungor) |
+| Approvers (approve each signing request) | [egungor](https://github.com/egungor) |
+
+Changes are also written with the help of Claude Code (an AI coding
+assistant); each one goes through a pull request that the owner merges.
+
+### Privacy
+
+The programs send no information to other networked systems unless the
+user asks for it:
+
+- **Weather**: once you set a place (`dashboard-host weather <place>` or
+  the settings window), the place name is sent to the Open-Meteo
+  geocoding service and its coordinates to the Open-Meteo forecast
+  service ([Open-Meteo terms and privacy](https://open-meteo.com/en/terms)).
+  Without a place nothing is sent; deleting
+  `%APPDATA%\stm32-desk-dashboard\weather.txt` stops the requests.
+- **Menu import**: only when you import menu images with your own
+  Anthropic API key, the images are sent to the Claude API
+  ([Anthropic privacy policy](https://www.anthropic.com/legal/privacy)).
+- Everything else stays on the PC and the board: audio devices, now
+  playing, Windows notifications (their texts go to the board over USB
+  and are not written to `host.log`), Claude Code requests (a local named
+  pipe), pictures. There is no telemetry and no update check.
+- The settings window uses the Microsoft Edge WebView2 Runtime, a part of
+  Windows ([Microsoft privacy statement](https://privacy.microsoft.com/privacystatement)).
+
+The installer shows this statement before it installs.
+
+## License
+
+[MIT](LICENSE), for the code of this project. Third-party components keep
+their own licences:
+
+| Component | Where | Licence |
+|---|---|---|
+| nlohmann/json | host (`host/third_party/nlohmann`) | MIT |
+| Microsoft WebView2 SDK (headers, static loader) | host, settings window (fetched by CMake) | BSD-3-Clause |
+| LVGL | firmware (`firmware/ui`, submodule) | MIT |
+| FreeRTOS | firmware | MIT |
+| STM32Cube HAL, BSP | firmware | BSD-3-Clause |
+| CMSIS | firmware | Apache-2.0 |
+| STM32 USB Device Library | firmware | ST SLA0044 |
+
+The installer carries the notices of the host's components
+([`installer/THIRD-PARTY-NOTICES.txt`](installer/THIRD-PARTY-NOTICES.txt)).
 
 ## Project status (inherited from the audio controller)
 
