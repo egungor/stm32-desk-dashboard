@@ -4,6 +4,7 @@
 ;   %LOCALAPPDATA%\Programs\STM32 Desk Dashboard\
 ;     dashboard-tray.exe   tray program (serves the controller)
 ;     dashboard-host.exe   console tools (list, alias, run, startup, ...)
+;     LICENSE.txt, THIRD-PARTY-NOTICES.txt
 ; Start menu: the tray program and the uninstaller.
 ; Task "Start with Windows" (checked): the same Run value the tray menu and
 ; "dashboard-host startup on" write, so the tray menu shows it checked.
@@ -56,8 +57,10 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
-Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
-Name: "english"; MessagesFile: "compiler:Default.isl"
+; The privacy statement (README, "Privacy"; SignPath Foundation terms, #79)
+; is shown before the install.
+Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"; InfoBeforeFile: "privacy-tr.txt"
+Name: "english"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "privacy-en.txt"
 
 [CustomMessages]
 turkish.StartWithWindows=Windows açılınca başlat
@@ -74,6 +77,8 @@ Name: "autostart"; Description: "{cm:StartWithWindows}"
 Source: "{#BinDir}\{#TrayExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinDir}\{#HostExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\host\README.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{cm:TrayName}"; Filename: "{app}\{#TrayExe}"

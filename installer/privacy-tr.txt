@@ -1,0 +1,22 @@
+﻿Gizlilik
+
+STM32 Masa Paneli, siz istemedikçe başka bir ağ sistemine bilgi göndermez.
+
+- Hava durumu: bir yer seçtiğinizde (ayarlar penceresi ya da
+  "dashboard-host weather <yer>") yerin adı Open-Meteo'nun yer arama
+  servisine, koordinatları da Open-Meteo'nun hava tahmini servisine
+  gider (https://open-meteo.com/en/terms). Yer seçilmezse hiçbir şey
+  gönderilmez; %APPDATA%\stm32-desk-dashboard\weather.txt silinirse
+  istekler durur.
+- Yemek listesi aktarma: yalnızca kendi Anthropic API anahtarınızla
+  yemek listesi resmi aktardığınızda resimler Claude API'ye gider
+  (https://www.anthropic.com/legal/privacy).
+- Geri kalan her şey bilgisayarda ve kartta kalır: ses aygıtları, çalan
+  müzik, Windows bildirimleri (metinleri USB ile karta gider, host.log'a
+  yazılmaz), Claude Code istekleri, resimler. Telemetri ve güncelleme
+  denetimi yoktur.
+- Ayarlar penceresi Windows'un parçası olan Microsoft Edge WebView2
+  Runtime'ı kullanır (https://privacy.microsoft.com/privacystatement).
+
+Kod imzalama politikası ve lisans:
+https://github.com/egungor/stm32-desk-dashboard#code-signing-policy
