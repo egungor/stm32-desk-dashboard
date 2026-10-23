@@ -31,8 +31,26 @@ git tag v1.0.0-beta.1 <commit>
 git push origin v1.0.0-beta.1
 ```
 
-The setup is not code-signed, so Windows SmartScreen may show "Windows
-protected your PC": "More info" → "Run anyway".
+Code signing (#79, README "Code signing policy"): on a `v*` tag the
+workflow sends the setup to SignPath Foundation and attaches the signed
+file. The owner approves each signing request in SignPath (the step waits
+up to an hour). It needs, in the repository settings:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `SIGNPATH_API_TOKEN` | API token of the SignPath CI user |
+| Variable | `SIGNPATH_ORGANIZATION_ID` | SignPath organisation id |
+| Variable | `SIGNPATH_PROJECT_SLUG` | the project's slug |
+| Variable | `SIGNPATH_POLICY_SLUG` | the signing policy's slug (release signing) |
+
+Without the secret the step is skipped and the setup stays unsigned; then
+Windows SmartScreen may show "Windows protected your PC": "More info" →
+"Run anyway". A newly signed setup may also warn for a while, until the
+certificate has a reputation.
+
+Setup shows the privacy statement first (`privacy-tr.txt`,
+`privacy-en.txt`; README "Privacy") and installs `LICENSE.txt` and
+`THIRD-PARTY-NOTICES.txt` next to the programs.
 
 ## Build by hand (Windows)
 

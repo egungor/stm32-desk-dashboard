@@ -1,0 +1,23 @@
+﻿Privacy
+
+STM32 Desk Dashboard sends no information to other networked systems
+unless you ask for it.
+
+- Weather: once you set a place (the settings window or
+  "dashboard-host weather <place>"), the place name is sent to the
+  Open-Meteo geocoding service and its coordinates to the Open-Meteo
+  forecast service (https://open-meteo.com/en/terms). Without a place
+  nothing is sent; deleting %APPDATA%\stm32-desk-dashboard\weather.txt
+  stops the requests.
+- Menu import: only when you import menu images with your own Anthropic
+  API key, the images are sent to the Claude API
+  (https://www.anthropic.com/legal/privacy).
+- Everything else stays on the PC and the board: audio devices, now
+  playing, Windows notifications (their texts go to the board over USB
+  and are not written to host.log), Claude Code requests, pictures. There
+  is no telemetry and no update check.
+- The settings window uses the Microsoft Edge WebView2 Runtime, a part of
+  Windows (https://privacy.microsoft.com/privacystatement).
+
+Code signing policy and licence:
+https://github.com/egungor/stm32-desk-dashboard#code-signing-policy

@@ -64,10 +64,44 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload installer
+        id: upload
         uses: actions/upload-artifact@v7
         with:
           name: stm32-desk-dashboard-setup
           path: build/installer/*.exe
+
+      # Code signing (README, "Code signing policy"; #79): on a v* tag the
+      # setup.exe goes to SignPath Foundation; the owner approves each
+      # request there, the signed file replaces the unsigned one. Skipped
+      # while the secret SIGNPATH_API_TOKEN is not set.
+      - name: SignPath set up?
+        id: signpath
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [[ -n "$TOKEN" ]]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; else
+            echo "::notice::SIGNPATH_API_TOKEN is not set: the installer stays unsigned."
+          fi
+
+      - name: Sign (SignPath)
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600  # the manual approval
+          output-artifact-directory: build/signed
+
+      - name: Use the signed installer
+        if: startsWith(github.ref, 'refs/tags/v') && hashFiles('build/signed/*.exe') != ''
+        shell: bash
+        run: cp -f build/signed/*.exe build/installer/
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
