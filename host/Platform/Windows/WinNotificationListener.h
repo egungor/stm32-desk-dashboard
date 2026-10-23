@@ -35,8 +35,9 @@ public:
     void stop();
 
     NotificationSnapshot snapshot() const override;
-    // Wakes the reader thread, which calls ClearNotifications and reads the
-    // list again at once.
+    // Wakes the reader thread, which removes every toast (RemoveNotification;
+    // ClearNotifications needs package identity, #77) and reads the list
+    // again at once.
     void clearAll() override;
 
 private:

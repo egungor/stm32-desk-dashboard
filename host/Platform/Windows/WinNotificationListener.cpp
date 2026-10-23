@@ -219,12 +219,22 @@ void WinNotificationListener::run()
                 wait = kDeniedInterval;
             } else {
                 if (clear) {
-                    try {
-                        listener.ClearNotifications();
-                    } catch (const winrt::hresult_error& e) {
-                        if (log_) {
-                            log_("WARN: cannot clear Windows notifications (" + hresultText(e) + ").");
+                    // One by one: ClearNotifications fails with 0x80070490
+                    // without package identity, RemoveNotification works (#77).
+                    unsigned failed = 0;
+                    std::string firstError;
+                    for (const auto& n : listener.GetNotificationsAsync(NotificationKinds::Toast).get()) {
+                        try {
+                            listener.RemoveNotification(n.Id());
+                        } catch (const winrt::hresult_error& e) {
+                            if (failed++ == 0U) {
+                                firstError = hresultText(e);
+                            }
                         }
+                    }
+                    if (failed > 0U && log_) {
+                        log_("WARN: cannot remove " + std::to_string(failed) + " Windows notification(s) (" +
+                             firstError + ").");
                     }
                 }
                 std::vector<Read> read;

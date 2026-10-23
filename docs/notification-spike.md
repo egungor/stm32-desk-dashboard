@@ -91,6 +91,8 @@ tagged test toasts (no other notification arrived during the run):
 | `[listener]` delay | 131 ms and 504 ms (polled every 500 ms) |
 | `[database]` delay | 147 ms and 1058 ms (read every 1 s) |
 | Removed from the history (`ToastNotificationManager.History.Remove`, as dismissing in the notification centre) | `[listener] gone id=45663` at the next poll |
+| `ClearNotifications` (later, #77, from the tray program) | `FAIL 0x80070490`, as `NotificationChanged` |
+| `RemoveNotification(id)` (later, #77, an unpackaged PowerShell, its own test toast) | OK: the toast left the notification centre |
 
 N6, the owner: with the Snipping Tool's notifications turned off, its
 screenshot toast appeared in neither way.
