@@ -1,7 +1,9 @@
 // IMediaSession on Windows (ADR-008): the system media transport controls
 // (Windows.Media.Control, C++/WinRT) read on a worker thread in the
 // multithreaded apartment. Every 500 ms (at once after a command) the
-// thread reads the current session: texts, status, controls, timeline and,
+// thread chooses a session (chooseMediaSession: Windows drops a paused one
+// as the current session, #75) and reads it: texts, status, controls,
+// timeline and,
 // for a new track, the thumbnail, cropped to a centred square and scaled
 // to 120 x 120 with WIC, as RGB565. When anything changed it queues
 // HostEvent::MediaChanged. Commands (and seeks) are carried out on the

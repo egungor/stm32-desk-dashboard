@@ -120,4 +120,37 @@ std::string mediaAppName(std::string_view id)
     return out;
 }
 
+int chooseMediaSession(const std::vector<MediaCandidate>& sessions, std::string_view lastAppId)
+{
+    // The first session that matches, in the order of the rules.
+    auto find = [&sessions](auto&& match) {
+        for (std::size_t i = 0; i < sessions.size(); ++i) {
+            if (match(sessions[i])) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    };
+    const bool haveLast = !lastAppId.empty();
+    auto isLast = [&](const MediaCandidate& s) { return haveLast && s.appId == lastAppId; };
+
+    int i = find([](const MediaCandidate& s) { return s.current && s.playing; });
+    if (i < 0) {
+        i = find([&](const MediaCandidate& s) { return s.playing && isLast(s); });
+    }
+    if (i < 0) {
+        i = find([](const MediaCandidate& s) { return s.playing; });
+    }
+    if (i < 0) {
+        i = find(isLast);
+    }
+    if (i < 0) {
+        i = find([](const MediaCandidate& s) { return s.current; });
+    }
+    if (i < 0) {
+        i = find([](const MediaCandidate& s) { return s.paused; });
+    }
+    return i;
+}
+
 }  // namespace stm32_audio::host

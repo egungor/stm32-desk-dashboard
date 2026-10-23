@@ -2938,6 +2938,42 @@ struct MediaRig {
     }
 };
 
+MediaCandidate candidate(const char* appId, bool playing, bool paused, bool current = false)
+{
+    MediaCandidate c;
+    c.appId = appId;
+    c.playing = playing;
+    c.paused = paused;
+    c.current = current;
+    return c;
+}
+
+void testChooseMediaSession()
+{
+    const char* deezer = "Deezer.Deezer_abc!Deezer";
+    const char* chrome = "Chrome";
+    const char* spotify = "Spotify.exe";
+    // None; only the current one.
+    CHECK(chooseMediaSession({}, "") == -1);
+    CHECK(chooseMediaSession({candidate(chrome, true, false, true)}, "") == 0);
+    // #75: Deezer paused is no longer the current one (none), but still a
+    // session: it stays shown, also without a last app.
+    CHECK(chooseMediaSession({candidate(deezer, false, true)}, deezer) == 0);
+    CHECK(chooseMediaSession({candidate(deezer, false, true)}, "") == 0);
+    // ... and Windows made a stopped app current: the paused Deezer shown before stays.
+    CHECK(chooseMediaSession({candidate(spotify, false, false, true), candidate(deezer, false, true)}, deezer) == 1);
+    // Without a last app the current one wins over a paused one.
+    CHECK(chooseMediaSession({candidate(deezer, false, true), candidate(spotify, false, false, true)}, "") == 1);
+    // Something else starts playing: it is shown.
+    CHECK(chooseMediaSession({candidate(deezer, false, true), candidate(spotify, true, false)}, deezer) == 1);
+    // The current one while it plays, before another playing one shown last.
+    CHECK(chooseMediaSession({candidate(deezer, true, false), candidate(chrome, true, false, true)}, deezer) == 1);
+    // Two playing, none current: the one shown last.
+    CHECK(chooseMediaSession({candidate(chrome, true, false), candidate(deezer, true, false)}, deezer) == 1);
+    // Only stopped sessions, none current, none shown before: none.
+    CHECK(chooseMediaSession({candidate(chrome, false, false)}, "") == -1);
+}
+
 void testMediaServiceConnect()
 {
     MediaRig r;
@@ -4017,6 +4053,7 @@ int main()
     testApprovalService();
     testEventQueueHook();
     testMediaCover();
+    testChooseMediaSession();
     testMediaServiceConnect();
     testMediaServiceChanges();
     testMediaServiceActions();
