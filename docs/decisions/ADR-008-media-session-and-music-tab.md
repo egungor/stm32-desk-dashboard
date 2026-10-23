@@ -65,6 +65,14 @@ previous, toggle play/pause, skip next).
   C++/WinRT. The rest of the host does not see WinRT.
 - The **current session** is the one Windows calls current
   (`GetCurrentSession`), as the Windows volume flyout shows it.
+  Amendment (#75, 2026-10-23): Windows drops a paused Deezer session (in
+  the browser and in its app) as the current one although it is still in
+  `GetSessions()`, and the board said "Nothing is playing". The session
+  is now chosen from `GetSessions()` (`chooseMediaSession`): the current
+  one while it plays, a playing one (the one shown last first), the one
+  shown last, the current one, a paused one. Play / pause goes by the
+  state (`TryPlayAsync`, `TryPauseAsync`; the toggle only when the
+  player offers neither).
 - The cover comes from the session thumbnail, decoded with WIC
   (Windows Imaging Component), cropped to a centred square and scaled to
   **120 × 120**, converted to RGB565.

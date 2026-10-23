@@ -5,12 +5,15 @@
 #include <shcore.h>
 #include <wincodec.h>
 
+#include <winrt/Windows.Foundation.Collections.h>  // GetSessions()
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "MediaCover.h"
@@ -100,6 +103,64 @@ std::uint8_t statusOf(GlobalSystemMediaTransportControlsSessionPlaybackStatus st
         return previous != PROTO_MEDIA_STATUS_NONE ? previous : PROTO_MEDIA_STATUS_STOPPED;
     default:
         return PROTO_MEDIA_STATUS_STOPPED;
+    }
+}
+
+// The session to show and control (chooseMediaSession, #75); null for none.
+// @p lastAppId: the app of the session chosen last time, updated.
+GlobalSystemMediaTransportControlsSession chooseSession(const GlobalSystemMediaTransportControlsSessionManager& manager,
+                                                        std::string& lastAppId)
+{
+    if (!manager) {
+        return nullptr;
+    }
+    const GlobalSystemMediaTransportControlsSession current = manager.GetCurrentSession();
+    const std::string currentId = current ? winrt::to_string(current.SourceAppUserModelId()) : std::string();
+    std::vector<GlobalSystemMediaTransportControlsSession> sessions;
+    std::vector<MediaCandidate> candidates;
+    for (const auto& s : manager.GetSessions()) {
+        MediaCandidate c;
+        c.appId = winrt::to_string(s.SourceAppUserModelId());
+        const auto status = s.GetPlaybackInfo().PlaybackStatus();
+        c.playing = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+        c.paused = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused;
+        c.current = current && c.appId == currentId;
+        candidates.push_back(std::move(c));
+        sessions.push_back(s);
+    }
+    if (current && std::none_of(candidates.begin(), candidates.end(),
+                                [](const MediaCandidate& c) { return c.current; })) {
+        // Not in the list (should not happen): keep it as a candidate.
+        MediaCandidate c;
+        c.appId = currentId;
+        c.playing = current.GetPlaybackInfo().PlaybackStatus() ==
+                    GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+        c.current = true;
+        candidates.push_back(std::move(c));
+        sessions.push_back(current);
+    }
+    const int i = chooseMediaSession(candidates, lastAppId);
+    if (i < 0) {
+        lastAppId.clear();
+        return nullptr;
+    }
+    lastAppId = candidates[static_cast<std::size_t>(i)].appId;
+    return sessions[static_cast<std::size_t>(i)];
+}
+
+// Play / pause by the session's state (#75): some players (Deezer) do not
+// offer the toggle, or ignore it while paused.
+void playPause(const GlobalSystemMediaTransportControlsSession& session)
+{
+    const auto info = session.GetPlaybackInfo();
+    const auto controls = info.Controls();
+    const bool playing = info.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+    if (playing && controls.IsPauseEnabled()) {
+        (void)session.TryPauseAsync().get();
+    } else if (!playing && controls.IsPlayEnabled()) {
+        (void)session.TryPlayAsync().get();
+    } else {
+        (void)session.TryTogglePlayPauseAsync().get();
     }
 }
 
@@ -200,6 +261,7 @@ void WinMediaSession::run()
     }
 
     MediaSnapshot last;
+    std::string lastAppId;  // the session chosen last time (#75)
     std::string trackKey;
     std::uint32_t coverVersion = 0;
     std::shared_ptr<const std::vector<std::uint8_t>> cover;
@@ -224,8 +286,7 @@ void WinMediaSession::run()
 
         MediaSnapshot next;
         try {
-            const GlobalSystemMediaTransportControlsSession session =
-                manager ? manager.GetCurrentSession() : GlobalSystemMediaTransportControlsSession{nullptr};
+            const GlobalSystemMediaTransportControlsSession session = chooseSession(manager, lastAppId);
             if (session) {
                 for (MediaKey key : commands) {
                     switch (key) {
@@ -233,7 +294,7 @@ void WinMediaSession::run()
                         (void)session.TrySkipPreviousAsync().get();
                         break;
                     case MediaKey::PlayPause:
-                        (void)session.TryTogglePlayPauseAsync().get();
+                        playPause(session);
                         break;
                     case MediaKey::Next:
                         (void)session.TrySkipNextAsync().get();

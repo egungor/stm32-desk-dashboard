@@ -44,4 +44,20 @@ std::vector<std::uint8_t> rgb565FromBgra(const std::uint8_t* pixels, std::size_t
 // "Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic" -> "Media Player".
 std::string mediaAppName(std::string_view appUserModelId);
 
+// One media session of GetSessions(), as the choice below sees it.
+struct MediaCandidate {
+    std::string appId;     // SourceAppUserModelId
+    bool playing = false;  // PlaybackStatus Playing
+    bool paused = false;   // PlaybackStatus Paused
+    bool current = false;  // the session GetCurrentSession() returned
+};
+
+// The session to show and control (#75): Windows drops a paused session
+// (Deezer in the browser and in its app) as the current one although it is
+// still in GetSessions(). In order: the current session while it plays, a
+// playing one (the one of @p lastAppId first), the one of @p lastAppId
+// (shown before), the current one, a paused one. The index into
+// @p sessions, or -1 for none.
+int chooseMediaSession(const std::vector<MediaCandidate>& sessions, std::string_view lastAppId);
+
 }  // namespace stm32_audio::host
