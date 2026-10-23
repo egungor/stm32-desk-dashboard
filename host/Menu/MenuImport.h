@@ -56,6 +56,9 @@ struct MenuAnswer {
     std::string error;               // empty on success
 };
 
+// The year of @p month closest to the import month: menus carry no year.
+int menuYearFor(int month, int importYear, int importMonth);
+
 // Read the API answer. Days get the year closest to the import date
 // (@p importYear / @p importMonth): the images carry no year.
 MenuAnswer parseMenuAnswer(const HttpResponse& response, int importYear, int importMonth, std::uint8_t language);
@@ -72,6 +75,10 @@ struct MenuImportResult {
     bool ok = false;
     std::string message;  // summary per month, or the error
 };
+
+// Merge @p days into their month files (mergeDay()) and write them; the
+// message is monthSummary() per month. Shared with MenuHtmlImport.h.
+MenuImportResult saveMenuDays(const std::vector<DatedMenuDay>& days, IMenuFiles& files, std::uint8_t language);
 
 // The whole import; blocks for the API call (up to minutes).
 MenuImportResult importMenu(const std::vector<MenuImage>& images, const ClaudeConfig& config, IHttpClient& http,
