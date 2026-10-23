@@ -3488,8 +3488,8 @@ void testNotificationClear()
     CHECK(r.notify.detail().value_or("").rfind("Bildirimler\x1F\x1F\n", 0) == 0U);
     CHECK(r.notify.onAction(clear) && r.source.clears == 1U);
 
-    // Access off: no button, the action fails.
-    r.source.set({toast(4, "A", "t", "b")}, NotificationAccess::Denied);
+    // Access off (the listener then reads no toasts): no button, the action fails.
+    r.source.set({}, NotificationAccess::Denied);
     r.tick();
     CHECK(r.notify.detail().value_or("").rfind("Bildirimler\x1F\x1F\n", 0) == 0U);
     CHECK(!r.notify.onAction(clear) && r.source.clears == 1U);
