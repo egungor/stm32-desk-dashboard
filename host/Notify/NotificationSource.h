@@ -38,6 +38,10 @@ public:
     virtual ~INotificationSource() = default;
     // The current state; cheap, any thread.
     virtual NotificationSnapshot snapshot() const = 0;
+    // Remove every toast from the notification centre (the clear button of
+    // the list); the next snapshot shows the result. Any thread, returns at
+    // once.
+    virtual void clearAll() = 0;
 };
 
 // Whether Windows itself shows pop-ups now: false while Do not disturb is

@@ -3,8 +3,10 @@
 // list has not shown every toast, else normal), its list (the detail of
 // slot 2), and a banner for each new toast.
 //
-//   detail: Bildirimler ␟ "3 bildirim" ␟ \n then per toast, newest first (at
+//   detail: Bildirimler ␟ "3 bildirim" ␟ c \n then per toast, newest first (at
 //           most kDetailItems): #app · hh:mm \n ␟ title ␟ body
+//           (flag c, only with toasts: the clear button at the top right;
+//           its ACTION 255 clears Windows' notification centre)
 //   banner: 12 ␟ app ␟ kBannerSeconds ␟ 2 \n title \n body
 //
 // The list mirrors Windows' notification centre: a toast dismissed on the
@@ -63,6 +65,9 @@ public:
     // OPEN_DETAIL on kSlot (arg 0; there is no previous / next); the toasts
     // it lists count as seen.
     std::optional<std::string> detail();
+    // ACTION kind 0 on kSlot, PROTO_DETAIL_ACTION_CLEAR: clear the toasts.
+    // False for any other action, or while the toasts cannot be read.
+    bool onAction(const ProtoAction& action);
     // A short summary for the console: the access, the count, the newest.
     std::string summary() const;
     // The banner record of @p n (public for tests).

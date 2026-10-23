@@ -170,12 +170,15 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     SettingsWatcher settingsWatcher(events);
     PictureService pictureService(sink, picture);
     dash.setCardsSentHandler([&pictureService] { pictureService.onRequest(); });
-    // The media controls (strip and Music tab) and the prompts' buttons: the
-    // menu warning (id 255) or a Claude Code request; card buttons have no
-    // feature yet and are answered with ERROR.
+    // The media controls (strip and Music tab), the prompts' buttons (the
+    // menu warning, id 255, or a Claude Code request) and the clear button
+    // of the notification list; other card buttons are answered with ERROR.
     dash.setActionHandler([&](const ProtoAction& action) {
         if (action.kind == PROTO_ACTION_PROMPT) {
             return menu.onAction(action) || approvals.onAction(action, GetTickCount64());
+        }
+        if (action.kind == PROTO_ACTION_CARD) {
+            return notifications.onAction(action);
         }
         return media.onAction(action);
     });

@@ -269,6 +269,9 @@ typedef enum
 } ProtoActionKind;
 #define PROTO_ACTION_KIND_COUNT 3U
 
+/** ACTION kind 0 value of the clear button in a detail's header (flag `c`). */
+#define PROTO_DETAIL_ACTION_CLEAR 255U
+
 /** ACTION values of the media strip. */
 #define PROTO_MEDIA_PREVIOUS   1U
 #define PROTO_MEDIA_PLAY_PAUSE 2U

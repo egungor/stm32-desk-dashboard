@@ -52,6 +52,7 @@
 #define SYM_DOWN       "\xEF\x81\xA3" /* arrow-down */
 #define SYM_BACKSPACE  "\xEF\x95\x9A"
 #define SYM_CLOSE      "\xEF\x80\x8D" /* times */
+#define SYM_TRASH      "\xEF\x8B\xAD" /* trash-alt (the clear button of a detail) */
 /* Weather icons of protocol.md ("Icon" 1-10, #18) */
 #define SYM_SUN        "\xEF\x86\x85" /* sun */
 #define SYM_MOON       "\xEF\x86\x86" /* moon */

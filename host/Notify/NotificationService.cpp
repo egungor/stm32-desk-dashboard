@@ -231,8 +231,9 @@ std::optional<std::string> NotificationService::detail()
     }
     const Texts& t = texts(language_);
     const std::size_t n = shown_.toasts.size();
+    const bool clearable = shown_.access == NotificationAccess::Allowed && n > 0U;
     std::string text =
-        recordLine({t.title, n > 0U ? std::to_string(n) + t.count : std::string(), ""});
+        recordLine({t.title, n > 0U ? std::to_string(n) + t.count : std::string(), clearable ? "c" : ""});
     if (shown_.access == NotificationAccess::Denied || shown_.access == NotificationAccess::Failed) {
         text += "\n" + recordLine({"", "", shown_.access == NotificationAccess::Denied ? t.denied : t.failed});
         if (shown_.access == NotificationAccess::Denied) {
@@ -255,6 +256,25 @@ std::optional<std::string> NotificationService::detail()
         text += item;
     }
     return text;
+}
+
+bool NotificationService::onAction(const ProtoAction& action)
+{
+    if (action.kind != PROTO_ACTION_CARD || action.ref != kSlot || action.action != PROTO_DETAIL_ACTION_CLEAR ||
+        shown_.access != NotificationAccess::Allowed) {
+        return false;
+    }
+    if (!shown_.toasts.empty()) {
+        source_.clearAll();  // the list follows with the next snapshot
+        if (pending_) {
+            pending_.reset();
+            ++stats_.bannersDropped;
+        }
+        if (log_) {
+            log_("Notifications: cleared from the board (" + std::to_string(shown_.toasts.size()) + ").");
+        }
+    }
+    return true;
 }
 
 std::string NotificationService::banner(const Notification& n) const

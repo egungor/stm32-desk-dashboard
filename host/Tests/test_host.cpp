@@ -3305,7 +3305,9 @@ void testDashBanner()
 
 struct FakeNotifications : INotificationSource {
     NotificationSnapshot snap;
+    unsigned clears = 0;
     NotificationSnapshot snapshot() const override { return snap; }
+    void clearAll() override { ++clears; }
     // Newest first, as the listener reader gives them.
     void set(std::vector<Notification> toasts, NotificationAccess access = NotificationAccess::Allowed)
     {
@@ -3387,7 +3389,7 @@ void testNotificationCardAndDetail()
 
     const std::optional<std::string> d = r.notify.detail();
     CHECK(d.has_value() && r.notify.indicator().colour == PROTO_INDICATOR_NORMAL);  // the list showed them
-    CHECK(d.value_or("") == "Bildirimler" + sep + "4 bildirim" + sep + "\n#WhatsApp \xC2\xB7 14:32\n" + sep +
+    CHECK(d.value_or("") == "Bildirimler" + sep + "4 bildirim" + sep + "c\n#WhatsApp \xC2\xB7 14:32\n" + sep +
                                 "Ay\xC5\x9F" "e" + sep + "Ak\xC5\x9F" "am geliyor musun?\n#Outlook \xC2\xB7 14:13\n" +
                                 sep + sep + "Toplant\xC4\xB1 notlar\xC4\xB1\n#Snipping Tool \xC2\xB7 14:32\n#Teams \xC2\xB7 14:32\n" +
                                 sep + "Ali" + sep + "dördüncü");
@@ -3449,6 +3451,48 @@ void testNotificationDetailLimits()
     }
     CHECK(sections == NotificationService::kDetailItems);
     CHECK(r.notify.indicator().number == 30U);
+}
+
+void testNotificationClear()
+{
+    NotifyRig r;
+    r.sync();
+    ProtoAction clear{};
+    clear.kind = PROTO_ACTION_CARD;
+    clear.ref = NotificationService::kSlot;
+    clear.action = PROTO_DETAIL_ACTION_CLEAR;
+
+    // Nothing read yet: no clear button, the action fails.
+    CHECK(!r.notify.onAction(clear) && r.source.clears == 0U);
+
+    // With toasts: the clear button (flag c) and the action clears them.
+    r.source.set({toast(3, "Teams", "Ali", "PR"), toast(2, "WhatsApp", "Ay\xC5\x9F" "e", "Selam")});
+    r.tick();
+    CHECK(r.notify.detail().value_or("").rfind("Bildirimler\x1F" "2 bildirim\x1F" "c\n", 0) == 0U);
+    CHECK(r.notify.onAction(clear) && r.source.clears == 1U);
+    CHECK(r.log.back() == "Notifications: cleared from the board (2).");
+    // Other buttons, slots and kinds are not the clear button's.
+    ProtoAction other = clear;
+    other.action = 1;
+    CHECK(!r.notify.onAction(other));
+    other = clear;
+    other.ref = 0;
+    CHECK(!r.notify.onAction(other));
+    other = clear;
+    other.kind = PROTO_ACTION_PROMPT;
+    CHECK(!r.notify.onAction(other) && r.source.clears == 1U);
+
+    // The list emptied on Windows: no button; a late tap does nothing.
+    r.source.set({});
+    r.tick();
+    CHECK(r.notify.detail().value_or("").rfind("Bildirimler\x1F\x1F\n", 0) == 0U);
+    CHECK(r.notify.onAction(clear) && r.source.clears == 1U);
+
+    // Access off: no button, the action fails.
+    r.source.set({toast(4, "A", "t", "b")}, NotificationAccess::Denied);
+    r.tick();
+    CHECK(r.notify.detail().value_or("").rfind("Bildirimler\x1F\x1F\n", 0) == 0U);
+    CHECK(!r.notify.onAction(clear) && r.source.clears == 1U);
 }
 
 void testNotificationBanner()
@@ -3968,6 +4012,7 @@ int main()
     testDashBanner();
     testNotificationCardAndDetail();
     testNotificationDetailLimits();
+    testNotificationClear();
     testNotificationBanner();
     testNotificationAccessBaseline();
     testMenuLists();
