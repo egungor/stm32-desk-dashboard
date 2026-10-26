@@ -37,6 +37,7 @@ other console commands work while the tray program runs. Preferences
 | `menu` | Print the menu card and the day's detail |
 | `menu import <image> ...` | Read menu images with the Claude API into `menu-YYYY-MM.json` (key in `claude.txt` or `ANTHROPIC_API_KEY`) |
 | `hook permission` | Claude Code `PermissionRequest` hook: hands the request to the tray program and the board (ADR-007) |
+| `hook resolved` | Claude Code `PostToolUse`, `PostToolUseFailure`, `Stop` and `UserPromptSubmit` hook: a request answered in Claude Desktop or the terminal leaves the board (ADR-007) |
 | `hook probe` | Observing hook for the approval spike (`docs/hook-spike.md`) |
 | `media` | What plays in the Windows media session: app, title, artist, album, status, position, cover |
 | `media previous\|play-pause\|next` | Send that control to the session |

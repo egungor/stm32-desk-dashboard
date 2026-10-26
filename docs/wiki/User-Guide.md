@@ -59,6 +59,12 @@ Reddet and Terminalde sor: what is not shown cannot be approved. No
 answer in time, no tray program or no board leave the decision to the
 terminal: nothing is ever allowed by default.
 
+A request answered in Claude Desktop (Code tab) or in the terminal
+instead leaves the board too: when the command has run, or when the
+turn ends or you write again after a refusal. The list shows it as
+"PC'de cevaplandı". This needs the snippet of a version after
+`v0.9.0-beta.10`: copy it again after the update.
+
 Set-up, once: tray menu → "Claude Code hook ayarını kopyala", then merge
 the copied text into `%USERPROFILE%\.claude\settings.json` (the user
 settings of this PC). How the hook behaves on Windows in every corner

@@ -10,6 +10,8 @@
 //   board button 3 Terminalde sor -> none (Claude Code asks in the terminal)
 //   no answer in kAnswerTimeoutMs, board not connected, board unplugged,
 //   queue full                    -> none
+//   answered in Claude Desktop or the terminal ("hook resolved": the
+//   tool ran, or the turn ended)   -> none, the prompt closes
 //
 // Never "allow" by default. A request whose tool input does not fit the
 // prompt shows only Reddet and Terminalde sor: what cannot be read in full
@@ -81,7 +83,9 @@ public:
     void setLanguage(std::uint8_t language);
 
     // A request from the pipe. Answered at once (none) when the board is
-    // not synced or the queue is full.
+    // not synced or the queue is full. A "hook resolved" line
+    // (hookResolvedLine()) is answered at once too and closes the requests
+    // it names.
     void onRequest(std::uint64_t ticket, const std::string& input, std::uint64_t nowMs);
     // The hook went away (Claude Code's timeout, the session ended).
     void onCancelled(std::uint64_t ticket, std::uint64_t nowMs);
@@ -117,6 +121,8 @@ private:
         std::string result;
     };
 
+    // True if @p input is a "hook resolved" line (then handled).
+    bool onResolved(const std::string& input, std::uint64_t nowMs);
     void answer(std::size_t index, HookAnswer answer, const char* how);
     void showHead(std::uint64_t nowMs);
     void publish();
