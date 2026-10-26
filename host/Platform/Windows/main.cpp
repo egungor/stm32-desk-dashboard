@@ -639,11 +639,10 @@ int cmdMenu(const std::vector<std::string>& args)
     win::WinPreferenceFile lists(L"menu-lists");
     win::WinPreferenceFile warned(L"menu-warned");
     MenuService menu(dash, files, lists, warned, [now] { return now; }, printLine);
-    const long today = static_cast<long>(now / 86400U);
     std::printf("Card:\n");
-    printRecord(menu.card(today));
+    printRecord(menu.card(now));
     std::printf("\nDetail:\n");
-    printRecord(menu.detailFor(MenuService::cardDay(today)));
+    printRecord(menu.detailFor(MenuService::cardDay(now)));
     return 0;
 }
 

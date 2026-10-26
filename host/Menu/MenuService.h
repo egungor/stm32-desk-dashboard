@@ -6,6 +6,7 @@
 //
 //   card:   11 ␟ ␟ badge ␟ bg ␟ \n main dish \n soup \n dessert
 //           badge: "" today, "Pzt 26" for the next working day at the weekend
+//           and from kNextDayHour on a working day (lunch is over)
 //           bg: orange (a "never" dish), yellow (a "don't like" dish), green;
 //               empty without a menu for the day
 //   detail: Yemek ␟ 21 Ekim Çarşamba ␟ n \n rows (Ana yemek, Yan yemek, Çorba,
@@ -37,6 +38,8 @@ public:
     static constexpr int kIcon = 11;          // protocol.md "Icon": utensils
     static constexpr std::uint8_t kWarningPromptId = 255;  // Claude Code prompts use 0..254
     static constexpr unsigned kWarningHour = 8;
+    // From this hour of a working day the card shows the next working day.
+    static constexpr unsigned kNextDayHour = 14;
     // Card backgrounds (ADR-010).
     static constexpr const char* kColourNever = "E0702F";
     static constexpr const char* kColourDislike = "D9A520";
@@ -59,12 +62,14 @@ public:
     // next working day from the one shown.
     std::optional<std::string> detail(std::int8_t arg);
 
-    // Records for a day (days since 1970-01-01), for tests and the console.
-    std::string card(long today);
+    // The card at @p localTime (seconds since 1970-01-01, local time) and
+    // the detail of a day (days since 1970-01-01), for tests and the console.
+    std::string card(std::uint32_t localTime);
     std::string detailFor(long day);
 
-    // The day the card shows: today, or Monday at the weekend.
-    static long cardDay(long today);
+    // The day the card shows at @p localTime: today before kNextDayHour on
+    // a working day, else the next working day (Monday at the weekend).
+    static long cardDay(std::uint32_t localTime);
 
     // The morning warning: shows it when it is due, the board is synced and
     // @p promptFree (no Claude Code request waits; one that comes replaces
@@ -82,7 +87,6 @@ private:
     const std::optional<MenuMonth>& monthOf(int year, int month);
     void readLists();
     std::string dateText(long day) const;
-    long currentDay() const { return static_cast<long>(clock_() / 86400U); }
 
     DashController& dash_;
     IMenuFiles& files_;

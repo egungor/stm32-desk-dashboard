@@ -2697,7 +2697,21 @@ void testMenuService()
     r.now = localTimeValue(2026, 10, 3, 12, 0, 0);  // Saturday
     menu.onTick(ms += 500);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + "Pzt 5" + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
-    CHECK(MenuService::cardDay(daysFromCivil(2026, 10, 4)) == daysFromCivil(2026, 10, 5));
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 4, 12, 0, 0)) == daysFromCivil(2026, 10, 5));
+    // From 14:00 on a working day: the next working day (lunch is over).
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 5, 13, 59, 59)) == daysFromCivil(2026, 10, 5));
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 5, 14, 0, 0)) == daysFromCivil(2026, 10, 6));
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 2, 14, 0, 0)) == daysFromCivil(2026, 10, 5));  // Fri -> Mon
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 30, 23, 59, 0)) == daysFromCivil(2026, 11, 2));
+    r.now = localTimeValue(2026, 10, 2, 15, 0, 0);  // Friday afternoon: Monday's menu, its detail first
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + "Pzt 5" + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
+    CHECK(menu.detail(0)->find("5 Ekim Pazartesi") != std::string::npos);
+    r.now = localTimeValue(2026, 10, 5, 13, 0, 0);  // Monday before 14:00: today, no badge
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
+    r.now = localTimeValue(2026, 10, 3, 12, 0, 0);
+    menu.onTick(ms += 500);
     menu.setLanguage(1);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + "Mon 5" + sep + "3E9B5F" + sep + "\n", 0) == 0);
     CHECK(menu.detail(0)->find("Monday 5 October") != std::string::npos);

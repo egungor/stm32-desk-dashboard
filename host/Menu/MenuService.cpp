@@ -82,14 +82,16 @@ void MenuService::setLanguage(std::uint8_t language)
 {
     if (language != language_) {
         language_ = language;
-        dash_.setCard(kSlot, card(currentDay()));
+        dash_.setCard(kSlot, card(clock_()));
     }
 }
 
-long MenuService::cardDay(long today)
+long MenuService::cardDay(std::uint32_t localTime)
 {
+    const long today = static_cast<long>(localTime / 86400U);
     const int wd = weekdayOf(today);
-    return (wd == 0 || wd == 6) ? nextWorkingDay(today, 1) : today;
+    const bool lunchOver = (localTime / 3600U) % 24U >= kNextDayHour;
+    return (wd == 0 || wd == 6 || lunchOver) ? nextWorkingDay(today, 1) : today;
 }
 
 const std::optional<MenuMonth>& MenuService::monthOf(int year, int month)
@@ -149,13 +151,14 @@ void MenuService::onTick(std::uint64_t /*nowMs: the files are read on reload() o
             dash_.refreshDetail(kSlot);
         }
     }
-    dash_.setCard(kSlot, card(currentDay()));
+    dash_.setCard(kSlot, card(clock_()));
 }
 
-std::string MenuService::card(long today)
+std::string MenuService::card(std::uint32_t localTime)
 {
     const Texts& t = texts(language_);
-    const long day = cardDay(today);
+    const long today = static_cast<long>(localTime / 86400U);
+    const long day = cardDay(localTime);
     std::string badge;
     if (day != today) {
         int y = 0;
@@ -330,7 +333,7 @@ bool MenuService::onAction(const ProtoAction& action)
 std::optional<std::string> MenuService::detail(std::int8_t arg)
 {
     if (arg == 0) {
-        detailDay_ = cardDay(currentDay());
+        detailDay_ = cardDay(clock_());
     } else {
         detailDay_ = nextWorkingDay(detailDay_, arg > 0 ? 1 : -1);
     }
