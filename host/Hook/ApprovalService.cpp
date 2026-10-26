@@ -44,6 +44,7 @@ struct Texts {
     const char* sectionWaiting;
     const char* sectionLast;
     const char* noRequests;
+    const char* resultElsewhere;  // answered in Claude Desktop or the terminal
 };
 
 constexpr Texts kTurkish = {
@@ -52,6 +53,7 @@ constexpr Texts kTurkish = {
     "(kısaltıldı: tamamı ekrana sığmıyor, burada onaylanamaz)", "Onayla", "Reddet", "Terminalde sor", "evet",
     "Onay bekleyen yok", " onay bekliyor", " onay bekliyor", "Son: ", "onaylandı", "reddedildi", "terminalde",
     "süre doldu", "kart yok", "iptal", "Onaylar", "Bekleyen", "Son kararlar", "Henüz istek yok",
+    "PC'de cevaplandı",
 };
 
 constexpr Texts kEnglish = {
@@ -59,7 +61,7 @@ constexpr Texts kEnglish = {
     "Edits", "URL", "Prompt", "Input", "(cut: does not fit the screen, cannot be approved here)", "Allow", "Deny",
     "Ask in terminal", "yes", "No approval waiting", " approval waiting", " approvals waiting", "Last: ",
     "allowed", "denied", "in the terminal", "timed out", "no board", "cancelled", "Approvals", "Waiting",
-    "Last decisions", "No requests yet",
+    "Last decisions", "No requests yet", "answered on the PC",
 };
 
 const Texts& texts(std::uint8_t language)
@@ -257,6 +259,10 @@ void ApprovalService::setLanguage(std::uint8_t language)
 
 void ApprovalService::onRequest(std::uint64_t ticket, const std::string& input, std::uint64_t nowMs)
 {
+    if (onResolved(input, nowMs)) {
+        reply_(ticket, HookAnswer::None);
+        return;
+    }
     const std::optional<ApprovalInfo> info = parseApprovalInput(input, language_);
     const Texts& t = texts(language_);
     if (!info) {
@@ -351,6 +357,52 @@ void ApprovalService::onCancelled(std::uint64_t ticket, std::uint64_t nowMs)
             return;
         }
     }
+}
+
+bool ApprovalService::onResolved(const std::string& input, std::uint64_t nowMs)
+{
+    const json notice = json::parse(input, nullptr, false);
+    if (!notice.is_object() || !notice.contains("hook_event_name") || !notice["hook_event_name"].is_string()) {
+        return false;
+    }
+    const std::string event = notice["hook_event_name"].get<std::string>();
+    const bool tool = event == "PostToolUse" || event == "PostToolUseFailure";
+    if (!tool && event != "Stop" && event != "UserPromptSubmit") {
+        return false;
+    }
+    const std::string session = stringOf(notice, "session_id");
+    const std::string toolName = stringOf(notice, "tool_name");
+    const json toolInput = notice.value("tool_input", json::object());
+    // PermissionRequest has no tool_use_id: a tool event closes the request
+    // of the same session, tool and input; a turn's end every request of
+    // the session. An unknown or empty session closes nothing.
+    bool headGone = false;
+    bool changed = false;
+    for (std::size_t i = 0; i < queue_.size();) {
+        const json request = json::parse(queue_[i].input, nullptr, false);
+        bool match = !session.empty() && request.is_object() && stringOf(request, "session_id") == session;
+        if (match && tool) {
+            match = stringOf(request, "tool_name") == toolName &&
+                    request.value("tool_input", json::object()) == toolInput;
+        }
+        if (match) {
+            headGone = headGone || (i == 0U);
+            answer(i, HookAnswer::None, texts(language_).resultElsewhere);
+            changed = true;
+            if (tool) {
+                break;  // one tool call, one request
+            }
+        } else {
+            ++i;
+        }
+    }
+    if (headGone) {
+        showHead(nowMs);
+    }
+    if (changed) {
+        publish();
+    }
+    return true;
 }
 
 void ApprovalService::onTick(std::uint64_t nowMs)

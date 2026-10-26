@@ -45,12 +45,26 @@ std::optional<std::string> hookRequestLine(const std::string& input);
 std::string hookReplyLine(HookAnswer answer);
 HookAnswer parseHookReply(const std::string& line);
 
+// "dashboard-host hook resolved" (ADR-007 amendment): a request
+// answered somewhere else (the dialog of Claude Desktop, the terminal)
+// does not end the waiting "hook permission" process, so its prompt would
+// stay on the board until the timeout. Claude Code's later events tell the
+// tray program that it is answered: PostToolUse / PostToolUseFailure (the
+// tool ran: that request), Stop and UserPromptSubmit (the turn ended or
+// the user wrote again: every request of the session). The line is the
+// hook input reduced to hook_event_name, session_id, tool_name and
+// tool_input (tool_response may be large); nullopt for other events or
+// without a session_id. The tray replies "none" at once.
+std::optional<std::string> hookResolvedLine(const std::string& input);
+
 // The snippet for %USERPROFILE%\.claude\settings.json of this PC (exec
 // form: Claude Code starts @p exePath without a shell).
 std::string hookSettingsSnippet(const std::string& exePath);
 
 inline constexpr int kHookTimeoutSeconds = 90;        // Claude Code's timeout of the hook
 inline constexpr std::uint64_t kHookClientWaitMs = 75000;  // the hook's own limit for the reply
+inline constexpr int kResolvedHookTimeoutSeconds = 10;     // Claude Code's timeout of "hook resolved"
+inline constexpr std::uint64_t kResolvedClientWaitMs = 3000;  // its own limit for the tray's "none"
 
 // One line of hook-probe.log (JSON, no line end). @p phase "start" or
 // "end"; @p input is the hook input as received (kept as JSON when it

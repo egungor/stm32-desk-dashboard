@@ -1,6 +1,7 @@
 // Unit tests for the host device model and protocol controller.
 // No test framework; returns non-zero if a check fails.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -2777,6 +2778,39 @@ void testHookPipeAndSnippet()
     CHECK(hook["command"].get<std::string>().find("dashboard-host.exe") != std::string::npos);
     CHECK(hook["args"].is_array() && hook["args"].size() == 2U && hook["args"][1] == "permission");
     CHECK(!hook.contains("onFailure"));  // a closed tray must not refuse every request (ADR-007)
+
+    // "hook resolved" (ADR-007 amendment): the tool events with the same
+    // matcher, the turn events without one.
+    for (const char* event : {"PostToolUse", "PostToolUseFailure", "Stop", "UserPromptSubmit"}) {
+        const nlohmann::json& e = snippet["hooks"][event][0];
+        const bool tool = std::string(event).rfind("PostToolUse", 0) == 0;
+        CHECK(tool ? e["matcher"] == entry["matcher"] : !e.contains("matcher"));
+        const nlohmann::json& h = e["hooks"][0];
+        CHECK(h["type"] == "command" && h["command"] == hook["command"] && h["timeout"] == kResolvedHookTimeoutSeconds);
+        CHECK(h["args"] == nlohmann::json::array({"hook", "resolved"}) && !h.contains("onFailure"));
+    }
+
+    const nlohmann::json post = {{"session_id", "s1"},
+                                 {"hook_event_name", "PostToolUse"},
+                                 {"cwd", "C:\\src"},
+                                 {"tool_name", "Bash"},
+                                 {"tool_input", {{"command", "dir"}}},
+                                 {"tool_response", {{"stdout", std::string(5000, 'x')}}},
+                                 {"tool_use_id", "toolu_1"}};
+    const std::optional<std::string> resolved = hookResolvedLine(post.dump());
+    CHECK(resolved.has_value() && resolved->back() == '\n' && resolved->size() < 200U);
+    if (resolved) {
+        const nlohmann::json r = nlohmann::json::parse(*resolved);
+        CHECK(r.size() == 4U && r["hook_event_name"] == "PostToolUse" && r["session_id"] == "s1" &&
+              r["tool_name"] == "Bash" && r["tool_input"]["command"] == "dir");
+    }
+    const std::optional<std::string> stop =
+        hookResolvedLine(R"({"session_id":"s1","hook_event_name":"Stop","stop_hook_active":false})");
+    CHECK(stop.has_value() && nlohmann::json::parse(*stop).size() == 2U);
+    CHECK(hookResolvedLine(R"({"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"hi"})").has_value());
+    CHECK(!hookResolvedLine(R"({"session_id":"s1","hook_event_name":"PermissionRequest","tool_name":"Bash"})"));
+    CHECK(!hookResolvedLine(R"({"hook_event_name":"Stop"})") && !hookResolvedLine(R"({"session_id":"","hook_event_name":"Stop"})"));
+    CHECK(!hookResolvedLine(R"({"session_id":"s1","hook_event_name":"PostToolUse"})") && !hookResolvedLine("[1]"));
 }
 
 void testDashPrompt()
@@ -2811,6 +2845,66 @@ std::string hookInput(const std::string& tool, const nlohmann::json& toolInput, 
     nlohmann::json j = {{"session_id", "s1"},       {"hook_event_name", "PermissionRequest"}, {"cwd", cwd},
                         {"tool_name", tool},        {"tool_input", toolInput},               {"permission_mode", "default"}};
     return j.dump();
+}
+
+// A request answered in Claude Desktop or the terminal leaves the board
+// (ADR-007 amendment): by its tool call, or by the end of its session's
+// turn.
+void testApprovalResolved()
+{
+    DashRig r;
+    std::vector<std::pair<std::uint64_t, HookAnswer>> replies;
+    ApprovalService approvals(r.dash, [&r] { return r.now; },
+                              [&replies](std::uint64_t t, HookAnswer a) { replies.emplace_back(t, a); }, nullptr);
+    r.dash.onConnected();
+    r.sink.sent.clear();
+    const auto notice = [](const char* event, const char* session, const char* tool, const nlohmann::json& input) {
+        nlohmann::json j = {{"session_id", session}, {"hook_event_name", event}};
+        if (tool != nullptr) {
+            j["tool_name"] = tool;
+            j["tool_input"] = input;
+        }
+        return j.dump();
+    };
+    const std::uint64_t ms = 1000;
+    approvals.onRequest(1, hookInput("Bash", {{"command", "npm test"}, {"description", "Run"}}), ms);
+    approvals.onRequest(2, hookInput("Bash", {{"command", "dir"}}), ms);
+    std::uint8_t id = 0;
+    popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
+    const std::uint8_t first = id;
+    r.sink.sent.clear();
+
+    // Another session, another tool, another input: nothing closes; the
+    // notice itself gets "none" at once.
+    approvals.onRequest(10, notice("PostToolUse", "s2", "Bash", {{"command", "dir"}}), ms);
+    approvals.onRequest(11, notice("PostToolUse", "s1", "Write", {{"command", "dir"}}), ms);
+    approvals.onRequest(12, notice("PostToolUse", "s1", "Bash", {{"command", "dir /s"}}), ms);
+    approvals.onRequest(13, notice("Stop", "s2", nullptr, nullptr), ms);
+    CHECK(approvals.waiting() == 2U && replies.size() == 4U && r.sink.sent.empty());
+    CHECK(replies.back() == std::make_pair(std::uint64_t{13}, HookAnswer::None));
+
+    // The first request ran (keys in another order): it closes, the second
+    // is shown; its own hook gets "none".
+    approvals.onRequest(14, notice("PostToolUse", "s1", "Bash", {{"description", "Run"}, {"command", "npm test"}}),
+                        ms + 2000);
+    CHECK(approvals.waiting() == 1U);
+    CHECK(std::find(replies.begin(), replies.end(), std::make_pair(std::uint64_t{1}, HookAnswer::None)) !=
+          replies.end());
+    ProtoMessage m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_PROMPT_CLOSE && m.u.prompt_id == first);
+    const std::string shown = popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
+    CHECK(id != first && shown.find("dir") != std::string::npos);
+    const std::optional<std::string> list = approvals.detail();
+    CHECK(list.has_value() && list->find("PC'de cevaplandı") != std::string::npos);
+
+    // A refusal in Claude Desktop: the turn ends, every request of s1 goes.
+    approvals.onRequest(3, hookInput("Write", {{"file_path", "a.txt"}, {"content", "hi"}}), ms + 3000);
+    CHECK(approvals.waiting() == 2U);
+    approvals.onRequest(15, notice("UserPromptSubmit", "s1", nullptr, nullptr), ms + 4000);
+    CHECK(approvals.waiting() == 0U && approvals.indicator().colour == PROTO_INDICATOR_NORMAL);
+    approvals.onRequest(4, hookInput("Bash", {{"command", "dir"}}), ms + 5000);
+    approvals.onRequest(16, notice("Stop", "s1", nullptr, nullptr), ms + 5000);
+    CHECK(approvals.waiting() == 0U && replies.back() == std::make_pair(std::uint64_t{16}, HookAnswer::None));
 }
 
 void testApprovalPrompt()
@@ -4165,6 +4259,7 @@ int main()
     testDashPrompt();
     testApprovalPrompt();
     testApprovalService();
+    testApprovalResolved();
     testEventQueueHook();
     testMediaCover();
     testChooseMediaSession();

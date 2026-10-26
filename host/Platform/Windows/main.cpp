@@ -24,6 +24,10 @@
 //                                      asks the tray program, which shows the
 //                                      request on the board; prints the decision
 //                                      or nothing (the question in the terminal)
+//   dashboard-host hook resolved     Claude Code PostToolUse, PostToolUseFailure,
+//                                      Stop and UserPromptSubmit hook (ADR-007
+//                                      amendment): a request answered in Claude
+//                                      Desktop or the terminal leaves the board
 //   dashboard-host hook probe        Claude Code PermissionRequest hook of the
 //                                      step 10 spike (#24): logs its input to
 //                                      hook-probe.log, answers as hook-probe.txt
@@ -494,30 +498,29 @@ int cmdHookProbe()
     return probe.exitCode;
 }
 
-// The Claude Code hook (ADR-007): stdin -> the tray program's pipe -> the
-// board; the decision on stdout. Every failure (no tray, no board, no
-// answer in time, a broken pipe) prints nothing and exits 0, which leaves
-// the decision to the terminal question. Never "allow" by itself.
-int cmdHookPermission()
+// All of stdin (the hook input), in binary mode.
+std::string readHookInput()
 {
     (void)_setmode(_fileno(stdin), _O_BINARY);
-    (void)_setmode(_fileno(stdout), _O_BINARY);
     std::string input;
     char buffer[4096];
     std::size_t n = 0;
     while ((n = std::fread(buffer, 1, sizeof(buffer), stdin)) > 0) {
         input.append(buffer, n);
     }
-    const std::optional<std::string> request = hookRequestLine(input);
-    if (!request) {
-        return 0;
-    }
+    return input;
+}
 
+// One line to the tray program's hook pipe and its reply line, waiting at
+// most @p waitMs for it; "none" when there is no tray program, no reply or
+// a pipe error.
+HookAnswer exchangeHookLine(std::string line, std::uint64_t waitMs)
+{
     HANDLE pipe = INVALID_HANDLE_VALUE;
     for (int attempt = 0; attempt < 2 && pipe == INVALID_HANDLE_VALUE; ++attempt) {
         if (!WaitNamedPipeW(win::kHookPipeName, 1000)) {
             if (GetLastError() != ERROR_SEM_TIMEOUT) {
-                return 0;  // no tray program
+                return HookAnswer::None;  // no tray program
             }
             continue;
         }
@@ -525,7 +528,7 @@ int cmdHookPermission()
                            FILE_FLAG_OVERLAPPED, nullptr);
     }
     if (pipe == INVALID_HANDLE_VALUE) {
-        return 0;
+        return HookAnswer::None;
     }
     HANDLE io = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     auto transfer = [&](bool write, char* data, DWORD size, DWORD timeoutMs) -> DWORD {
@@ -545,18 +548,17 @@ int cmdHookPermission()
         return GetOverlappedResult(pipe, &ov, &done, FALSE) ? done : 0;
     };
 
-    std::string line = *request;
     HookAnswer answer = HookAnswer::None;
     if (transfer(true, line.data(), static_cast<DWORD>(line.size()), 5000) == line.size()) {
         std::string reply;
         const ULONGLONG started = GetTickCount64();
         while (reply.find('\n') == std::string::npos && reply.size() < 64U) {
             const ULONGLONG spent = GetTickCount64() - started;
-            if (spent >= kHookClientWaitMs) {
+            if (spent >= waitMs) {
                 break;
             }
             char chunk[64];
-            const DWORD got = transfer(false, chunk, sizeof(chunk), static_cast<DWORD>(kHookClientWaitMs - spent));
+            const DWORD got = transfer(false, chunk, sizeof(chunk), static_cast<DWORD>(waitMs - spent));
             if (got == 0) {
                 break;
             }
@@ -568,11 +570,35 @@ int cmdHookPermission()
     }
     CloseHandle(io);
     CloseHandle(pipe);
+    return answer;
+}
 
-    const std::string out = permissionDecisionJson(answer);
+// The Claude Code hook (ADR-007): stdin -> the tray program's pipe -> the
+// board; the decision on stdout. Every failure (no tray, no board, no
+// answer in time, a broken pipe) prints nothing and exits 0, which leaves
+// the decision to the terminal question. Never "allow" by itself.
+int cmdHookPermission()
+{
+    (void)_setmode(_fileno(stdout), _O_BINARY);
+    const std::optional<std::string> request = hookRequestLine(readHookInput());
+    if (!request) {
+        return 0;
+    }
+    const std::string out = permissionDecisionJson(exchangeHookLine(*request, kHookClientWaitMs));
     if (!out.empty()) {
         std::fwrite(out.data(), 1, out.size(), stdout);
         std::fflush(stdout);
+    }
+    return 0;
+}
+
+// PostToolUse, PostToolUseFailure, Stop and UserPromptSubmit (ADR-007
+// amendment): tells the tray program that a request was answered
+// elsewhere, so its prompt leaves the board. Prints nothing, exits 0.
+int cmdHookResolved()
+{
+    if (const std::optional<std::string> line = hookResolvedLine(readHookInput())) {
+        (void)exchangeHookLine(*line, kResolvedClientWaitMs);
     }
     return 0;
 }
@@ -828,9 +854,9 @@ int usage()
         "usage: dashboard-host run | list | set-default <n> | volume <0-100> | mute on|off | watch |\n"
         "                        alias <n> <name> | alias <n> --clear | startup on|off|status |\n"
         "                        weather | weather <city> | weather <lat> <lon> [name] |\n"
-        "                        menu | menu import <file> [<file> ...] | hook permission | hook probe |\n"
-        "                        media | media previous|play-pause|next | notify probe [n] | notify watch\n"
-        "                        notify | notify focus | picture [add <file>] | version\n");
+        "                        menu | menu import <file> [<file> ...] | hook permission | hook resolved |\n"
+        "                        hook probe | media | media previous|play-pause|next | notify probe [n] |\n"
+        "                        notify watch | notify | notify focus | picture [add <file>] | version\n");
     return 2;
 }
 
@@ -865,6 +891,9 @@ int run(const std::vector<std::string>& args)
     }
     if (cmd == "hook" && args.size() == 3 && args[2] == "permission") {
         return cmdHookPermission();  // the same
+    }
+    if (cmd == "hook" && args.size() == 3 && args[2] == "resolved") {
+        return cmdHookResolved();  // the same
     }
     if (cmd == "weather") {
         return cmdWeather(args);

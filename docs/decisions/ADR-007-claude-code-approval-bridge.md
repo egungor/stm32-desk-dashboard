@@ -172,6 +172,43 @@ built with the defaults above; the spike decides whether the matcher,
 the timeouts and "the terminal question while the hook waits" need
 changes.
 
+## Amendment: a request answered elsewhere (2026-10-26)
+
+Seen on the user's PC with Claude Desktop (Code tab, Manual mode): the
+board showed the request, and the user answered it in the app instead.
+Claude Code did not end the waiting `dashboard-host hook permission`
+process, so the pipe stayed open and the prompt stayed on the board until
+its 60 s countdown ran out. The hooks reference does not say what happens
+to a `PermissionRequest` hook when the user answers first, and the
+`PermissionRequest` input has no `tool_use_id`.
+
+Decision: Claude Code's later events tell the tray program that the
+request is answered. A fourth role of the program,
+`dashboard-host hook resolved`, sends the tray program a reduced line
+(`hook_event_name`, `session_id`, `tool_name`, `tool_input`; not the
+possibly large `tool_response`) over the same pipe, waits at most 3 s for
+the reply, prints nothing and exits 0:
+
+| Event | Means | Closes |
+|---|---|---|
+| `PostToolUse`, `PostToolUseFailure` (matcher as above) | the tool ran: allowed somewhere | the waiting request of the same session, tool and input (JSON equality) |
+| `Stop` | the turn ended (e.g. after a refusal in the app) | every waiting request of the session |
+| `UserPromptSubmit` | the user wrote again | every waiting request of the session |
+
+A closed request answers its own hook "none" (it is no longer read) and
+is listed as "PC'de cevaplandı" / "answered on the PC". The tray answers
+the notice itself "none" at once. No protocol change: the board gets the
+`PROMPT_CLOSE` it already knows. The snippet of "Claude Code hook
+ayarını kopyala" gains the four entries (`timeout` 10 s, no
+`onFailure`); `settings.json` has to be updated once.
+
+Limits: `PostToolUse` comes when the tool has finished, so a long command
+allowed in the app keeps the prompt until it ends (at most the 60 s
+countdown, as before). A refusal that neither ends the turn nor is
+followed by a new prompt is only cleared by the countdown. Closing a
+request by mistake (two equal requests of one session) is harmless: its
+hook gives no decision and Claude Code asks as usual.
+
 ## Alternatives
 
 - **HTTP hook to a local server in the tray program:** no extra process

@@ -105,6 +105,35 @@ std::optional<std::string> hookRequestLine(const std::string& input)
     return parsed.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
 }
 
+std::optional<std::string> hookResolvedLine(const std::string& input)
+{
+    const nlohmann::json parsed = nlohmann::json::parse(input, nullptr, false);
+    if (!parsed.is_object()) {
+        return std::nullopt;
+    }
+    const auto event = parsed.find("hook_event_name");
+    const auto session = parsed.find("session_id");
+    if (event == parsed.end() || !event->is_string() || session == parsed.end() || !session->is_string() ||
+        session->get_ref<const std::string&>().empty()) {
+        return std::nullopt;
+    }
+    const std::string& name = event->get_ref<const std::string&>();
+    const bool tool = name == "PostToolUse" || name == "PostToolUseFailure";
+    if (!tool && name != "Stop" && name != "UserPromptSubmit") {
+        return std::nullopt;
+    }
+    nlohmann::json line = {{"hook_event_name", name}, {"session_id", *session}};
+    if (tool) {
+        const auto toolName = parsed.find("tool_name");
+        if (toolName == parsed.end() || !toolName->is_string()) {
+            return std::nullopt;
+        }
+        line["tool_name"] = *toolName;
+        line["tool_input"] = parsed.value("tool_input", nlohmann::json::object());
+    }
+    return line.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+}
+
 std::string hookReplyLine(HookAnswer answer)
 {
     return std::string(hookAnswerName(answer)) + "\n";
@@ -130,11 +159,30 @@ std::string hookSettingsSnippet(const std::string& exePath)
         {"args", nlohmann::ordered_json::array({"hook", "permission"})},
         {"timeout", kHookTimeoutSeconds},
     };
+    const char* matcher = "Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch";
+    // A request answered in Claude Desktop or the terminal: these close its
+    // prompt on the board (hookResolvedLine()).
+    const nlohmann::ordered_json resolved = {
+        {"type", "command"},
+        {"command", exePath},
+        {"args", nlohmann::ordered_json::array({"hook", "resolved"})},
+        {"timeout", kResolvedHookTimeoutSeconds},
+    };
+    const auto entry = [](const char* match, const nlohmann::ordered_json& h) {
+        nlohmann::ordered_json e = nlohmann::ordered_json::object();
+        if (match != nullptr) {
+            e["matcher"] = match;
+        }
+        e["hooks"] = nlohmann::ordered_json::array({h});
+        return nlohmann::ordered_json::array({e});
+    };
     const nlohmann::ordered_json root = {
         {"hooks",
-         {{"PermissionRequest",
-           nlohmann::ordered_json::array({{{"matcher", "Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch"},
-                                           {"hooks", nlohmann::ordered_json::array({hook})}}})}}},
+         {{"PermissionRequest", entry(matcher, hook)},
+          {"PostToolUse", entry(matcher, resolved)},
+          {"PostToolUseFailure", entry(matcher, resolved)},
+          {"Stop", entry(nullptr, resolved)},
+          {"UserPromptSubmit", entry(nullptr, resolved)}}},
     };
     return root.dump(2, ' ', false, nlohmann::ordered_json::error_handler_t::replace) + "\n";
 }

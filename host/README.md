@@ -157,6 +157,9 @@ dashboard-host weather <lat> <lon> [name]
                                    save a location exactly
 dashboard-host hook permission   Claude Code PermissionRequest hook: the request goes
                                    to the board through the tray program (ADR-007)
+dashboard-host hook resolved     Claude Code PostToolUse, PostToolUseFailure, Stop and
+                                   UserPromptSubmit hook: a request answered in Claude
+                                   Desktop or the terminal leaves the board (ADR-007)
 dashboard-host hook probe        Claude Code PermissionRequest hook for the step 10
                                    spike: logs to hook-probe.log, answers as
                                    hook-probe.txt says (docs/hook-spike.md)
@@ -272,6 +275,13 @@ on the board:
    program, no board, or a request that does not fit the screen leave the
    decision to the normal question in the terminal. Nothing is ever
    allowed by default.
+4. A request answered in Claude Desktop (Code tab) or in the terminal
+   instead leaves the board: the snippet also starts
+   `dashboard-host hook resolved` on `PostToolUse` / `PostToolUseFailure`
+   (the tool ran: that request closes), `Stop` and `UserPromptSubmit`
+   (the turn ended or you wrote again: every request of the session
+   closes). The list shows it as "PC'de cevaplandı". Copy the snippet
+   again after an update that adds these entries.
 
 The Claude Code card shows waiting requests and the last decision; its
 detail the last five.
