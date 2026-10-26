@@ -2608,8 +2608,12 @@ void testMenuPage()
                                      std::vector<std::string>({"Çoban salata", "Yoğ. kabak", "Turşu"}) &&
           !salad.days[0].content.hasMeal());
 
-    CHECK(parseMenuPage(menuPage("Akşam", columns), 2026, 10, 0).error ==
-          "Sayfada \"Akşam\" menüsü var; Öğle ya da Salatabar sekmesinde kaydedin.");
+    // The portal has put the lunch under "Akşam": read as the meal.
+    const MenuPage evening = parseMenuPage(menuPage("Akşam", columns), 2026, 12, 0);
+    CHECK(evening.error.empty() && evening.kind == MenuPageKind::Meal && evening.days.size() == 4U &&
+          evening.days[0].content.main == "Kağıt kebabı");
+    CHECK(parseMenuPage(menuPage("Diyet", columns), 2026, 10, 0).error ==
+          "Sayfada \"Diyet\" menüsü var; Öğle ya da Salatabar sekmesinde kaydedin.");
     CHECK(parseMenuPage(menuPage("", columns), 2026, 10, 1).error ==
           "Neither the Öğle nor the Salatabar tab is selected on the page.");
     CHECK(parseMenuPage("<html><button class=\"active\">Öğle</button></html>", 2026, 10, 1).error ==
@@ -2642,8 +2646,9 @@ void testMenuPageImport()
 
     // One bad page: nothing written.
     files.files.clear();
-    r = importMenuPages({meal, MenuPageFile{"aksam.html", menuPage("Akşam", "")}}, files, 2026, 10, 1);
-    CHECK(!r.ok && r.message.rfind("aksam.html: ", 0) == 0 && files.files.empty());
+    const MenuPageFile diet{"diyet.html", menuPage("Diyet", menuColumn("06 Ekim<br>Salı", {"HAŞLAMA"}))};
+    r = importMenuPages({meal, diet}, files, 2026, 10, 1);
+    CHECK(!r.ok && r.message.rfind("diyet.html: ", 0) == 0 && files.files.empty());
     CHECK(!importMenuPages({}, files, 2026, 10, 0).ok);
     CHECK(!importMenuPages({MenuPageFile{"big.html", std::string(kMaxMenuPageBytes + 1U, ' ')}}, files, 2026, 10, 0)
                .ok);

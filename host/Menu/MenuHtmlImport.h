@@ -28,7 +28,7 @@ inline constexpr std::size_t kMaxMenuPageBytes = 4U * 1024U * 1024U;
 bool isMenuPageName(const std::string& fileName);
 
 enum class MenuPageKind {
-    Meal,      // "Öğle": main, side, soup, dessert, extra
+    Meal,      // "Öğle" (or "Akşam"): main, side, soup, dessert, extra
     SaladBar,  // "Salatabar"
 };
 
@@ -38,8 +38,9 @@ struct MenuPage {
     std::string error;               // empty on success
 };
 
-// Read one saved page. The kind is the page's active tab; other tabs
-// ("Akşam", "Diyet", ...) are an error. Days get the year closest to the
+// Read one saved page. The kind is the page's active tab: "Öğle" or
+// "Akşam" (the portal has shown the lunch there) is the meal; other tabs
+// ("Diyet", ...) are an error. Days get the year closest to the
 // import date (menuYearFor()).
 MenuPage parseMenuPage(const std::string& html, int importYear, int importMonth, std::uint8_t language);
 

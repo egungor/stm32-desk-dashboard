@@ -324,11 +324,13 @@ MenuPage parseMenuPage(const std::string& html, int importYear, int importMonth,
     bool salad = false;
     std::string other;
     for (const std::string& tab : activeTabs(html)) {
-        if (tab == "öğle") {
+        // The portal has put the lunch under "Akşam" too, so that tab is the
+        // meal as well.
+        if (tab == "öğle" || tab == "akşam") {
             meal = true;
         } else if (tab == "salatabar" || tab == "salata bar") {
             salad = true;
-        } else if (tab == "akşam" || tab == "kreş" || tab == "vejeteryan" || tab == "vejetaryen" || tab == "diyet") {
+        } else if (tab == "kreş" || tab == "vejeteryan" || tab == "vejetaryen" || tab == "diyet") {
             other = tab;
         }
     }

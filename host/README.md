@@ -241,8 +241,9 @@ column (`portal-food-menu-table-column`: "05 Ekim / Pazartesi" and its
 lines) is read directly, the text put into sentence case ("MEYVE/FISTIKLI
 BAKLAVA" -> "Meyve / fıstıklı baklava"); "RESMİ TATİL" is a holiday,
 "Yemek listesi bulunamadı" is left out. The page's active tab tells the
-meal from the salad bar; a page saved on another tab ("Akşam", "Diyet",
-...) is refused. Images and pages are loaded separately.
+meal from the salad bar; a page saved on the "Akşam" tab is read as the
+meal too (the portal has shown the lunch there), one saved on another tab
+("Diyet", ...) is refused. Images and pages are loaded separately.
 
 The API key: `%APPDATA%\stm32-desk-dashboard\claude.txt`
 
