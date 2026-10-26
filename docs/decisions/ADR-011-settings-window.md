@@ -38,7 +38,8 @@ versions only showed `UNSUPPORTED_VERSION` errors in the log.
   timeout, upside down), Appearance (theme, accent, Audio tab layout,
   grid, startup tab), Audio (the outputs: name on the board, favourite,
   order; volume limit), Dashboard (weather location with a search,
-  picture, menu images, Claude API key, food lists), Claude Code (copy
+  picture, menu images, Claude API key, the menu's next-day hour, food
+  lists), Claude Code (copy
   the hook setting), About (versions, connection, settings folder, log).
   Texts follow the board's language; colours follow Windows' light/dark.
 - The page and the tray talk in JSON strings (`host/App/SettingsModel.h`,

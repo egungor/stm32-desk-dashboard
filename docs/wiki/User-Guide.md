@@ -26,7 +26,7 @@ on the settings page (Dashboard or Ses).
   | Card | Shows | Tap opens |
   |---|---|---|
   | Weather | Icon, temperature, condition, min / max; "Güncellendi hh:mm" when the last fetch failed | Now (feels like, humidity, wind) and 10 days |
-  | Menu of the day | Main dish, soup, salad bar; "Resmi tatil" on a holiday; from 14:00 on a working day and at the weekend the next working day, with a badge ("Sal 27") | The day's five lines and the salad bar; ‹ › move by working day |
+  | Menu of the day | Main dish, soup, salad bar; "Resmi tatil" on a holiday; from 14:00 on a working day (the hour is set in the settings window) and at the weekend the next working day, with a badge ("Sal 27") | The day's five lines and the salad bar; ‹ › move by working day |
   | (empty) | Kept for notifications, after v1 | Nothing |
   | Claude Code | Waiting requests and the last decision | The last five decisions |
 

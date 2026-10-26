@@ -103,7 +103,7 @@ default task); the USB interrupt only copies frames into a static queue.
 | `Menu/MenuHtmlImport` | no | Saved portal menu pages (.html, Öğle or Akşam / Salatabar tab) → days, without the Claude API |
 | `Hook/ApprovalService` | no | Claude Code requests: queue, prompt record (cut rule), timeouts, `ACTION` kind 1, card slot 3 (ADR-007) |
 | `Hook/ClaudeHook` | no | Claude Code `PermissionRequest` decision JSON, the "hook resolved" line of a request answered elsewhere, the settings snippet; the step 10 probe's config and log lines (ADR-007) |
-| `Menu/MenuService` | no | Menu card (slot 1) and day detail, from the month files |
+| `Menu/MenuService` | no | Menu card (slot 1) and day detail, from the month files; the next working day from the hour of `menu-settings.txt` |
 | `Weather/WeatherReport`, `WeatherLocation` | no | Open-Meteo forecast and geocoding (nlohmann/json), WMO code → icon number and text, `weather.txt` |
 | `Weather/WeatherCard`, `WeatherService` | no | Weather card (slot 0) and detail: when to fetch, the records, the location file |
 | `App/SequencedSink` | no | Sets one sequence counter (and the CRC) on every frame the host sends |

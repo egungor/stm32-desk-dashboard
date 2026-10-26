@@ -47,6 +47,7 @@
 #include "WinPicture.h"
 #include "WinStrings.h"
 #include "MenuImport.h"
+#include "MenuService.h"
 #include "SettingsModel.h"
 #include "WeatherLocation.h"
 #include "WinHttpClient.h"
@@ -383,6 +384,8 @@ SettingsState buildState()
     s.pictures = win::readPictureLibrary().value_or(PictureLibrary());
     win::WinPreferenceFile lists(L"menu-lists");
     s.foodLists = lists.read().value_or(kMenuListsTemplate);
+    win::WinPreferenceFile menuSettings(L"menu-settings");
+    s.menuNextDayHour = parseMenuNextDayHour(menuSettings.read());
     win::WinPreferenceFile claude(L"claude");
     const ClaudeConfig config = parseClaudeConfig(claude.read(), std::string());
     s.claudeKeySet = !config.apiKey.empty();
@@ -564,6 +567,11 @@ void onSettingsMessage(const std::string& json)
     case SettingsRequestKind::FoodLists: {
         win::WinPreferenceFile file(L"menu-lists");
         settingsFileSaved(file.write(request->text), "menu-lists.txt");
+        break;
+    }
+    case SettingsRequestKind::MenuNextDay: {
+        win::WinPreferenceFile file(L"menu-settings");
+        settingsFileSaved(file.write(formatMenuSettings(request->value)), "menu-settings.txt");
         break;
     }
     case SettingsRequestKind::ClaudeKey: {

@@ -17,6 +17,8 @@
 //   pictureCrop    id, x, y, w, h        the part shown (fractions of the photo)
 //   pictureShuffle enabled, minutes, random
 //   foodLists text                        menu-lists.txt
+//   menuNextDay value                     menu-settings.txt's next_day_hour
+//                                         (0 never, 1..23)
 //   claudeKey key                         claude.txt's api_key ("" removes it)
 //   menuImport | startup value | copyHook | openFolder | openLog
 //
@@ -68,6 +70,7 @@ struct SettingsState {
     std::optional<WeatherLocation> weather;
     PictureLibrary pictures;  // pictures.json (ADR-012)
     std::string foodLists;  // menu-lists.txt
+    unsigned menuNextDayHour = 14;  // menu-settings.txt (MenuService)
     bool claudeKeySet = false;
     std::string claudeModel;
     bool startup = false;
@@ -95,6 +98,7 @@ enum class SettingsRequestKind {
     PictureInclude,
     PictureShuffle,
     FoodLists,
+    MenuNextDay,
     ClaudeKey,
     MenuImport,
     Startup,
@@ -107,7 +111,7 @@ struct SettingsRequest {
     SettingsRequestKind kind = SettingsRequestKind::Get;
     std::string name;  // setting: field; alias, favorite: device id; picture*: picture id
     std::string text;  // alias, weatherSearch query, foodLists, claudeKey
-    unsigned value = 0;  // setting, favorite, startup
+    unsigned value = 0;  // setting, favorite, startup, menuNextDay
     std::vector<std::string> ids;  // order
     WeatherLocation location;      // weatherSet
     NormRect crop;                 // pictureCrop

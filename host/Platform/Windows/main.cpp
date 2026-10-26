@@ -638,11 +638,12 @@ int cmdMenu(const std::vector<std::string>& args)
     win::WinMenuFiles files;
     win::WinPreferenceFile lists(L"menu-lists");
     win::WinPreferenceFile warned(L"menu-warned");
-    MenuService menu(dash, files, lists, warned, [now] { return now; }, printLine);
+    win::WinPreferenceFile settings(L"menu-settings");
+    MenuService menu(dash, files, lists, warned, settings, [now] { return now; }, printLine);
     std::printf("Card:\n");
     printRecord(menu.card(now));
     std::printf("\nDetail:\n");
-    printRecord(menu.detailFor(MenuService::cardDay(now)));
+    printRecord(menu.detailFor(MenuService::cardDay(now, menu.nextDayHour())));
     return 0;
 }
 

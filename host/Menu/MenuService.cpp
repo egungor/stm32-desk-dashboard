@@ -1,6 +1,7 @@
 #include "MenuService.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 namespace stm32_audio::host {
 
@@ -49,14 +50,62 @@ long nextWorkingDay(long day, int step)
     return day;
 }
 
+std::string trimmed(const std::string& text)
+{
+    const std::size_t first = text.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return {};
+    }
+    return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1U);
+}
+
 }  // namespace
 
+unsigned parseMenuNextDayHour(const std::optional<std::string>& text)
+{
+    unsigned hour = MenuService::kNextDayHour;
+    if (!text) {
+        return hour;
+    }
+    std::size_t start = (text->compare(0, 3, "\xEF\xBB\xBF") == 0) ? 3U : 0U;
+    while (start <= text->size()) {
+        std::size_t end = text->find('\n', start);
+        if (end == std::string::npos) {
+            end = text->size();
+        }
+        const std::string line = trimmed(text->substr(start, end - start));
+        start = end + 1U;
+        const std::size_t eq = line.find('=');
+        if (line.empty() || line[0] == '#' || eq == std::string::npos ||
+            trimmed(line.substr(0, eq)) != "next_day_hour") {
+            continue;
+        }
+        const std::string value = trimmed(line.substr(eq + 1U));
+        char* stop = nullptr;
+        const long parsed = std::strtol(value.c_str(), &stop, 10);
+        if (!value.empty() && stop != nullptr && *stop == '\0' && parsed >= 0 && parsed <= 23) {
+            hour = static_cast<unsigned>(parsed);
+        }
+    }
+    return hour;
+}
+
+std::string formatMenuSettings(unsigned nextDayHour)
+{
+    return "# stm32-desk-dashboard menu settings\n"
+           "# next_day_hour: from this hour of a working day the menu card shows the next\n"
+           "# working day (1..23); 0: never\n"
+           "next_day_hour=" +
+           std::to_string(nextDayHour) + "\n";
+}
+
 MenuService::MenuService(DashController& dash, IMenuFiles& files, IPreferenceFile& lists, IPreferenceFile& warned,
-                         DashController::ClockFn clock, LogFn log)
+                         IPreferenceFile& settings, DashController::ClockFn clock, LogFn log)
     : dash_(dash),
       files_(files),
       listsFile_(lists),
       warnedFile_(warned),
+      settingsFile_(settings),
       clock_(std::move(clock)),
       log_(std::move(log))
 {
@@ -86,12 +135,33 @@ void MenuService::setLanguage(std::uint8_t language)
     }
 }
 
-long MenuService::cardDay(std::uint32_t localTime)
+long MenuService::cardDay(std::uint32_t localTime, unsigned nextDayHour)
 {
     const long today = static_cast<long>(localTime / 86400U);
     const int wd = weekdayOf(today);
-    const bool lunchOver = (localTime / 3600U) % 24U >= kNextDayHour;
+    const bool lunchOver = nextDayHour != 0U && (localTime / 3600U) % 24U >= nextDayHour;
     return (wd == 0 || wd == 6 || lunchOver) ? nextWorkingDay(today, 1) : today;
+}
+
+void MenuService::readSettings()
+{
+    const unsigned hour = parseMenuNextDayHour(settingsFile_.read());
+    if (settingsRead_ && hour != nextDayHour_) {
+        if (log_) {
+            log_("Menu: next day from " + (hour == 0U ? std::string("never") : std::to_string(hour) + ":00") + ".");
+        }
+        dash_.refreshDetail(kSlot);
+    }
+    nextDayHour_ = hour;
+    settingsRead_ = true;
+}
+
+unsigned MenuService::nextDayHour()
+{
+    if (!settingsRead_) {
+        readSettings();
+    }
+    return nextDayHour_;
 }
 
 const std::optional<MenuMonth>& MenuService::monthOf(int year, int month)
@@ -144,6 +214,7 @@ void MenuService::onTick(std::uint64_t /*nowMs: the files are read on reload() o
         texts_.clear();
         months_.clear();
         readLists();
+        readSettings();
         if (changed) {
             if (log_) {
                 log_("Menu files changed.");
@@ -158,7 +229,7 @@ std::string MenuService::card(std::uint32_t localTime)
 {
     const Texts& t = texts(language_);
     const long today = static_cast<long>(localTime / 86400U);
-    const long day = cardDay(localTime);
+    const long day = cardDay(localTime, nextDayHour());
     std::string badge;
     if (day != today) {
         int y = 0;
@@ -333,7 +404,7 @@ bool MenuService::onAction(const ProtoAction& action)
 std::optional<std::string> MenuService::detail(std::int8_t arg)
 {
     if (arg == 0) {
-        detailDay_ = cardDay(clock_());
+        detailDay_ = cardDay(clock_(), nextDayHour());
     } else {
         detailDay_ = nextWorkingDay(detailDay_, arg > 0 ? 1 : -1);
     }

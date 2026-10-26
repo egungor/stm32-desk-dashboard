@@ -193,6 +193,8 @@ input[type=range] { width: 200px; accent-color: var(--accent); }
       <h3 data-t="menu"></h3>
       <div class="row"><div class="label"><span data-t="menuImport"></span><small data-t="menuImportHint"></small></div>
         <button class="b" id="menuImport" data-t="chooseImages"></button></div>
+      <div class="row"><div class="label"><span data-t="menuNextDay"></span><small data-t="menuNextDayHint"></small></div>
+        <select id="menuNextDay"></select></div>
       <div class="row"><div class="label"><span data-t="claudeKey"></span><small id="claudeKeyNow"></small></div>
         <input type="password" id="claudeKey" style="width:220px" autocomplete="off">
         <button class="b" id="claudeKeySave" data-t="save"></button>
@@ -322,6 +324,10 @@ const TEXT = {
   choose: ["Seç…", "Choose…"], remove: ["Kaldır", "Remove"],
   menu: ["Yemek menüsü", "Menu"], menuImport: ["Menü görüntülerini yükle", "Load menu images"],
   menuImportHint: ["Görüntüleri Claude okur ve ayın menüsünü kaydeder. Portaldan kaydedilen sayfaları (.html, Öğle ve Salatabar sekmesi) Claude'suz okur.", "Claude reads the images and saves the month's menu. Pages saved from the portal (.html, Öğle and Salatabar tab) are read without Claude."],
+  menuNextDay: ["Ertesi günün menüsü", "Next day's menu"],
+  menuNextDayHint: ["Hafta içi bu saatten sonra kart bir sonraki iş gününün menüsünü gösterir.",
+    "On a working day the card shows the next working day's menu from this hour."],
+  nextDayNever: ["Kapalı", "Off"],
   chooseImages: ["Görüntü seç…", "Choose images…"], importing: ["Yükleniyor…", "Loading…"],
   claudeKey: ["Claude API anahtarı", "Claude API key"],
   keySet: ["Kayıtlı (model: {m})", "Saved (model: {m})"], keyNotSet: ["Kayıtlı değil", "Not saved"],
@@ -407,6 +413,19 @@ function render() {
     ? (s.weather.name || "—") + " (" + s.weather.latitude.toFixed(4) + ", " + s.weather.longitude.toFixed(4) + ")"
     : t("noLocation");
   renderPictures();
+  const nd = $("menuNextDay");
+  if (document.activeElement !== nd) {
+    nd.innerHTML = "";
+    const hours = [0, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    if (!hours.includes(s.menuNextDayHour)) hours.push(s.menuNextDayHour);
+    hours.sort((a, b) => a - b).forEach(h => {
+      const o = document.createElement("option");
+      o.value = h;
+      o.textContent = h === 0 ? t("nextDayNever") : String(h).padStart(2, "0") + ":00";
+      nd.appendChild(o);
+    });
+    nd.value = s.menuNextDayHour;
+  }
   $("menuImport").disabled = s.importing;
   $("menuImport").textContent = t(s.importing ? "importing" : "chooseImages");
   $("claudeKeyNow").textContent = s.claudeKeySet ? t("keySet", { m: s.claudeModel }) : t("keyNotSet");
@@ -686,6 +705,7 @@ function centredCrop() {
   };
 })();
 $("menuImport").onclick = () => send({ cmd: "menuImport" });
+$("menuNextDay").onchange = () => send({ cmd: "menuNextDay", value: Number($("menuNextDay").value) });
 $("claudeKeySave").onclick = () => {
   const key = $("claudeKey").value.trim();
   if (!key) return;

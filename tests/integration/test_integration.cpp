@@ -1441,8 +1441,9 @@ void testMenuOnBoard()
     const std::uint32_t saturday = localTimeValue(2026, 10, 3, 10, 0, 0);
     MemoryPreference lists;
     MemoryPreference warned;
+    MemoryPreference menuSettings;
     lists.text = "[sevmiyorum]\nnohut\n";
-    MenuService menu(*r.dash, files, lists, warned, [saturday] { return saturday; }, nullptr);
+    MenuService menu(*r.dash, files, lists, warned, menuSettings, [saturday] { return saturday; }, nullptr);
     r.dash->setDetailHandler([&menu](std::uint8_t slot, std::int8_t arg) -> std::optional<std::string> {
         return slot == MenuService::kSlot ? menu.detail(arg) : std::nullopt;
     });
