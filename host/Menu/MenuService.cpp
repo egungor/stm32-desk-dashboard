@@ -19,27 +19,52 @@ struct Texts {
     const char* labels[5];   // main, side, soup, dessert, extra
     const char* never;       // a dish of the "never" list, in the detail
     const char* dislike;
+    const char* liked;
     const char* warningTitle;
+    const char* warningTitleOther;  // another day than today
     const char* neverRow;    // warning row labels
     const char* dislikeRow;
+    const char* likedRow;
     const char* ok;
 };
 
 constexpr Texts kTurkish = {
     "Yemek", "Resmi tatil", "Bu gün için menü yok", "Menü yüklenmedi", "Tepside: Menü görüntülerini yükle...",
     "Salata bar: ", " çeşit", "Salata bar", {"Ana yemek", "Yan yemek", "Çorba", "Tatlı", "Yanında"},
-    "istemiyorum", "sevmiyorum", "Bugünkü menüde", "İstemiyorum", "Sevmiyorum", "Tamam",
+    "istemiyorum", "sevmiyorum", "seviyorum", "Bugünkü menüde", "Menüde", "İstemiyorum", "Sevmiyorum",
+    "Seviyorum", "Tamam",
 };
 
 constexpr Texts kEnglish = {
     "Menu", "Public holiday", "No menu for this day", "No menu loaded", "Tray: Load menu images...",
     "Salad bar: ", " items", "Salad bar", {"Main dish", "Side dish", "Soup", "Dessert", "With it"},
-    "never", "don't like", "On today's menu", "Never", "Don't like", "OK",
+    "never", "don't like", "like", "On today's menu", "On the menu", "Never", "Don't like", "Like", "OK",
 };
 
 const Texts& texts(std::uint8_t language)
 {
     return language == 1U ? kEnglish : kTurkish;
+}
+
+// The dish that decides the card's colour: the main dish, or the side dish
+// on a day without one (as the card's first line).
+const std::string& mainDish(const MenuDay& day)
+{
+    return day.main.empty() ? day.side : day.main;
+}
+
+// The icon (protocol.md "Icon") and the colour of a list's dishes.
+const char* markIcon(DishMark mark)
+{
+    return mark == DishMark::Liked ? "14" : mark == DishMark::Never ? "15" : mark == DishMark::Dislike ? "16" : "0";
+}
+
+const char* markColour(DishMark mark)
+{
+    return mark == DishMark::Liked     ? MenuService::kColourGold
+           : mark == DishMark::Never   ? MenuService::kColourNever
+           : mark == DishMark::Dislike ? MenuService::kColourDislike
+                                       : "";
 }
 
 long nextWorkingDay(long day, int step)
@@ -118,13 +143,24 @@ void MenuService::readLists()
         return;
     }
     lists_ = text ? parseMenuLists(*text) : MenuLists{};
-    if (listsRead_ && log_) {
+    const bool changed = listsRead_;
+    if (changed && log_) {
         log_("Food lists: " + std::to_string(lists_.never.size()) + " never, " +
-             std::to_string(lists_.dislike.size()) + " don't like.");
+             std::to_string(lists_.dislike.size()) + " don't like, " + std::to_string(lists_.liked.size()) +
+             " like.");
     }
     listsText_ = std::move(text);
     listsRead_ = true;
     dash_.refreshDetail(kSlot);
+    if (changed) {
+        // Warn again for the card's day with the new lists; a shown warning
+        // is replaced (or closed if there is nothing to say any more).
+        listsChangedDay_ = cardDay(clock_(), nextDayHour());
+        if (warningShown_) {
+            dash_.closePrompt(kWarningPromptId);
+            warningShown_ = false;
+        }
+    }
 }
 
 void MenuService::setLanguage(std::uint8_t language)
@@ -261,11 +297,17 @@ std::string MenuService::card(std::uint32_t localTime)
                                     : t.saladCount + std::to_string(entry->saladBar.size()) + t.saladItems;
         return recordLine({head, "", badge, "", ""}) + "\n" + salad;
     }
-    const DishMark mark = markOf(*entry, lists_);
+    // The main dish decides (ADR-010 amendment); a liked one is framed.
+    const DishMark mark = markOf(mainDish(*entry), lists_);
     const char* bg = mark == DishMark::Never ? kColourNever : mark == DishMark::Dislike ? kColourDislike : kColourOk;
-    std::string text = recordLine({head, "", badge, bg, ""});
+    std::string text = mark == DishMark::Liked ? recordLine({head, "", badge, bg, "", kColourGold, kColourGoldLight})
+                                               : recordLine({head, "", badge, bg, ""});
+    // The main dish (in the large line), then the side dish, soup and
+    // dessert in the small lines.
     const std::string dessert = withoutFruit(entry->dessert);  // #49: no "Meyve /"
-    for (const std::string* dish : {entry->main.empty() ? &entry->side : &entry->main, &entry->soup, &dessert}) {
+    const std::string none;
+    for (const std::string* dish : {&mainDish(*entry), entry->main.empty() ? &none : &entry->side, &entry->soup,
+                                    &dessert}) {
         if (!dish->empty()) {
             text += "\n" + recordLine({*dish});
         }
@@ -294,13 +336,23 @@ std::string MenuService::detailFor(long day)
         return text + "\n" + recordLine({"", "", t.holiday});
     }
     const std::string* fields[5] = {&entry->main, &entry->side, &entry->soup, &entry->dessert, &entry->extra};
+    DishMark marks[5];
+    bool anyMarked = false;
+    for (std::size_t i = 0; i < 5U; ++i) {
+        marks[i] = markOf(*fields[i], lists_);
+        anyMarked = anyMarked || marks[i] != DishMark::None;
+    }
     for (std::size_t i = 0; i < 5U; ++i) {
         if (!fields[i]->empty()) {
-            const DishMark mark = markOf(*fields[i], lists_);
+            // A listed dish: its list's icon and colour, and the list's name
+            // (an icon column for every row then, so that labels line up).
+            const DishMark mark = marks[i];
             const std::string value = mark == DishMark::Never     ? *fields[i] + " \xC2\xB7 " + t.never
                                       : mark == DishMark::Dislike ? *fields[i] + " \xC2\xB7 " + t.dislike
+                                      : mark == DishMark::Liked   ? *fields[i] + " \xC2\xB7 " + t.liked
                                                                   : *fields[i];
-            text += "\n" + recordLine({"", t.labels[i], value});
+            text += "\n" + (mark != DishMark::None ? recordLine({markIcon(mark), t.labels[i], value, markColour(mark)})
+                                                   : recordLine({anyMarked ? "0" : "", t.labels[i], value}));
         }
     }
     if (!entry->saladBar.empty()) {
@@ -330,16 +382,39 @@ std::optional<std::string> MenuService::warningFor(long day)
         readLists();
     }
     const MenuDay* entry = dayAt(day);
-    if (entry == nullptr || entry->holiday || markOf(*entry, lists_) == DishMark::None) {
+    if (entry == nullptr || entry->holiday) {
+        return std::nullopt;
+    }
+    // The main dish on a list: the panel in the card's colour (gold leaf
+    // for a liked one). Else only "never" / "don't like" dishes warn: a
+    // dark panel with the title strip in the card's (green) colour.
+    const DishMark mainMark = markOf(mainDish(*entry), lists_);
+    const bool otherBad = markOf(*entry, lists_) != DishMark::None;
+    if (mainMark == DishMark::None && !otherBad) {
         return std::nullopt;
     }
     const Texts& t = texts(language_);
-    std::string text = recordLine({t.warningTitle, dateText(day), ""});
-    for (const std::string& dish : dishesMarked(*entry, lists_, DishMark::Never)) {
-        text += "\n" + recordLine({std::to_string(kIcon), t.neverRow, dish});
-    }
-    for (const std::string& dish : dishesMarked(*entry, lists_, DishMark::Dislike)) {
-        text += "\n" + recordLine({std::to_string(kIcon), t.dislikeRow, dish});
+    const bool panel = mainMark != DishMark::None;
+    const char* bg = mainMark == DishMark::Never     ? kColourNever
+                     : mainMark == DishMark::Dislike ? kColourDislike
+                                                     : kColourOk;
+    const std::string icon = std::to_string(kIcon);
+    const char* title = day == static_cast<long>(clock_() / 86400U) ? t.warningTitle : t.warningTitleOther;
+    std::string text = panel ? recordLine({title, dateText(day), "", bg, mainMark == DishMark::Liked ? kColourGold : "",
+                                           "", icon})
+                             : recordLine({title, dateText(day), "", kColourOk, "", "s", icon});
+    const std::pair<DishMark, const char*> groups[3] = {
+        {DishMark::Never, t.neverRow}, {DishMark::Dislike, t.dislikeRow}, {DishMark::Liked, t.likedRow}};
+    for (const auto& [mark, label] : groups) {
+        // On a coloured panel its text colour, liked dishes gold on green;
+        // on the dark panel each list's colour.
+        const char* colour = !panel                                         ? markColour(mark)
+                             : (mark == DishMark::Liked && mainMark == DishMark::Liked) ? kColourGoldLight
+                                                                            : "";
+        for (const std::string& dish : dishesMarked(*entry, lists_, mark)) {
+            text += "\n" + (*colour != '\0' ? recordLine({markIcon(mark), label, dish, colour})
+                                             : recordLine({markIcon(mark), label, dish}));
+        }
     }
     return text + "\n" + recordLine({"!1", t.ok});
 }
@@ -352,6 +427,19 @@ void MenuService::updateWarning(bool promptFree)
     }
     if (warningShown_) {
         return;
+    }
+    // The food lists changed: the card's day with the new lists.
+    if (listsChangedDay_) {
+        if (const std::optional<std::string> text = warningFor(*listsChangedDay_)) {
+            dash_.showPrompt(kWarningPromptId, *text);
+            warningShown_ = true;
+            shownDay_ = *listsChangedDay_;
+            if (log_) {
+                log_("Menu warning shown (food lists changed).");
+            }
+            return;
+        }
+        listsChangedDay_.reset();
     }
     const std::uint32_t now = clock_();
     const long today = static_cast<long>(now / 86400U);
@@ -375,6 +463,7 @@ void MenuService::updateWarning(bool promptFree)
     }
     dash_.showPrompt(kWarningPromptId, *text);
     warningShown_ = true;
+    shownDay_ = today;
     if (log_) {
         log_("Menu warning shown.");
     }
@@ -386,15 +475,21 @@ bool MenuService::onAction(const ProtoAction& action)
         return false;
     }
     const std::uint32_t now = clock_();
-    int y = 0;
-    int m = 0;
-    int d = 0;
-    civilFromDays(static_cast<long>(now / 86400U), y, m, d);
-    char date[16];
-    std::snprintf(date, sizeof(date), "%04d-%02d-%02d", y, m, d);
-    warnedDay_ = static_cast<long>(now / 86400U);
-    if (!warnedFile_.write(std::string(date) + "\n") && log_) {
-        log_("WARN: cannot save the date of the menu warning.");
+    const long today = static_cast<long>(now / 86400U);
+    listsChangedDay_.reset();
+    // A warning about today also answers the morning one; one about
+    // another day (the lists changed in the afternoon) does not.
+    if (shownDay_ < 0 || shownDay_ == today) {
+        int y = 0;
+        int m = 0;
+        int d = 0;
+        civilFromDays(today, y, m, d);
+        char date[16];
+        std::snprintf(date, sizeof(date), "%04d-%02d-%02d", y, m, d);
+        warnedDay_ = today;
+        if (!warnedFile_.write(std::string(date) + "\n") && log_) {
+            log_("WARN: cannot save the date of the menu warning.");
+        }
     }
     dash_.closePrompt(kWarningPromptId);
     warningShown_ = false;

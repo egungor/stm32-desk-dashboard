@@ -12,6 +12,11 @@ at the screen's size and a tap on the picture card shows it full screen
 ("Amendment: full-screen picture" below). ADR-012 (#72) replaces the
 single picture with a library, a shuffle and a crop.
 
+Amended on 2026-10-27 ("Amendment: liked dishes" below): a third food
+list, the card coloured by the main dish only, a gold-leaf frame, coloured
+detail rows and warnings in the card's colours; additive record fields,
+no new protocol version.
+
 ## Context
 
 The Dashboard (ADR-006) shows four text cards on the theme's card colour:
@@ -174,6 +179,53 @@ first: no new command, no wait on a tap.
 - A picture takes about 7 times as many frames: about 20 s at one report
   per 4 ms (bInterval 5 ms, ADR-003), after the cards (it does not hold
   them up). It is sent again on every connect.
+
+## Amendment: liked dishes (2026-10-27)
+
+The owner's request: a list of liked dishes; a liked dish keeps the card
+green with a gold frame and a gold utensils icon; the warning also for
+liked dishes, at 08:00 and when the lists change, in the card's colours.
+His choices from simulator screenshots of six frames and three warning
+designs: the **gold-leaf** frame (a light-to-dark gold gradient) and the
+warning **panel in the card's colour**. His rules:
+
+- **The main dish decides the card** (the side dish on a day without
+  one): "never" orange, "don't like" yellow, liked green with the frame
+  and a gold icon, otherwise green. Other dishes change nothing on the
+  Dashboard (before: the worst of the five dishes coloured the card).
+- **The detail** shows every listed dish in its list's colour with its
+  icon (14 star gold `D4AF37`, 15 cross orange `E0702F`, 16 warning
+  yellow `D9A520`) and its name ("· seviyorum", "· istemiyorum",
+  "· sevmiyorum"); the other rows keep an empty icon column.
+- **The warning**: the main dish on a list → the panel in the card's
+  colour (gold leaf for a liked one; liked rows `F2C94C` on green);
+  otherwise a "never" / "don't like" dish → the dark panel with a title
+  strip in the card's green, rows in their lists' colours; a liked side
+  dish alone → no warning. From 08:00 once a day for today, as before,
+  and again when `menu-lists.txt` changes, for the card's day (title
+  "Menüde" for another day than today); a shown warning is replaced, or
+  closed when the new lists say nothing. Its "Tamam" marks the morning
+  warning as done only when it was about today.
+
+`menu-lists.txt` gains `[seviyorum]` (`[like]`); a dish on two lists
+takes the first of never, don't like, liked.
+
+Record fields (protocol.md, "Record text"), all optional and ignored by
+an older board (it splits a line into a fixed number of fields), so the
+protocol version stays 7:
+
+| Record | New fields |
+|---|---|
+| Card | line 5: a fourth text line (the menu card: main dish large, then side dish, soup and dessert; the owner's request of 2026-10-27); a card without a title shows its badge below the icon, so that the main dish is not cut |
+| Card line 1 | 6 `frame` RRGGBB: the gold-leaf frame (4 px, the colour lightened 50 % at the top, darkened 30 % at the bottom); 7 `icon colour` RRGGBB |
+| Detail / prompt row | 4 `colour` RRGGBB: icon, label and value |
+| Prompt line 1 | 4 `bg` RRGGBB: the panel (its text white or dark by brightness); 5 `frame` RRGGBB; 6 `flags`: `s` = only the title strip in `bg`, the panel's border too; 7 `icon`: the title's icon number (default the warning sign) |
+
+Icons 14 (star), 15 (cross) and 16 (warning) are glyphs the firmware's
+16 px font already has. The Claude Code list gets the header's clear button (flag `c`, ACTION
+255 on slot 3) for its last decisions (the owner's request, same day).
+Memory: the framed warning peaks at 89.8 KB of
+the 128 KB LVGL heap in the simulator (before: 89.7 KB).
 
 ## Alternatives
 

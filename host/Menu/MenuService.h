@@ -4,18 +4,24 @@
 // minute and after reload() (an import). Single threaded; platform
 // independent.
 //
-//   card:   11 ␟ ␟ badge ␟ bg ␟ \n main dish \n soup \n dessert
+//   card:   11 ␟ ␟ badge ␟ bg ␟ [␟ frame ␟ icon colour] \n main dish \n side
+//           dish \n soup \n dessert (the board puts the badge below the icon)
 //           badge: "" today, "Pzt 26" for the next working day at the weekend
 //           and from the next-day hour on a working day (lunch is over;
 //           menu-settings.txt, settings window; default kNextDayHour)
-//           bg: orange (a "never" dish), yellow (a "don't like" dish), green;
-//               empty without a menu for the day
+//           bg by the main dish only (ADR-010 amendment): orange ("never"),
+//               yellow ("don't like"), else green; a liked main dish adds the
+//               gold-leaf frame and a gold icon; empty without a menu
 //   detail: Yemek ␟ 21 Ekim Çarşamba ␟ n \n rows (Ana yemek, Yan yemek, Çorba,
-//           Tatlı, Yanında; a listed dish marked) \n #Salata bar \n the items;
-//           ‹ › move by working day
-//   warning (a prompt, id kWarningPromptId): on a working day with a listed
-//           dish, once from kWarningHour: Yemek uyarısı ␟ date ␟ \n rows
-//           \n !1 ␟ Tamam; answered once a day (the date in the warned file).
+//           Tatlı, Yanında; a listed dish with its list's icon, colour and
+//           name) \n #Salata bar \n the items; ‹ › move by working day
+//   warning (a prompt, id kWarningPromptId): when the main dish is on a list
+//           (the panel in the card's colour, the gold leaf for a liked one),
+//           or another dish is on "never" / "don't like" (a dark panel, the
+//           title strip in the card's colour); a liked side dish alone gives
+//           none. Rows: the list's icon, name and the dish; !1 ␟ Tamam.
+//           Shown once a day from kWarningHour (the date in the warned file)
+//           for today, and when the food lists change for the card's day.
 #pragma once
 
 #include <cstdint>
@@ -46,6 +52,8 @@ public:
     static constexpr const char* kColourNever = "E0702F";
     static constexpr const char* kColourDislike = "D9A520";
     static constexpr const char* kColourOk = "3E9B5F";
+    static constexpr const char* kColourGold = "D4AF37";      // the frame; liked rows
+    static constexpr const char* kColourGoldLight = "F2C94C"; // the card's icon; rows on green
 
     // @p lists: menu-lists.txt; @p warned: the date of the last warning;
     // @p settings: menu-settings.txt (parseMenuNextDayHour()).
@@ -106,6 +114,8 @@ private:
     std::optional<std::string> listsText_;
     bool listsRead_ = false;
     bool warningShown_ = false;
+    long shownDay_ = -1;                 // the day of the shown warning
+    std::optional<long> listsChangedDay_;  // a warning for the changed lists is due
     long warnedDay_ = -1;  // answered today, also if the file could not be written
     DashController::ClockFn clock_;
     LogFn log_;

@@ -91,7 +91,9 @@ public:
     void onCancelled(std::uint64_t ticket, std::uint64_t nowMs);
     // Timeouts; call regularly with a monotonic clock.
     void onTick(std::uint64_t nowMs);
-    // ACTION kind 1 (a prompt button); false for other kinds.
+    // ACTION kind 1 (a prompt button), or the clear button of the list
+    // (kind 0, kSlot, PROTO_DETAIL_ACTION_CLEAR: the last decisions go,
+    // waiting requests stay); false for other actions.
     bool onAction(const ProtoAction& action, std::uint64_t nowMs);
     // The board went away: every waiting request gets "none".
     void onDisconnected();

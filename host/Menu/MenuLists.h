@@ -1,13 +1,16 @@
-// The owner's food lists (ADR-010): dishes he never wants and dishes he
-// eats but does not like, from menu-lists.txt in the settings folder:
+// The owner's food lists (ADR-010): dishes never wanted, dishes eaten but
+// not liked, and liked dishes (ADR-010 amendment), from menu-lists.txt in
+// the settings folder:
 //
 //   # comment
 //   [istemiyorum]
 //   kuru fasulye
 //   [sevmiyorum]
 //   bamya
+//   [seviyorum]
+//   kebap
 //
-// ("[never]" and "[dislike]" are accepted too.) A dish matches a name when
+// ("[never]", "[dislike]" and "[like]" are accepted too.) A dish matches a name when
 // the name occurs in it, ignoring case by Turkish rules (İ/i, I/ı) and
 // extra spaces. Platform independent and tested.
 #pragma once
@@ -24,11 +27,14 @@ enum class DishMark {
     None,
     Dislike,  // eats it, does not like it
     Never,    // does not want it at all
+    Liked,    // likes it (a dish on two lists takes the first of never,
+              // dislike, liked)
 };
 
 struct MenuLists {
     std::vector<std::string> never;    // lower case (turkishLower)
     std::vector<std::string> dislike;
+    std::vector<std::string> liked;
 };
 
 MenuLists parseMenuLists(std::string_view text);
@@ -40,7 +46,7 @@ std::string turkishLower(std::string_view text);
 DishMark markOf(const std::string& dish, const MenuLists& lists);
 
 // The worst mark of the day's five dishes (main, side, soup, dessert,
-// extra; not the salad bar).
+// extra; not the salad bar): Never, Dislike or None (Liked is not "worse").
 DishMark markOf(const MenuDay& day, const MenuLists& lists);
 
 // The dishes of @p day with the mark @p mark, in the order of the day.

@@ -75,6 +75,10 @@ argument):
 | `104-dashboard-rain-red.png` | Rain, a "don't like" dish on Monday (yellow, badge), the bell "99+" and two Claude Code requests waiting (red) |
 | `105-dashboard-light.png` | The light theme: the cards keep their colours; one green status icon |
 | `106-menu-warning.png` | The morning menu warning (a prompt with one button) |
+| `112-menu-liked.png`, `112b-menu-liked-light.png` | A liked main dish: the gold-leaf frame and a gold icon, dark and light theme; four lines (main dish, side dish, soup, dessert) |
+| `113-menu-detail-marks.png` | The menu detail with dishes of the three lists in their colours |
+| `114-menu-warning-liked.png`, `115-menu-warning-never.png` | The warning when the main dish is listed: the panel in the card's colour (gold leaf for a liked one) |
+| `116-menu-warning-other.png` | The warning when only other dishes are listed: the title strip in the card's colour |
 | `107-picture-full-screen.png` | The picture card tapped (#53): the picture full screen, 480 × 272 (taken between 103 and 104) |
 | `97-banner.png` | A notification banner over the Dashboard (bell, app, countdown, two lines) |
 | `98-banner-audio.png` | The banner over the Audio tab; a tap opens the notifications list |

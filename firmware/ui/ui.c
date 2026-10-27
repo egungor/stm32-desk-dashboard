@@ -153,6 +153,7 @@ void ui_style_card(lv_obj_t *obj, int32_t radius)
     lv_obj_set_style_shadow_width(obj, 0, 0);
     lv_obj_set_style_bg_color(obj, ui_color(g_ui.pal.btn), 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_NONE, 0); /* a card's gold-leaf frame of before */
     /* On the light theme white cards need an outline. */
     lv_obj_set_style_border_color(obj, ui_color(g_ui.pal.line), 0);
     lv_obj_set_style_border_width(obj, g_ui.pal.dark ? 0 : 1, 0);

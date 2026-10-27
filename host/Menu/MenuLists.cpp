@@ -46,10 +46,14 @@ const char* const kMenuListsTemplate =
     "#\n"
     "# [istemiyorum]: hiç istemediğim yemekler -> yemek kartı turuncu, sabah 8'de uyarı\n"
     "# [sevmiyorum]:  yediğim ama sevmediğim yemekler -> yemek kartı sarı, sabah 8'de uyarı\n"
+    "# [seviyorum]:   sevdiğim yemekler -> ana yemekse kart altın çerçeveli, sabah 8'de haber\n"
+    "# Kartın rengini ana yemek belirler; diğer yemekler ayrıntıda kendi renginde görünür.\n"
     "\n"
     "[istemiyorum]\n"
     "\n"
-    "[sevmiyorum]\n";
+    "[sevmiyorum]\n"
+    "\n"
+    "[seviyorum]\n";
 
 std::string turkishLower(std::string_view text)
 {
@@ -118,6 +122,8 @@ MenuLists parseMenuLists(std::string_view text)
                 section = &lists.never;
             } else if (name == "sevmiyorum" || name == "dislike") {
                 section = &lists.dislike;
+            } else if (name == "seviyorum" || name == "like") {
+                section = &lists.liked;
             } else {
                 section = nullptr;
             }
@@ -166,6 +172,11 @@ DishMark markOf(const std::string& dish, const MenuLists& lists)
     for (const std::string& name : lists.dislike) {
         if (contains(lower, name)) {
             return DishMark::Dislike;
+        }
+    }
+    for (const std::string& name : lists.liked) {
+        if (contains(lower, name)) {
+            return DishMark::Liked;
         }
     }
     return DishMark::None;
