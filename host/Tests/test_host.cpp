@@ -4035,7 +4035,7 @@ void testMenuColoursAndWarning()
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\n", 0) == 0U);
     CHECK(!menu.warningFor(monday).has_value());
     std::string d = menu.detail(0).value_or("");
-    CHECK(d.find("\n14" + sep + "Tatlı" + sep + "Meyve / fıstıklı baklava \xC2\xB7 seviyorum" + sep + "D4AF37\n") !=
+    CHECK(d.find("\n14" + sep + "Tatlı" + sep + "Meyve / fıstıklı baklava" + sep + "D4AF37\n") !=
           std::string::npos);
     CHECK(d.find("\n0" + sep + "Ana yemek" + sep + "Kağıt kebabı\n") != std::string::npos);  // the icon column
     CHECK(markOf("Kuru fasulye", parseMenuLists("[like]\nfasulye\n[dislike]\nkuru\n")) == DishMark::Dislike);
@@ -4045,11 +4045,12 @@ void testMenuColoursAndWarning()
     setLists("[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n");
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\n", 0) == 0U);
     d = menu.detail(0).value_or("");
-    CHECK(d.find("\n15" + sep + "Yan yemek" + sep + "Kalem börek \xC2\xB7 istemiyorum" + sep + "E0702F\n") !=
+    CHECK(d.find("\n15" + sep + "Yan yemek" + sep + "Kalem börek" + sep + "E0702F\n") !=
           std::string::npos);
-    CHECK(d.find("\n16" + sep + "Çorba" + sep + "Tarhana çorba \xC2\xB7 sevmiyorum" + sep + "D9A520\n") !=
+    CHECK(d.find("\n16" + sep + "Çorba" + sep + "Tarhana çorba" + sep + "D9A520\n") !=
           std::string::npos);
     CHECK(d.find("Kağıt kebabı \xC2\xB7") == std::string::npos);
+    CHECK(d.find("istemiyorum") == std::string::npos && d.find("sevmiyorum") == std::string::npos);  // no words
 
     // The warning: not before 08:00, not without the board.
     const std::optional<std::string> text = menu.warningFor(monday);

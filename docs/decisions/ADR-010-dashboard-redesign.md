@@ -133,7 +133,7 @@ does not like), one name per line, `#` comments. A dish matches a name
 when the name occurs in it, ignoring case (Turkish rules: İ/i, I/ı). The
 five dishes of the day (main, side, soup, dessert, "yanında") are checked,
 not the salad bar. The detail marks a matching dish ("istemiyorum" /
-"sevmiyorum"). The tray menu's "Yemek listelerini düzenle…" opens the file
+"sevmiyorum"; since the amendment below by its icon and colour only). The tray menu's "Yemek listelerini düzenle…" opens the file
 (created with a short explanation if missing).
 
 On a working day with a matching dish, from 08:00 the host shows a prompt
@@ -195,8 +195,8 @@ warning **panel in the card's colour**. His rules:
   Dashboard (before: the worst of the five dishes coloured the card).
 - **The detail** shows every listed dish in its list's colour with its
   icon (14 star gold `D4AF37`, 15 cross orange `E0702F`, 16 warning
-  yellow `D9A520`) and its name ("· seviyorum", "· istemiyorum",
-  "· sevmiyorum"); the other rows keep an empty icon column.
+  yellow `D9A520`), without the list's name (the owner's wish: icon and
+  colour say it); the other rows keep an empty icon column.
 - **The warning**: the main dish on a list → the panel in the card's
   colour (gold leaf for a liked one; liked rows `F2C94C` on green);
   otherwise a "never" / "don't like" dish → the dark panel with a title
