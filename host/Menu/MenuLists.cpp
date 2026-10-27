@@ -38,16 +38,40 @@ bool contains(const std::string& haystack, const std::string& needle)
 
 }  // namespace
 
-const char* const kMenuListsTemplate =
+// The comment block of the file: in a new file, and instead of the block
+// of before liked dishes (until v0.9.0-beta.12, kOldComments).
+#define MENU_LISTS_COMMENTS                                                                  \
+    "# Yemek listeleri (STM32 Desk Dashboard)\n"                                           \
+    "# Her satıra bir yemek adı yazın. Adın geçtiği her yemek eşleşir:\n"                 \
+    "# \"fasulye\" hem \"Kuru fasulye\" hem \"Taze fasulye\" ile eşleşir.\n"             \
+    "# Büyük / küçük harf fark etmez. # ile başlayan satırlar açıklamadır.\n"             \
+    "#\n"                                                                                 \
+    "# Yemek kartının rengini ana yemek belirler:\n"                                      \
+    "# [istemiyorum]: hiç istemediğim yemekler -> kart turuncu\n"                         \
+    "# [sevmiyorum]:  yediğim ama sevmediğim yemekler -> kart sarı\n"                     \
+    "# [seviyorum]:   sevdiğim yemekler -> kart yeşil, altın çerçeveli, çatal bıçak altın\n" \
+    "# Diğer yemekler (yan yemek, çorba, tatlı) karta dokununca açılan ayrıntıda\n"       \
+    "# listenin renginde görünür.\n"                                                      \
+    "#\n"                                                                                 \
+    "# Uyarı sabah 8'de ve listeler kaydedilince gelir: ana yemek bir listedeyse\n"       \
+    "# ya da başka bir yemek [istemiyorum] / [sevmiyorum] listesindeyse. Yalnızca\n"      \
+    "# sevdiğim bir yan yemek, çorba ya da tatlı için uyarı gelmez.\n"
+
+namespace {
+
+const char* const kOldComments =
     "# Yemek listeleri (STM32 Desk Dashboard)\n"
     "# Her satıra bir yemek adı yazın. Adın geçtiği her yemek eşleşir:\n"
     "# \"fasulye\" hem \"Kuru fasulye\" hem \"Taze fasulye\" ile eşleşir.\n"
     "# Büyük / küçük harf fark etmez. # ile başlayan satırlar açıklamadır.\n"
     "#\n"
     "# [istemiyorum]: hiç istemediğim yemekler -> yemek kartı turuncu, sabah 8'de uyarı\n"
-    "# [sevmiyorum]:  yediğim ama sevmediğim yemekler -> yemek kartı sarı, sabah 8'de uyarı\n"
-    "# [seviyorum]:   sevdiğim yemekler -> ana yemekse kart altın çerçeveli, sabah 8'de haber\n"
-    "# Kartın rengini ana yemek belirler; diğer yemekler ayrıntıda kendi renginde görünür.\n"
+    "# [sevmiyorum]:  yediğim ama sevmediğim yemekler -> yemek kartı sarı, sabah 8'de uyarı\n";
+
+}  // namespace
+
+const char* const kMenuListsTemplate =
+    MENU_LISTS_COMMENTS
     "\n"
     "[istemiyorum]\n"
     "\n"
@@ -204,6 +228,48 @@ std::vector<std::string> dishesMarked(const MenuDay& day, const MenuLists& lists
         if (markOf(*dish, lists) == mark) {
             out.push_back(*dish);
         }
+    }
+    return out;
+}
+
+std::optional<std::string> upgradeMenuListsComments(const std::string& text)
+{
+    // Compare without carriage returns (Notepad) and a byte order mark.
+    std::string plain;
+    plain.reserve(text.size());
+    const std::size_t start = text.compare(0, 3, "\xEF\xBB\xBF") == 0 ? 3U : 0U;
+    for (std::size_t i = start; i < text.size(); ++i) {
+        if (text[i] != '\r') {
+            plain += text[i];
+        }
+    }
+    const std::string old = kOldComments;
+    if (plain.compare(0, old.size(), old) != 0) {
+        return std::nullopt;  // edited by hand, or already new
+    }
+    const std::string rest = plain.substr(old.size());
+    bool hasLiked = false;  // a [seviyorum] / [like] line after the comments
+    std::size_t pos = 0;
+    while (pos <= rest.size()) {
+        std::size_t end = rest.find('\n', pos);
+        if (end == std::string::npos) {
+            end = rest.size();
+        }
+        const std::string line = turkishLower(rest.substr(pos, end - pos));
+        hasLiked = hasLiked || line == "[seviyorum]" || line == "[like]";
+        pos = end + 1U;
+    }
+    std::string out = MENU_LISTS_COMMENTS + rest;
+    if (!hasLiked) {
+        out += (out.empty() || out.back() == '\n' ? "" : "\n");
+        out += "\n[seviyorum]\n";
+    }
+    if (text.find("\r\n") != std::string::npos) {  // keep Windows line ends
+        std::string crlf;
+        for (const char c : out) {
+            crlf += (c == '\n') ? std::string("\r\n") : std::string(1, c);
+        }
+        out = crlf;
     }
     return out;
 }

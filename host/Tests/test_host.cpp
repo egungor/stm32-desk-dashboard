@@ -3925,6 +3925,39 @@ void testMenuLists()
     CHECK(lists.dislike == std::vector<std::string>({"tarhana"}));
     CHECK(parseMenuLists("").never.empty() && parseMenuLists(kMenuListsTemplate).never.empty());
 
+    // A file of before liked dishes (Notepad: BOM, CR LF) gets today's
+    // comments and an empty [seviyorum]; its lists stay. Others: nothing.
+    const std::string oldFile =
+        "\xEF\xBB\xBF# Yemek listeleri (STM32 Desk Dashboard)\r\n"
+        "# Her satıra bir yemek adı yazın. Adın geçtiği her yemek eşleşir:\r\n"
+        "# \"fasulye\" hem \"Kuru fasulye\" hem \"Taze fasulye\" ile eşleşir.\r\n"
+        "# Büyük / küçük harf fark etmez. # ile başlayan satırlar açıklamadır.\r\n"
+        "#\r\n"
+        "# [istemiyorum]: hiç istemediğim yemekler -> yemek kartı turuncu, sabah 8'de uyarı\r\n"
+        "# [sevmiyorum]:  yediğim ama sevmediğim yemekler -> yemek kartı sarı, sabah 8'de uyarı\r\n"
+        "\r\n[istemiyorum]\r\nbamya\r\n\r\n[sevmiyorum]\r\ntarhana\r\n";
+    const std::optional<std::string> upgraded = upgradeMenuListsComments(oldFile);
+    CHECK(upgraded.has_value());
+    if (upgraded) {
+        CHECK(upgraded->rfind("# Yemek listeleri (STM32 Desk Dashboard)\r\n", 0) == 0U);
+        CHECK(upgraded->find("-> kart yeşil, altın çerçeveli") != std::string::npos);
+        CHECK(upgraded->find("sabah 8'de uyarı") == std::string::npos);
+        CHECK(upgraded->find("\r\n[istemiyorum]\r\nbamya\r\n\r\n[sevmiyorum]\r\ntarhana\r\n\r\n[seviyorum]\r\n") !=
+              std::string::npos);
+        CHECK(upgraded->find('\n') == upgraded->find("\r\n") + 1U);  // CR LF kept
+        const MenuLists lists = parseMenuLists(*upgraded);
+        CHECK(lists.never == std::vector<std::string>({"bamya"}) && lists.dislike.size() == 1U &&
+              lists.liked.empty());
+        CHECK(!upgradeMenuListsComments(*upgraded).has_value());  // once
+    }
+    // An old file that already has [seviyorum]: no second section.
+    std::string withLiked = oldFile.substr(3) + "[seviyorum]\r\nkebap\r\n";
+    const std::optional<std::string> kept = upgradeMenuListsComments(withLiked);
+    CHECK(kept.has_value() && kept->find("\r\n[seviyorum]\r\n") == kept->rfind("\r\n[seviyorum]\r\nkebap"));
+    CHECK(!upgradeMenuListsComments(kMenuListsTemplate).has_value());
+    CHECK(!upgradeMenuListsComments("# my own\n[istemiyorum]\nbamya\n").has_value());
+    CHECK(!upgradeMenuListsComments("").has_value());
+
     CHECK(markOf(std::string("KALEM BÖREK"), lists) == DishMark::Never);
     CHECK(markOf(std::string("Tarhana çorba"), lists) == DishMark::Dislike);
     CHECK(markOf(std::string("Mercimek çorba"), lists) == DishMark::None);
