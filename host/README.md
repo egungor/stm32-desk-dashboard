@@ -239,7 +239,9 @@ its list's colour and icon. The warning (a prompt, "Tamam") comes from
 08:00 once a day, and again for the card's day when the lists change:
 the panel in the card's colour when the main dish is listed, a title
 strip when only other dishes are on "never" / "don't like"; a liked side
-dish alone gives none.
+dish alone gives none. A file made before liked dishes (its first lines
+the old comments) gets today's comments and an empty `[seviyorum]` when
+the settings window opens; the lists themselves stay.
 
 Import: tray menu "Menü görüntülerini yükle…" (one or more PNG, JPEG,
 WebP or GIF files, at most 10 and 5 MB each) or

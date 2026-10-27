@@ -15,6 +15,7 @@
 // extra spaces. Platform independent and tested.
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,5 +60,11 @@ std::string withoutFruit(const std::string& dessert);
 
 // The text a new menu-lists.txt starts with.
 extern const char* const kMenuListsTemplate;
+
+// A file that still starts with the comments of before liked dishes (until
+// v0.9.0-beta.12; byte order mark and CR LF allowed): the same file with
+// today's comments and, if it has none, an empty [seviyorum] section at the
+// end; the lists themselves unchanged. nullopt for any other file.
+std::optional<std::string> upgradeMenuListsComments(const std::string& text);
 
 }  // namespace stm32_audio::host

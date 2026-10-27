@@ -1461,7 +1461,9 @@ void testMenuOnBoard()
     r.run(500);
     CHECK(r.screen.detail.find("2 Ekim Cuma") != std::string::npos &&
           r.screen.detail.find("Roka \xC2\xB7 Tur\xC5\x9Fu") != std::string::npos);
-    CHECK(r.screen.detail.find("Etli nohut \xC2\xB7 sevmiyorum") != std::string::npos);
+    // A disliked dish: its icon (16) and colour, no words.
+    CHECK(r.screen.detail.find("Etli nohut\x1F" "D9A520") != std::string::npos &&
+          r.screen.detail.find("sevmiyorum") == std::string::npos);
     CHECK(r.wire.errorCodesToHost.empty() && r.wire.errorCodesToDevice.empty());
 }
 

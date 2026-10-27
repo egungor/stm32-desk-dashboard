@@ -1658,9 +1658,9 @@ static void run_redesign_script(void)
     snapshot("112-menu-liked");
     tap(372, 82);
     Ui_ShowDetail(1U, "Yemek" F "27 Ekim Sal\xC4\xB1" F "n\n"
-                      "14" F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1 \xC2\xB7 seviyorum" F "D4AF37\n"
-                      "15" F "Yan yemek" F "Etli bamya \xC2\xB7 istemiyorum" F "E0702F\n"
-                      "16" F "\xC3\x87orba" F "Tarhana \xC3\xA7orba \xC2\xB7 sevmiyorum" F "D9A520\n"
+                      "14" F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1" F "D4AF37\n"
+                      "15" F "Yan yemek" F "Etli bamya" F "E0702F\n"
+                      "16" F "\xC3\x87orba" F "Tarhana \xC3\xA7orba" F "D9A520\n"
                       "0" F "Tatl\xC4\xB1" F "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava\n"
                       "0" F "Yan\xC4\xB1nda" F "Ayran");
     run_ms(50U);

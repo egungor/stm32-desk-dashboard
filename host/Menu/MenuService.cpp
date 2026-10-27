@@ -17,9 +17,6 @@ struct Texts {
     const char* saladItems;
     const char* saladBar;
     const char* labels[5];   // main, side, soup, dessert, extra
-    const char* never;       // a dish of the "never" list, in the detail
-    const char* dislike;
-    const char* liked;
     const char* warningTitle;
     const char* warningTitleOther;  // another day than today
     const char* neverRow;    // warning row labels
@@ -31,14 +28,14 @@ struct Texts {
 constexpr Texts kTurkish = {
     "Yemek", "Resmi tatil", "Bu gün için menü yok", "Menü yüklenmedi", "Tepside: Menü görüntülerini yükle...",
     "Salata bar: ", " çeşit", "Salata bar", {"Ana yemek", "Yan yemek", "Çorba", "Tatlı", "Yanında"},
-    "istemiyorum", "sevmiyorum", "seviyorum", "Bugünkü menüde", "Menüde", "İstemiyorum", "Sevmiyorum",
+    "Bugünkü menüde", "Menüde", "İstemiyorum", "Sevmiyorum",
     "Seviyorum", "Tamam",
 };
 
 constexpr Texts kEnglish = {
     "Menu", "Public holiday", "No menu for this day", "No menu loaded", "Tray: Load menu images...",
     "Salad bar: ", " items", "Salad bar", {"Main dish", "Side dish", "Soup", "Dessert", "With it"},
-    "never", "don't like", "like", "On today's menu", "On the menu", "Never", "Don't like", "Like", "OK",
+    "On today's menu", "On the menu", "Never", "Don't like", "Like", "OK",
 };
 
 const Texts& texts(std::uint8_t language)
@@ -344,15 +341,12 @@ std::string MenuService::detailFor(long day)
     }
     for (std::size_t i = 0; i < 5U; ++i) {
         if (!fields[i]->empty()) {
-            // A listed dish: its list's icon and colour, and the list's name
-            // (an icon column for every row then, so that labels line up).
+            // A listed dish: its list's icon and colour, no words (the owner's
+            // wish); an icon column for every row then, so that labels line up.
             const DishMark mark = marks[i];
-            const std::string value = mark == DishMark::Never     ? *fields[i] + " \xC2\xB7 " + t.never
-                                      : mark == DishMark::Dislike ? *fields[i] + " \xC2\xB7 " + t.dislike
-                                      : mark == DishMark::Liked   ? *fields[i] + " \xC2\xB7 " + t.liked
-                                                                  : *fields[i];
-            text += "\n" + (mark != DishMark::None ? recordLine({markIcon(mark), t.labels[i], value, markColour(mark)})
-                                                   : recordLine({anyMarked ? "0" : "", t.labels[i], value}));
+            text += "\n" + (mark != DishMark::None
+                                ? recordLine({markIcon(mark), t.labels[i], *fields[i], markColour(mark)})
+                                : recordLine({anyMarked ? "0" : "", t.labels[i], *fields[i]}));
         }
     }
     if (!entry->saladBar.empty()) {

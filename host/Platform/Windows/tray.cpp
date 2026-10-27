@@ -384,6 +384,13 @@ SettingsState buildState()
     s.pictures = win::readPictureLibrary().value_or(PictureLibrary());
     win::WinPreferenceFile lists(L"menu-lists");
     s.foodLists = lists.read().value_or(kMenuListsTemplate);
+    // A file of before liked dishes gets today's comments (the lists stay).
+    if (const std::optional<std::string> upgraded = upgradeMenuListsComments(s.foodLists)) {
+        if (lists.write(*upgraded)) {
+            logLine("Food lists: comments updated (liked dishes).");
+            s.foodLists = *upgraded;
+        }
+    }
     win::WinPreferenceFile menuSettings(L"menu-settings");
     s.menuNextDayHour = parseMenuNextDayHour(menuSettings.read());
     win::WinPreferenceFile claude(L"claude");
