@@ -3956,24 +3956,69 @@ void testMenuColoursAndWarning()
     MenuService menu(r.dash, files, lists, warned, menuSettings, [&r] { return r.now; }, nullptr);
     std::uint64_t ms = 1000;
 
-    // "Don't like" tarhana: yellow; then "never" kalem börek: orange.
+    const long monday = daysFromCivil(2026, 10, 5);
+    const auto setLists = [&](const char* text) {
+        lists.text = text;
+        menu.reload();  // the settings window saved the lists (#61)
+        menu.onTick(ms += 500);
+        // Keep only the prompt frames: the card follows the lists.
+        std::deque<ProtoMessage> kept;
+        for (const ProtoMessage& sent : r.sink.sent) {
+            if (sent.command != PROTO_CMD_CARD_PART && sent.command != PROTO_CMD_DETAIL_PART) {
+                kept.push_back(sent);
+            }
+        }
+        r.sink.sent = kept;
+    };
+
+    // Only the main dish colours the card (ADR-010 amendment): a "don't
+    // like" soup leaves it green.
     lists.text = "[sevmiyorum]\ntarhana\n";
     menu.onTick(ms);
-    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "D9A520" + sep + "\n", 0) == 0U);
-    lists.text = "[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n";
-    menu.reload();  // the settings window saved the lists (#61)
-    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\n", 0) == 0U);
+    // The main dish never wanted: orange; the warning's panel orange.
+    setLists("[istemiyorum]\nkebab\n");
     CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "E0702F" + sep + "\n", 0) == 0U);
-    const std::string d = menu.detail(0).value_or("");
-    CHECK(d.find(sep + "Yan yemek" + sep + "Kalem börek \xC2\xB7 istemiyorum\n") != std::string::npos);
-    CHECK(d.find(sep + "Çorba" + sep + "Tarhana çorba \xC2\xB7 sevmiyorum\n") != std::string::npos);
+    CHECK(menu.warningFor(monday).value_or("") == "Bugünkü menüde" + sep + "5 Ekim Pazartesi" + sep + sep + "E0702F" +
+                                                     sep + sep + sep + "11\n15" + sep + "İstemiyorum" + sep +
+                                                     "Kağıt kebabı\n!1" + sep + "Tamam");
+    // A liked main dish: green, the gold-leaf frame and a gold icon; the
+    // warning green in the frame, liked dishes gold.
+    setLists("[seviyorum]\nkebab\nBaklava\n");
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + sep + "D4AF37" + sep + "F2C94C\nKağıt kebabı",
+                               0) == 0U);
+    CHECK(menu.warningFor(monday).value_or("") ==
+          "Bugünkü menüde" + sep + "5 Ekim Pazartesi" + sep + sep + "3E9B5F" + sep + "D4AF37" + sep + sep + "11\n14" +
+              sep + "Seviyorum" + sep + "Kağıt kebabı" + sep + "F2C94C\n14" + sep + "Seviyorum" + sep +
+              "Meyve / fıstıklı baklava" + sep + "F2C94C\n!1" + sep + "Tamam");
+    // A liked dessert alone: nothing on the card, no warning; the detail
+    // paints its row.
+    setLists("[seviyorum]\nbaklava\n");
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\n", 0) == 0U);
+    CHECK(!menu.warningFor(monday).has_value());
+    std::string d = menu.detail(0).value_or("");
+    CHECK(d.find("\n14" + sep + "Tatlı" + sep + "Meyve / fıstıklı baklava \xC2\xB7 seviyorum" + sep + "D4AF37\n") !=
+          std::string::npos);
+    CHECK(d.find("\n0" + sep + "Ana yemek" + sep + "Kağıt kebabı\n") != std::string::npos);  // the icon column
+    CHECK(markOf("Kuru fasulye", parseMenuLists("[like]\nfasulye\n[dislike]\nkuru\n")) == DishMark::Dislike);
+
+    // Other dishes on "never" / "don't like": the card stays green; the
+    // warning has the title strip, the rows their lists' colours.
+    setLists("[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n");
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\n", 0) == 0U);
+    d = menu.detail(0).value_or("");
+    CHECK(d.find("\n15" + sep + "Yan yemek" + sep + "Kalem börek \xC2\xB7 istemiyorum" + sep + "E0702F\n") !=
+          std::string::npos);
+    CHECK(d.find("\n16" + sep + "Çorba" + sep + "Tarhana çorba \xC2\xB7 sevmiyorum" + sep + "D9A520\n") !=
+          std::string::npos);
     CHECK(d.find("Kağıt kebabı \xC2\xB7") == std::string::npos);
 
     // The warning: not before 08:00, not without the board.
-    const std::optional<std::string> text = menu.warningFor(daysFromCivil(2026, 10, 5));
+    const std::optional<std::string> text = menu.warningFor(monday);
     CHECK(text.has_value());
-    CHECK(text.value_or("") == "Bugünkü menüde" + sep + "5 Ekim Pazartesi" + sep + "\n11" + sep + "İstemiyorum" + sep +
-                                   "Kalem börek\n11" + sep + "Sevmiyorum" + sep + "Tarhana çorba\n!1" + sep + "Tamam");
+    CHECK(text.value_or("") == "Bugünkü menüde" + sep + "5 Ekim Pazartesi" + sep + sep + "3E9B5F" + sep + sep + "s" +
+                                   sep + "11\n15" + sep + "İstemiyorum" + sep + "Kalem börek" + sep + "E0702F\n16" +
+                                   sep + "Sevmiyorum" + sep + "Tarhana çorba" + sep + "D9A520\n!1" + sep + "Tamam");
     CHECK(!menu.warningFor(daysFromCivil(2026, 10, 6)).has_value());   // no menu
     CHECK(!menu.warningFor(daysFromCivil(2026, 10, 28)).has_value());  // holiday
     menu.updateWarning(true);
@@ -4008,6 +4053,29 @@ void testMenuColoursAndWarning()
     r.now = localTimeValue(2026, 10, 5, 13, 0, 0);
     menu.updateWarning(true);
     CHECK(r.sink.sent.empty());
+
+    // The lists change: a new warning for the card's day, also after
+    // "Tamam"; lists with nothing to say close a shown one. In the
+    // afternoon the card's day is the next working day (no menu: nothing).
+    setLists("[seviyorum]\nkebab\n");
+    menu.updateWarning(true);
+    std::string listWarning = popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id);
+    CHECK(listWarning.find(sep + "D4AF37" + sep) != std::string::npos && id == MenuService::kWarningPromptId);
+    setLists("");
+    m = r.sink.pop();
+    CHECK(m.command == PROTO_CMD_PROMPT_CLOSE && m.u.prompt_id == MenuService::kWarningPromptId);
+    menu.updateWarning(true);
+    CHECK(r.sink.sent.empty());
+    r.now = localTimeValue(2026, 10, 5, 15, 0, 0);
+    setLists("[istemiyorum]\nbamya\n");
+    menu.updateWarning(true);
+    CHECK(r.sink.sent.empty());
+    r.now = localTimeValue(2026, 10, 5, 13, 0, 0);
+    setLists("[istemiyorum]\nKalem börek\n[sevmiyorum]\ntarhana\n");
+    menu.updateWarning(true);
+    CHECK(popRecord(r.sink, PROTO_CMD_PROMPT_PART, &id) == *text);
+    CHECK(menu.onAction(a));
+    (void)r.sink.pop();
 
     // The next day, a tray restart (a new service) reads the file: Tuesday has
     // no menu; and on a Saturday there is none.

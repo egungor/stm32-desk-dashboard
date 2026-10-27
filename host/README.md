@@ -229,6 +229,17 @@ günün menüsü": 11:00 … 20:00 or off) and kept in `menu-settings.txt`
 Its detail opens on the card's day and shows the day's five lines and the
 salad bar; ‹ › move by working day.
 
+Food lists (`menu-lists.txt`, settings window → Dashboard → food lists):
+`[istemiyorum]`, `[sevmiyorum]` and `[seviyorum]`, one name per line
+(ADR-010 and its amendment). The main dish alone colours the card:
+orange, yellow, or green; a liked main dish keeps it green with a
+gold-leaf frame and a gold icon. The detail shows every listed dish in
+its list's colour and icon. The warning (a prompt, "Tamam") comes from
+08:00 once a day, and again for the card's day when the lists change:
+the panel in the card's colour when the main dish is listed, a title
+strip when only other dishes are on "never" / "don't like"; a liked side
+dish alone gives none.
+
 Import: tray menu "Menü görüntülerini yükle…" (one or more PNG, JPEG,
 WebP or GIF files, at most 10 and 5 MB each) or
 `dashboard-host menu import <files>`. The images go to the Claude API
