@@ -2118,16 +2118,20 @@ void testWeatherCard()
     const std::optional<std::string> detail = w.detail(at14);
     CHECK(detail.has_value());
     if (detail) {
-        CHECK(detail->rfind(std::string("Hava durumu") + sep + "İstanbul · 14:00" + sep + "\n#Şimdi\n", 0) == 0);
-        CHECK(detail->find(std::string("\n0") + sep + "Hissedilen" + sep + "16°") != std::string::npos);
-        CHECK(detail->find(std::string("\n0") + sep + "Nem" + sep + "%65") != std::string::npos);
+        // The band, the tiles, then one tile per day (the rich lines).
+        CHECK(detail->rfind(std::string("Hava durumu") + sep + "İstanbul · 14:00" + sep + "\n*3" + sep + "18°" + sep +
+                                "Parçalı bulutlu" + sep + "11° / 21°" + sep + "3D86C6\n=Hissedilen" + sep + "16°" +
+                                sep + "Nem" + sep + "%65" + sep + "Rüzgâr" + sep,
+                            0) == 0);
         CHECK(detail->find("\n#10 gün\n") != std::string::npos);
-        CHECK(detail->find(std::string("\n3") + sep + "Bugün" + sep + "11° / 21° · Yağış %20") != std::string::npos);
-        CHECK(detail->find(std::string("\n7") + sep + "Yarın" + sep + "13° / 17° · Yağış %85") != std::string::npos);
+        CHECK(detail->find(std::string("\n>Bugün") + sep + "3" + sep + "21°" + sep + "11°" + sep + "%20\n") !=
+              std::string::npos);
+        CHECK(detail->find(std::string("\n>Yarın") + sep + "7" + sep + "17°" + sep + "13°" + sep + "%85\n") !=
+              std::string::npos);
         // 2026-10-23 is a Friday; the last day has no precipitation value.
-        CHECK(detail->find(std::string("\n5") + sep + "Cum 23" + sep + "11° / 16° · Yağış %30") != std::string::npos);
-        CHECK(detail->find(std::string("\n5") + sep + "Cum 30" + sep + "6° / 13°") != std::string::npos);
-        const std::string last = "6° / 13°";
+        CHECK(detail->find(std::string("\n>Cum 23") + sep + "5" + sep + "16°" + sep + "11°" + sep + "%30\n") !=
+              std::string::npos);
+        const std::string last = std::string("\n>Cum 30") + sep + "5" + sep + "13°" + sep + "6°" + sep;
         CHECK(detail->size() >= last.size() && detail->compare(detail->size() - last.size(), last.size(), last) == 0);
         CHECK(detail->size() <= PROTO_DETAIL_MAX_BYTES);
     }
@@ -2146,7 +2150,8 @@ void testWeatherCard()
     const std::uint32_t nextDay = localTimeValue(2026, 10, 22, 0, 30, 0);
     const std::optional<std::string> later = w.detail(nextDay);
     CHECK(later.has_value() && later->find("Today") != std::string::npos &&
-          later->find(std::string("\n7") + sep + "Today" + sep + "13° / 17° · Rain 85%") != std::string::npos);
+          later->find(std::string("\n>Today") + sep + "7" + sep + "17°" + sep + "13°" + sep + "85%") !=
+              std::string::npos);
     CHECK(later.has_value() && later->find("\n#9 days\n") != std::string::npos);
     CHECK(w.card(nextDay).find("\n13° / 17°\nUpdated 14:00") != std::string::npos);
 

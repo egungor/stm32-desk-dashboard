@@ -69,7 +69,7 @@ host/
 ├── Weather/                # the weather card (#18)
 │   ├── WeatherReport.*     # Open-Meteo URL and answer, WMO code -> icon and text
 │   ├── WeatherLocation.*   # weather.txt, Open-Meteo geocoding
-│   ├── WeatherCard.*       # when to fetch; card and 10-day detail records
+│   ├── WeatherCard.*       # when to fetch; card and detail records (band, tiles, day strip)
 │   └── WeatherService.*    # location file, fetch, card slot 0 and its detail
 ├── third_party/nlohmann/   # nlohmann/json 3.11.3, single header (MIT, ADR-006)
 ├── Platform/Windows/       # Windows only

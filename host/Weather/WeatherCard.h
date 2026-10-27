@@ -7,8 +7,11 @@
 //   card:   icon ␟ place ␟ ␟ bg ␟ L \n 18° \n 11° / 21°   (ADR-010)
 //           ("Güncellendi 14:00" as a third line when stale; bg follows the
 //           weather, weatherColour())
-//   detail: Hava durumu ␟ place · 14:00 ␟ \n #Şimdi \n rows \n #10 gün \n
-//           one row per day: icon ␟ Bugün / Yarın / Cum 23 ␟ 11° / 21° · %20
+//   detail: Hava durumu ␟ place · 14:00 ␟ \n
+//           *icon ␟ 18° ␟ Parçalı bulutlu ␟ 11° / 21° ␟ bg   (the band)
+//           =Hissedilen ␟ 16° ␟ Nem ␟ %65 ␟ Rüzgâr ␟ 12 km/s (the tiles)
+//           #10 gün \n one tile per day:
+//           >Bugün / Yarın / Cum 23 ␟ icon ␟ 21° ␟ 11° ␟ %20
 #pragma once
 
 #include <cstdint>

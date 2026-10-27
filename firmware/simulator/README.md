@@ -63,6 +63,7 @@ argument):
 | `70-list.png`, `71-list-favorites.png`, `72-list-light.png` | Layout B: all devices, favorites tab, light theme after raising the vertical volume |
 | `73-tiles.png`, `74-tiles-switched.png`, `75-tiles-light.png` | Layout C; after tapping the first tile; light theme with the purple accent |
 | `76-settings-layout-list.png` | Settings page with "Liste" chosen: the grid row greyed out |
+| `82-detail-weather.png`, `82c-detail-weather-days.png`, `82d-detail-weather-days-scrolled.png` | The weather detail: the band, the tiles, the days in a strip, swiped sideways |
 | `90-dashboard-strip-muted.png` | Dashboard bottom strip (#32): media controls on the left, volume muted on the right |
 | `91-music-none.png` | Music tab, nothing playing |
 | `92-music-playing.png`, `92-music-playing-later.png` | Music tab: cover (a test gradient), texts, progress at 1:23 and 10 s later |
