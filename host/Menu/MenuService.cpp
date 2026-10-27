@@ -302,8 +302,12 @@ std::string MenuService::card(std::uint32_t localTime)
     const char* bg = mark == DishMark::Never ? kColourNever : mark == DishMark::Dislike ? kColourDislike : kColourOk;
     std::string text = mark == DishMark::Liked ? recordLine({head, "", badge, bg, "", kColourGold, kColourGoldLight})
                                                : recordLine({head, "", badge, bg, ""});
+    // The main dish (in the large line), then the side dish, soup and
+    // dessert in the small lines.
     const std::string dessert = withoutFruit(entry->dessert);  // #49: no "Meyve /"
-    for (const std::string* dish : {entry->main.empty() ? &entry->side : &entry->main, &entry->soup, &dessert}) {
+    const std::string none;
+    for (const std::string* dish : {&mainDish(*entry), entry->main.empty() ? &none : &entry->side, &entry->soup,
+                                    &dessert}) {
         if (!dish->empty()) {
             text += "\n" + recordLine({*dish});
         }

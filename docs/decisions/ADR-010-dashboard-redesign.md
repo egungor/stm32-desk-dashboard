@@ -216,12 +216,15 @@ protocol version stays 7:
 
 | Record | New fields |
 |---|---|
+| Card | line 5: a fourth text line (the menu card: main dish large, then side dish, soup and dessert; the owner's request of 2026-10-27); a card without a title shows its badge below the icon, so that the main dish is not cut |
 | Card line 1 | 6 `frame` RRGGBB: the gold-leaf frame (4 px, the colour lightened 50 % at the top, darkened 30 % at the bottom); 7 `icon colour` RRGGBB |
 | Detail / prompt row | 4 `colour` RRGGBB: icon, label and value |
 | Prompt line 1 | 4 `bg` RRGGBB: the panel (its text white or dark by brightness); 5 `frame` RRGGBB; 6 `flags`: `s` = only the title strip in `bg`, the panel's border too; 7 `icon`: the title's icon number (default the warning sign) |
 
 Icons 14 (star), 15 (cross) and 16 (warning) are glyphs the firmware's
-16 px font already has. Memory: the framed warning peaks at 89.8 KB of
+16 px font already has. The Claude Code list gets the header's clear button (flag `c`, ACTION
+255 on slot 3) for its last decisions (the owner's request, same day).
+Memory: the framed warning peaks at 89.8 KB of
 the 128 KB LVGL heap in the simulator (before: 89.7 KB).
 
 ## Alternatives

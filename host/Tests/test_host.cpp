@@ -2683,7 +2683,7 @@ void testMenuService()
     menu.reload();
     menu.onTick(ms += 500);
     // Main dish, soup, dessert; green without lists.
-    CHECK(r.dash.card(1) == "11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı\nTarhana çorba\nfıstıklı baklava");
+    CHECK(r.dash.card(1) == "11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı\nKalem börek\nTarhana çorba\nfıstıklı baklava");
     CHECK(logs.size() == 1U && logs[0] == "Menu files changed.");  // the file appeared
 
     // Detail, then the next working days (6th: no entry in the file).

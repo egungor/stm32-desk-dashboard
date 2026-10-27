@@ -1027,8 +1027,9 @@ static void run_dashboard_script(void)
     static const char *const menu_card =
         "11" F "" F "" F "3E9B5F" F "\n"
         "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
+        "Kalem b\xC3\xB6rek\n"
         "Tarhana \xC3\xA7orba\n"
-        "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava";
+        "F\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava";
     static const char *const menu_detail =
         "Yemek" F "5 Ekim Pazartesi" F "n\n"
         F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\n"
@@ -1509,7 +1510,7 @@ static void run_redesign_script(void)
     static const char *const menu_never =
         "11" F "" F "" F "E0702F" F "\nEtli bamya\nMercimek \xC3\xA7orba\nS\xC3\xBCtla\xC3\xA7";
     static const char *const menu_dislike =
-        "11" F "" F "Pzt 26" F "D9A520" F "\nKuru fasulye\nTarhana \xC3\xA7orba\nKazandibi";
+        "11" F "" F "Pzt 26" F "D9A520" F "\nKuru fasulye\nPirin\xC3\xA7 pilav\xC4\xB1\nTarhana \xC3\xA7orba\nKazandibi";
     static const char *const warning =
         "Bug\xC3\xBCnk\xC3\xBC men\xC3\xBC" "de" F "22 Ekim Per\xC5\x9F" "embe" F "\n"
         "11" F "\xC4\xB0stemiyorum" F "Etli bamya\n"
@@ -1647,9 +1648,9 @@ static void run_redesign_script(void)
     /* A liked main dish (ADR-010 amendment): green, the gold-leaf frame and
      * a gold icon; the detail paints listed dishes in their list's colour. */
     Ui_SetCard(1U, "11" F "" F "" F "3E9B5F" F "" F "D4AF37" F "F2C94C\n"
-                   "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\nTarhana \xC3\xA7orba\nF\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava");
+                   "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1\nKalem b\xC3\xB6rek\nTarhana \xC3\xA7orba\nF\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava");
     run_ms(50U);
-    snapshot("107-menu-liked");
+    snapshot("112-menu-liked");
     tap(372, 82);
     Ui_ShowDetail(1U, "Yemek" F "27 Ekim Sal\xC4\xB1" F "n\n"
                       "14" F "Ana yemek" F "Ka\xC4\x9F\xC4\xB1t kebab\xC4\xB1 \xC2\xB7 seviyorum" F "D4AF37\n"
@@ -1658,13 +1659,13 @@ static void run_redesign_script(void)
                       "0" F "Tatl\xC4\xB1" F "Meyve / f\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava\n"
                       "0" F "Yan\xC4\xB1nda" F "Ayran");
     run_ms(50U);
-    snapshot("108-menu-detail-marks");
+    snapshot("113-menu-detail-marks");
     tap(90, 18); /* back */
     run_ms(50U);
     s.theme = UI_THEME_LIGHT;
     Ui_ApplySettings(&s);
     run_ms(50U);
-    snapshot("107b-menu-liked-light");
+    snapshot("112b-menu-liked-light");
     s.theme = UI_THEME_DARK;
     Ui_ApplySettings(&s);
     run_ms(50U);
@@ -1676,8 +1677,8 @@ static void run_redesign_script(void)
                         "14" F "Seviyorum" F "F\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava" F "F2C94C\n"
                         "!1" F "Tamam");
     run_ms(50U);
-    snapshot("109-menu-warning-liked");
-    report_memory("109-menu-warning-liked");
+    snapshot("114-menu-warning-liked");
+    report_memory("114-menu-warning-liked");
     Ui_ClosePrompt(255U);
     Ui_ShowPrompt(255U, "Bug\xC3\xBCnk\xC3\xBC men\xC3\xBC" "de" F "27 Ekim Sal\xC4\xB1" F "" F "E0702F" F "" F "" F "11\n"
                         "15" F "\xC4\xB0stemiyorum" F "Etli bamya\n"
@@ -1685,14 +1686,14 @@ static void run_redesign_script(void)
                         "14" F "Seviyorum" F "F\xC4\xB1st\xC4\xB1kl\xC4\xB1 baklava\n"
                         "!1" F "Tamam");
     run_ms(50U);
-    snapshot("110-menu-warning-never");
+    snapshot("115-menu-warning-never");
     Ui_ClosePrompt(255U);
     Ui_ShowPrompt(255U, "Bug\xC3\xBCnk\xC3\xBC men\xC3\xBC" "de" F "27 Ekim Sal\xC4\xB1" F "" F "3E9B5F" F "" F "s" F "11\n"
                         "15" F "\xC4\xB0stemiyorum" F "Etli bamya" F "E0702F\n"
                         "16" F "Sevmiyorum" F "Tarhana \xC3\xA7orba" F "D9A520\n"
                         "!1" F "Tamam");
     run_ms(50U);
-    snapshot("111-menu-warning-other");
+    snapshot("116-menu-warning-other");
     tap(240, 236);
     check((s_dash.prompt_id == 255U) && (s_dash.prompt_action == 1U), "\"Tamam\" answers a framed warning");
     Ui_ClosePrompt(255U);

@@ -4,8 +4,8 @@
 // minute and after reload() (an import). Single threaded; platform
 // independent.
 //
-//   card:   11 ␟ ␟ badge ␟ bg ␟ [␟ frame ␟ icon colour] \n main dish \n soup
-//           \n dessert
+//   card:   11 ␟ ␟ badge ␟ bg ␟ [␟ frame ␟ icon colour] \n main dish \n side
+//           dish \n soup \n dessert (the board puts the badge below the icon)
 //           badge: "" today, "Pzt 26" for the next working day at the weekend
 //           and from the next-day hour on a working day (lunch is over;
 //           menu-settings.txt, settings window; default kNextDayHour)

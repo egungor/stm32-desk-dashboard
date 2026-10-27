@@ -252,7 +252,7 @@ missing trailing fields count as empty.
 
 | Record | Max bytes | Lines |
 |---|---|---|
-| Card | 256 | 1: `icon` ␟ `title` ␟ `badge` ␟ `bg` ␟ `flags` (version 6) ␟ `frame` ␟ `icon colour` (2026-10-27); 2–4: text lines |
+| Card | 256 | 1: `icon` ␟ `title` ␟ `badge` ␟ `bg` ␟ `flags` (version 6) ␟ `frame` ␟ `icon colour` (2026-10-27); 2–5: text lines (5: 2026-10-27; an older board shows 2–4) |
 | Detail | 2048 | 1: `title` ␟ `subtitle` ␟ `flags`; then rows, section titles and buttons. `flags`: letters, `n` = show previous / next (`OPEN_DETAIL` −1 / +1) in the header, `c` = a clear button at the right of the header (`ACTION` 255); others are ignored |
 | Prompt | 1024 | 1: `title` ␟ `subtitle` ␟ `seconds` (countdown, decimal; empty = none) ␟ `bg` ␟ `frame` ␟ `flags` ␟ `icon` (2026-10-27); then as a detail |
 
@@ -262,7 +262,8 @@ or dark text by its brightness); `flags` are letters, `L` = the first text
 line in the large font. `frame` (RRGGBB, empty: none) draws a 4 px
 gold-leaf frame: a vertical gradient of the colour, lightened at the top
 and darkened at the bottom, around the card; `icon colour` (RRGGBB, empty:
-the text's) paints the card's icon. An empty `title` is not drawn. The board shows the
+the text's) paints the card's icon. An empty `title` is not drawn; a card
+without a title shows its `badge` below the icon, so that four lines fit. The board shows the
 cards of slots 0 and 1 (the bottom row is its own: now playing and the
 picture); the details of every slot stay available.
 

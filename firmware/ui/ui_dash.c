@@ -19,10 +19,11 @@
  * text records from the host (protocol.md, "Record text"):
  *
  *   card:   icon ␟ title ␟ badge ␟ bg ␟ flags ␟ frame ␟ icon colour
- *           \n line \n line \n line
+ *           \n line \n line \n line [\n line]
  *           (ADR-010: bg RRGGBB, flags "L" = first line large; a 40 px icon
  *           on the left; only slots 0 and 1 have a place on the screen;
- *           frame RRGGBB: the gold-leaf frame, icon colour RRGGBB)
+ *           frame RRGGBB: the gold-leaf frame, icon colour RRGGBB; up to
+ *           four lines; without a title the badge sits below the icon)
  *   detail: title ␟ subtitle ␟ flags \n rows ...
  *           row:     icon ␟ label ␟ value ␟ colour (RRGGBB: icon, label and
  *                    value in that colour)
@@ -297,21 +298,39 @@ static lv_obj_t *card_line(lv_obj_t *parent, const lv_font_t *font, uint32_t col
     return label;
 }
 
-/* The icon column on the left (in @p icon_fg) and the text column on its
- * right. */
-static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t icon_fg)
+/* The icon column on the left (in @p icon_fg; @p badge below the icon if
+ * not NULL, in @p badge_fg) and the text column on its right. */
+static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t icon_fg, const char *badge,
+                              uint32_t badge_fg)
 {
     lv_obj_t *col;
 
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(card, 8, 0);
-    if (icon != NULL)
+    if ((icon != NULL) || (badge != NULL))
     {
-        lv_obj_t *label = ui_make_label(card, &ui_icons_40, icon_fg, icon);
+        lv_obj_t *icons = card;
+        lv_obj_t *label;
 
-        lv_obj_set_width(label, CARD_ICON_W);
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        if (badge != NULL)
+        {
+            icons = ui_make_box(card);
+            lv_obj_set_size(icons, CARD_ICON_W, LV_SIZE_CONTENT);
+            lv_obj_set_flex_flow(icons, LV_FLEX_FLOW_COLUMN);
+            lv_obj_set_flex_align(icons, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        }
+        if (icon != NULL)
+        {
+            label = ui_make_label(icons, &ui_icons_40, icon_fg, icon);
+            lv_obj_set_width(label, CARD_ICON_W);
+            lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        }
+        if (badge != NULL)
+        {
+            label = ui_make_label(icons, &ui_font_14, badge_fg, badge);
+            lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        }
     }
     col = ui_make_box(card);
     lv_obj_set_height(col, LV_SIZE_CONTENT);
@@ -324,7 +343,7 @@ static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t icon_fg
 static void render_card(uint32_t slot)
 {
     lv_obj_t *card = g_ui.dash_card_objs[slot];
-    char *lines[4];
+    char *lines[5];
     char *head[7];
     uint32_t n;
     uint32_t bg;
@@ -333,6 +352,7 @@ static void render_card(uint32_t slot)
     uint32_t icon_fg;
     bool coloured;
     bool large;
+    bool inline_badge;
     lv_obj_t *host;
     lv_obj_t *col;
 
@@ -351,7 +371,7 @@ static void render_card(uint32_t slot)
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
 
     (void)memcpy(s_scratch, g_ui.dash_cards[slot], sizeof(g_ui.dash_cards[slot]));
-    n = split_lines(s_scratch, lines, 4U);
+    n = split_lines(s_scratch, lines, 5U);
     split_fields(lines[0], head, 7U);
     card_colours(card, head[3], &bg, &fg, &coloured);
     large = (strchr(head[4], 'L') != NULL);
@@ -368,9 +388,13 @@ static void render_card(uint32_t slot)
     {
         icon_fg = fg;
     }
-    col = card_columns(host, icon_symbol(head[0]), icon_fg);
+    /* Without a title the badge goes below the icon, so that four lines
+     * fit. */
+    inline_badge = (head[1][0] == '\0') && (head[2][0] != '\0') && (n > 1U);
+    col = card_columns(host, icon_symbol(head[0]), icon_fg, inline_badge ? head[2] : NULL,
+                       coloured ? fg : g_ui.pal.accent);
 
-    if ((head[1][0] != '\0') || (head[2][0] != '\0'))
+    if (!inline_badge && ((head[1][0] != '\0') || (head[2][0] != '\0')))
     {
         lv_obj_t *top = ui_make_box(col);
         lv_obj_t *label;
@@ -395,8 +419,9 @@ static void render_card(uint32_t slot)
     for (uint32_t i = 1U; i < n; i++)
     {
         const lv_font_t *font = (i == 1U) ? (large ? &ui_font_22 : &ui_font_16) : &ui_font_14;
+        const uint32_t color = (coloured || (i == 1U)) ? fg : g_ui.pal.muted;
 
-        (void)card_line(col, font, (coloured || (i == 1U)) ? fg : g_ui.pal.muted, coloured && (i > 1U), lines[i]);
+        (void)card_line(col, font, color, coloured && (i > 1U), lines[i]);
     }
 }
 
@@ -418,7 +443,7 @@ void ui_dash_music_render(void)
     ui_style_card(card, BTN_RADIUS);
     lv_obj_set_style_bg_color(card, ui_color(MUSIC_BG), 0);
     lv_obj_set_style_border_width(card, 0, 0);
-    col = card_columns(card, SYM_MUSIC, fg);
+    col = card_columns(card, SYM_MUSIC, fg, NULL, 0U);
     if (!session)
     {
         lv_obj_t *label = ui_make_label(col, &ui_font_16, fg, ui_text(TXT_NOTHING_PLAYING));
@@ -486,7 +511,7 @@ static void render_picture_card(void)
     lv_obj_set_style_bg_color(card, ui_color(PICTURE_BG), 0);
     {
         const uint32_t fg = text_on(PICTURE_BG);
-        lv_obj_t *col = card_columns(card, SYM_IMAGE, fg);
+        lv_obj_t *col = card_columns(card, SYM_IMAGE, fg, NULL, 0U);
 
         lv_obj_t *hint = ui_make_label(col, &ui_font_14, fg, ui_text(TXT_NO_PICTURE));
 

@@ -219,8 +219,9 @@ language (settings record). WMO weather codes map to the icon numbers of
 
 ## Menu of the day (#20)
 
-The Dashboard's second card (slot 1): the main dish, the soup and
-"Salata bar: 6 çeşit"; "Resmi tatil" on a holiday, "Menü yüklenmedi"
+The Dashboard's second card (slot 1): the main dish, below it in smaller
+type the side dish, the soup and the dessert ("Salata bar: 6 çeşit" on a
+salad-bar-only day); "Resmi tatil" on a holiday, "Menü yüklenmedi"
 without data. From 14:00 on a working day (lunch is over) and at the
 weekend it shows the next working day, with a badge ("Sal 27", "Pzt 2").
 The hour is set in the settings window (Dashboard → Menu → "Ertesi
