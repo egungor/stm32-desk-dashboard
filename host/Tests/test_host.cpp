@@ -3945,9 +3945,9 @@ void testMenuLists()
         CHECK(upgraded->find("\r\n[istemiyorum]\r\nbamya\r\n\r\n[sevmiyorum]\r\ntarhana\r\n\r\n[seviyorum]\r\n") !=
               std::string::npos);
         CHECK(upgraded->find('\n') == upgraded->find("\r\n") + 1U);  // CR LF kept
-        const MenuLists lists = parseMenuLists(*upgraded);
-        CHECK(lists.never == std::vector<std::string>({"bamya"}) && lists.dislike.size() == 1U &&
-              lists.liked.empty());
+        const MenuLists keptLists = parseMenuLists(*upgraded);
+        CHECK(keptLists.never == std::vector<std::string>({"bamya"}) && keptLists.dislike.size() == 1U &&
+              keptLists.liked.empty());
         CHECK(!upgradeMenuListsComments(*upgraded).has_value());  // once
     }
     // An old file that already has [seviyorum]: no second section.
