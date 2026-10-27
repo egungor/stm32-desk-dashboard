@@ -18,11 +18,14 @@
  * The board knows nothing about weather or menus: a card and a detail are
  * text records from the host (protocol.md, "Record text"):
  *
- *   card:   icon ␟ title ␟ badge ␟ bg ␟ flags \n line \n line \n line
+ *   card:   icon ␟ title ␟ badge ␟ bg ␟ flags ␟ frame ␟ icon colour
+ *           \n line \n line \n line
  *           (ADR-010: bg RRGGBB, flags "L" = first line large; a 40 px icon
- *           on the left; only slots 0 and 1 have a place on the screen)
+ *           on the left; only slots 0 and 1 have a place on the screen;
+ *           frame RRGGBB: the gold-leaf frame, icon colour RRGGBB)
  *   detail: title ␟ subtitle ␟ flags \n rows ...
- *           row:     icon ␟ label ␟ value
+ *           row:     icon ␟ label ␟ value ␟ colour (RRGGBB: icon, label and
+ *                    value in that colour)
  *           section: #title
  *           button:  !action ␟ label   (at most 3, at the bottom)
  *           flags:   "n" shows previous / next in the header, "c" a clear
@@ -35,6 +38,9 @@
  * a strip at the top that closes itself):
  *
  *   banner: icon ␟ title ␟ seconds ␟ slot \n line \n line
+ *   prompt: title ␟ subtitle ␟ seconds ␟ bg ␟ frame ␟ flags ␟ icon \n as a
+ *           detail (bg RRGGBB: the panel, or with flag "s" only its title
+ *           strip; frame RRGGBB: the gold-leaf frame; icon: the title's)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,7 +70,7 @@ static const char *icon_symbol(const char *field)
     static const char *const symbols[] = {
         NULL,          SYM_SUN,  SYM_MOON,       SYM_CLOUD_SUN, SYM_CLOUD_MOON, SYM_CLOUD,
         SYM_FOG,       SYM_RAIN, SYM_HEAVY_RAIN, SYM_SNOW,      SYM_STORM,      SYM_UTENSILS,
-        SYM_BELL,      SYM_CLAUDE,
+        SYM_BELL,      SYM_CLAUDE,    SYM_STAR, SYM_CLOSE,      SYM_WARNING,
     };
     char *end = NULL;
     unsigned long n;
@@ -235,21 +241,43 @@ void ui_dash_clock_tick(void)
 #define PICTURE_BG   0x2F6F73U /**< picture card without a picture */
 #define THUMB        36        /**< cover on the now-playing card */
 
-/* A card's colours: the background and its text, or the theme's. */
-static void card_colours(lv_obj_t *card, const char *bg_field, uint32_t *fg, bool *coloured)
-{
-    uint32_t bg = 0U;
+#define FRAME_W 4 /**< width of the gold-leaf frame */
 
-    *coloured = parse_rgb(bg_field, &bg);
+/* The gold-leaf frame of a card or prompt (ADR-010 amendment, a liked
+ * dish): @p obj becomes a vertical gradient of @p frame, light at the top
+ * and dark at the bottom, FRAME_W around a new inner box in @p inner_bg,
+ * which is returned for the content. The inner box takes no touches. */
+static lv_obj_t *add_leaf_frame(lv_obj_t *obj, uint32_t frame, uint32_t inner_bg)
+{
+    const lv_color_t c = ui_color(frame);
+    lv_obj_t *inner = ui_make_box(obj);
+
+    lv_obj_set_style_bg_color(obj, lv_color_lighten(c, LV_OPA_50), 0);
+    lv_obj_set_style_bg_grad_color(obj, lv_color_darken(c, LV_OPA_30), 0);
+    lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    lv_obj_set_style_pad_all(obj, FRAME_W, 0);
+    lv_obj_set_size(inner, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(inner, ui_color(inner_bg), 0);
+    lv_obj_set_style_bg_opa(inner, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(inner, BTN_RADIUS - FRAME_W + 1, 0);
+    return inner;
+}
+
+/* A card's colours: the background and its text, or the theme's. */
+static void card_colours(lv_obj_t *card, const char *bg_field, uint32_t *bg, uint32_t *fg, bool *coloured)
+{
+    *coloured = parse_rgb(bg_field, bg);
     ui_style_card(card, BTN_RADIUS);
     if (*coloured)
     {
-        lv_obj_set_style_bg_color(card, ui_color(bg), 0);
+        lv_obj_set_style_bg_color(card, ui_color(*bg), 0);
         lv_obj_set_style_border_width(card, 0, 0);
-        *fg = text_on(bg);
+        *fg = text_on(*bg);
     }
     else
     {
+        *bg = g_ui.pal.btn;
         *fg = g_ui.pal.text;
     }
 }
@@ -269,8 +297,9 @@ static lv_obj_t *card_line(lv_obj_t *parent, const lv_font_t *font, uint32_t col
     return label;
 }
 
-/* The icon column on the left and the text column on its right. */
-static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t fg)
+/* The icon column on the left (in @p icon_fg) and the text column on its
+ * right. */
+static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t icon_fg)
 {
     lv_obj_t *col;
 
@@ -279,7 +308,7 @@ static lv_obj_t *card_columns(lv_obj_t *card, const char *icon, uint32_t fg)
     lv_obj_set_style_pad_column(card, 8, 0);
     if (icon != NULL)
     {
-        lv_obj_t *label = ui_make_label(card, &ui_icons_40, fg, icon);
+        lv_obj_t *label = ui_make_label(card, &ui_icons_40, icon_fg, icon);
 
         lv_obj_set_width(label, CARD_ICON_W);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
@@ -296,11 +325,15 @@ static void render_card(uint32_t slot)
 {
     lv_obj_t *card = g_ui.dash_card_objs[slot];
     char *lines[4];
-    char *head[5];
+    char *head[7];
     uint32_t n;
+    uint32_t bg;
     uint32_t fg;
+    uint32_t frame;
+    uint32_t icon_fg;
     bool coloured;
     bool large;
+    lv_obj_t *host;
     lv_obj_t *col;
 
     if ((card == NULL) || (slot >= CARD_RECORDS))
@@ -319,10 +352,23 @@ static void render_card(uint32_t slot)
 
     (void)memcpy(s_scratch, g_ui.dash_cards[slot], sizeof(g_ui.dash_cards[slot]));
     n = split_lines(s_scratch, lines, 4U);
-    split_fields(lines[0], head, 5U);
-    card_colours(card, head[3], &fg, &coloured);
+    split_fields(lines[0], head, 7U);
+    card_colours(card, head[3], &bg, &fg, &coloured);
     large = (strchr(head[4], 'L') != NULL);
-    col = card_columns(card, icon_symbol(head[0]), fg);
+    lv_obj_set_style_pad_hor(card, 10, 0);
+    lv_obj_set_style_pad_ver(card, 8, 0);
+    host = card;
+    if (parse_rgb(head[5], &frame))
+    {
+        host = add_leaf_frame(card, frame, bg);
+        lv_obj_set_style_pad_hor(host, 10 - FRAME_W, 0);
+        lv_obj_set_style_pad_ver(host, 8 - FRAME_W, 0);
+    }
+    if (!parse_rgb(head[6], &icon_fg))
+    {
+        icon_fg = fg;
+    }
+    col = card_columns(host, icon_symbol(head[0]), icon_fg);
 
     if ((head[1][0] != '\0') || (head[2][0] != '\0'))
     {
@@ -615,14 +661,28 @@ static lv_obj_t *build_detail_header(lv_obj_t *view, const char *title, const ch
     return bar;
 }
 
-static void add_row(lv_obj_t *list, char *line)
+/* A row; @p fg its text colour and @p muted its label's on a coloured
+ * panel (0: the theme's). A colour field paints the icon, the label and the
+ * value. */
+static void add_row(lv_obj_t *list, char *line, uint32_t fg, uint32_t muted)
 {
-    char *f[3];
+    char *f[4];
     lv_obj_t *row;
     lv_obj_t *label;
     const char *icon;
+    uint32_t colour = 0U;
 
-    split_fields(line, f, 3U);
+    split_fields(line, f, 4U);
+    if (fg == 0U)
+    {
+        fg = g_ui.pal.text;
+        muted = g_ui.pal.muted;
+    }
+    if (parse_rgb(f[3], &colour))
+    {
+        fg = colour;
+        muted = colour;
+    }
     row = ui_make_box(list);
     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
@@ -634,24 +694,24 @@ static void add_row(lv_obj_t *list, char *line)
     if (f[0][0] != '\0')
     {
         icon = icon_symbol(f[0]);
-        label = ui_make_label(row, &ui_font_16, g_ui.pal.muted, (icon != NULL) ? icon : "");
+        label = ui_make_label(row, &ui_font_16, muted, (icon != NULL) ? icon : "");
         lv_obj_set_width(label, ICON_W);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     }
     if (f[1][0] != '\0')
     {
-        label = ui_make_label(row, &ui_font_14, g_ui.pal.muted, f[1]);
+        label = ui_make_label(row, &ui_font_14, muted, f[1]);
         lv_obj_set_width(label, LABEL_W);
         lv_obj_set_style_pad_top(label, 2, 0);
     }
-    label = ui_make_label(row, &ui_font_16, g_ui.pal.text, f[2]);
+    label = ui_make_label(row, &ui_font_16, fg, f[2]);
     lv_obj_set_flex_grow(label, 1);
     lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
 }
 
-static void add_section(lv_obj_t *list, const char *title)
+static void add_section(lv_obj_t *list, const char *title, uint32_t colour)
 {
-    lv_obj_t *label = ui_make_label(list, &ui_font_14, g_ui.pal.accent, title);
+    lv_obj_t *label = ui_make_label(list, &ui_font_14, (colour != 0U) ? colour : g_ui.pal.accent, title);
 
     lv_obj_set_style_pad_top(label, 8, 0);
     lv_obj_set_style_pad_bottom(label, 2, 0);
@@ -718,11 +778,11 @@ static void build_detail_body(lv_obj_t *view, char **lines, uint32_t n)
     {
         if (lines[i][0] == '#')
         {
-            add_section(list, &lines[i][1]);
+            add_section(list, &lines[i][1], 0U);
         }
         else if (lines[i][0] != '!')
         {
-            add_row(list, lines[i]);
+            add_row(list, lines[i], 0U, 0U);
         }
         else
         {
@@ -1107,10 +1167,20 @@ static void on_prompt_button(lv_event_t *e)
 static void build_prompt_view(void)
 {
     char *lines[MAX_LINES];
-    char *head[3];
+    char *head[7];
     char *buttons[MAX_BUTTONS];
     uint32_t button_count = 0U;
     uint32_t n;
+    uint32_t bg = 0U;
+    uint32_t frame = 0U;
+    uint32_t fg = 0U;    /* text on a coloured panel; 0: the theme's */
+    uint32_t muted = 0U;
+    uint32_t bar_fg;
+    uint32_t icon_fg;
+    bool coloured;
+    bool strip;
+    bool framed;
+    const char *icon;
     lv_obj_t *panel;
     lv_obj_t *bar;
     lv_obj_t *label;
@@ -1132,26 +1202,61 @@ static void build_prompt_view(void)
     lv_obj_set_style_border_color(panel, ui_color(g_ui.pal.accent), 0);
     lv_obj_set_style_border_width(panel, 2, 0);
     lv_obj_set_style_pad_all(panel, 8, 0);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
 
     (void)memcpy(s_prompt_scratch, g_ui.prompt_text, sizeof(s_prompt_scratch));
     n = split_lines(s_prompt_scratch, lines, MAX_LINES);
-    split_fields(lines[0], head, 3U);
+    split_fields(lines[0], head, 7U);
     g_ui.prompt_seconds = (uint32_t)strtoul(head[2], NULL, 10);
+    coloured = parse_rgb(head[3], &bg);
+    strip = coloured && (strchr(head[5], 's') != NULL);
+    framed = parse_rgb(head[4], &frame);
+    icon = icon_symbol(head[6]);
+
+    /* The panel: in bg (unless only its strip is), in a gold-leaf frame. */
+    if (coloured && !strip)
+    {
+        lv_obj_set_style_bg_color(panel, ui_color(bg), 0);
+        lv_obj_set_style_border_width(panel, 0, 0);
+        fg = text_on(bg);
+        muted = fg;
+    }
+    if (framed)
+    {
+        panel = add_leaf_frame(panel, frame, (coloured && !strip) ? bg : g_ui.pal.bar);
+        lv_obj_set_style_pad_all(panel, 8 - FRAME_W + 2, 0);
+    }
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
 
     bar = ui_make_box(panel);
     lv_obj_set_size(bar, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(bar, 8, 0);
-    (void)ui_make_label(bar, &ui_font_16, g_ui.pal.accent, SYM_WARNING);
-    label = ui_make_label(bar, &ui_font_16, g_ui.pal.text, head[0]);
+    bar_fg = (fg != 0U) ? fg : g_ui.pal.text;
+    if (strip)
+    {
+        lv_obj_set_style_border_color(panel, ui_color(bg), 0); /* the frame in the strip's colour */
+        bar_fg = text_on(bg);
+        lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_bg_color(bar, ui_color(bg), 0);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(bar, BTN_RADIUS - 4, 0);
+        lv_obj_set_style_pad_hor(bar, 10, 0);
+        lv_obj_set_style_pad_ver(bar, 7, 0);
+    }
+    icon_fg = framed ? frame : (coloured ? bar_fg : g_ui.pal.accent);
+    (void)ui_make_label(bar, &ui_font_16, icon_fg, (icon != NULL) ? icon : SYM_WARNING);
+    label = ui_make_label(bar, &ui_font_16, bar_fg, head[0]);
     lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
-    label = ui_make_label(bar, &ui_font_14, g_ui.pal.muted, head[1]);
+    label = ui_make_label(bar, &ui_font_14, coloured ? bar_fg : g_ui.pal.muted, head[1]);
+    if (coloured)
+    {
+        lv_obj_set_style_text_opa(label, LV_OPA_80, 0);
+    }
     lv_obj_set_flex_grow(label, 1);
     lv_obj_set_height(label, lv_font_get_line_height(&ui_font_14));
     lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
-    g_ui.prompt_count = ui_make_label(bar, &ui_font_16, g_ui.pal.accent, "");
+    g_ui.prompt_count = ui_make_label(bar, &ui_font_16, coloured ? bar_fg : g_ui.pal.accent, "");
     update_prompt_count();
 
     for (uint32_t i = 1U; i < n; i++)
@@ -1173,11 +1278,11 @@ static void build_prompt_view(void)
     {
         if (lines[i][0] == '#')
         {
-            add_section(list, &lines[i][1]);
+            add_section(list, &lines[i][1], fg);
         }
         else if (lines[i][0] != '!')
         {
-            add_row(list, lines[i]);
+            add_row(list, lines[i], fg, muted);
         }
         else
         {
