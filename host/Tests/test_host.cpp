@@ -4167,6 +4167,20 @@ void testApprovalListSummary()
     list = approvals.detail().value_or("");
     CHECK(list.find("reddedildi \xC2\xB7 Reinstall the packages") != std::string::npos &&
           list.find("node_modules") == std::string::npos);
+
+    // The header's clear button ("c" with decisions): the last decisions go,
+    // a waiting request stays; without decisions no button.
+    CHECK(list.rfind("Claude Code\x1FOnaylar\x1F" "c\n", 0) == 0U);
+    approvals.onRequest(2, bash, 20);
+    a.kind = PROTO_ACTION_CARD;
+    a.ref = ApprovalService::kSlot;
+    a.action = PROTO_DETAIL_ACTION_CLEAR;
+    CHECK(approvals.onAction(a, 30) && approvals.waiting() == 1U);
+    list = approvals.detail().value_or("");
+    CHECK(list.rfind("Claude Code\x1FOnaylar\x1F\n", 0) == 0U && list.find("#Son kararlar") == std::string::npos &&
+          list.find("#Bekleyen") != std::string::npos);
+    a.ref = 2;  // the notifications' slot: not this list's
+    CHECK(!approvals.onAction(a, 40));
 }
 
 void testDashIndicators()

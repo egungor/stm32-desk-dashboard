@@ -429,6 +429,16 @@ void ApprovalService::onTick(std::uint64_t nowMs)
 
 bool ApprovalService::onAction(const ProtoAction& action, std::uint64_t nowMs)
 {
+    if (action.kind == PROTO_ACTION_CARD && action.ref == kSlot && action.action == PROTO_DETAIL_ACTION_CLEAR) {
+        if (!history_.empty() && log_) {
+            log_("Claude Code: last decisions cleared from the board (" + std::to_string(history_.size()) + ").");
+        }
+        history_.clear();
+        timedOutUnseen_ = false;
+        allowedUnseen_ = false;
+        publish();
+        return true;
+    }
     if (action.kind != PROTO_ACTION_PROMPT) {
         return false;
     }
@@ -494,7 +504,8 @@ std::optional<std::string> ApprovalService::detail()
     timedOutUnseen_ = false;
     allowedUnseen_ = false;
     const Texts& t = texts(language_);
-    std::string text = recordLine({"Claude Code", t.detailSubtitle, ""});
+    // "c": the clear button for the last decisions (ADR-009's flag).
+    std::string text = recordLine({"Claude Code", t.detailSubtitle, history_.empty() ? "" : "c"});
     if (queue_.empty() && history_.empty()) {
         return text + "\n" + recordLine({"", "", t.noRequests});
     }
