@@ -115,6 +115,7 @@ std::string settingsStateJson(const SettingsState& s, const std::string& preview
                          {"random", s.pictures.shuffle.random}}},
         {"currentPicture", s.service.picture},
         {"foodLists", s.foodLists},
+        {"menuNextDayHour", s.menuNextDayHour},
         {"claudeKeySet", s.claudeKeySet},
         {"claudeModel", s.claudeModel},
         {"startup", s.startup},
@@ -226,6 +227,13 @@ std::optional<SettingsRequest> parseSettingsRequest(const std::string& text)
         }
         r.kind = SettingsRequestKind::FoodLists;
         r.text = *lists;
+    } else if (c == "menuNextDay") {
+        const std::optional<unsigned> value = smallNumberOf(j, "value");
+        if (!value || *value > 23U) {
+            return std::nullopt;
+        }
+        r.kind = SettingsRequestKind::MenuNextDay;
+        r.value = *value;
     } else if (c == "claudeKey") {
         const std::optional<std::string> key = stringOf(j, "key");
         if (!key || key->size() > 256U || key->find_first_of("\r\n") != std::string::npos) {

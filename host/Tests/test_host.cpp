@@ -1069,6 +1069,11 @@ void testSettingsModel()
     CHECK(!parseSettingsRequest(R"({"cmd":"weatherSearch","query":""})"));
     r = parseSettingsRequest(R"({"cmd":"startup","value":1})");
     CHECK(r && r->kind == SettingsRequestKind::Startup && r->value == 1U && !isServiceRequest(r->kind));
+    r = parseSettingsRequest(R"({"cmd":"menuNextDay","value":15})");
+    CHECK(r && r->kind == SettingsRequestKind::MenuNextDay && r->value == 15U && !isServiceRequest(r->kind));
+    CHECK(parseSettingsRequest(R"({"cmd":"menuNextDay","value":0})"));  // off
+    CHECK(!parseSettingsRequest(R"({"cmd":"menuNextDay","value":24})") &&
+          !parseSettingsRequest(R"({"cmd":"menuNextDay","value":"14"})"));
 
     // Applied to the preferences: only real changes count.
     Preferences prefs;
@@ -1111,6 +1116,7 @@ void testSettingsModel()
     CHECK(json.find(R"("currentPicture":"p2")") != std::string::npos);
     CHECK(json.find(R"("preview":"https://pictures.example/previews/p2.jpg")") != std::string::npos);
     CHECK(json.find(R"("name":"Fotoğraf.HEIC")") != std::string::npos);
+    CHECK(json.find(R"("menuNextDayHour":14)") != std::string::npos);
 
     // Picture requests (ADR-012): pictureShow goes to the service, "" = none.
     r = parseSettingsRequest(R"({"cmd":"pictureShow","id":""})");
@@ -2663,7 +2669,8 @@ void testMenuService()
     r.now = localTimeValue(2026, 10, 5, 9, 0, 0);  // Monday
     MemoryFile lists;
     MemoryFile warned;
-    MenuService menu(r.dash, files, lists, warned, [&r] { return r.now; },
+    MemoryFile menuSettings;
+    MenuService menu(r.dash, files, lists, warned, menuSettings, [&r] { return r.now; },
                      [&logs](const std::string& l) { logs.push_back(l); });
     const std::string sep = "\x1F";
     std::uint64_t ms = 1000;
@@ -2697,7 +2704,45 @@ void testMenuService()
     r.now = localTimeValue(2026, 10, 3, 12, 0, 0);  // Saturday
     menu.onTick(ms += 500);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + "Pzt 5" + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
-    CHECK(MenuService::cardDay(daysFromCivil(2026, 10, 4)) == daysFromCivil(2026, 10, 5));
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 4, 12, 0, 0)) == daysFromCivil(2026, 10, 5));
+    // From 14:00 on a working day: the next working day (lunch is over).
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 5, 13, 59, 59)) == daysFromCivil(2026, 10, 5));
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 5, 14, 0, 0)) == daysFromCivil(2026, 10, 6));
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 2, 14, 0, 0)) == daysFromCivil(2026, 10, 5));  // Fri -> Mon
+    CHECK(MenuService::cardDay(localTimeValue(2026, 10, 30, 23, 59, 0)) == daysFromCivil(2026, 11, 2));
+    r.now = localTimeValue(2026, 10, 2, 15, 0, 0);  // Friday afternoon: Monday's menu, its detail first
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + "Pzt 5" + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
+    CHECK(menu.detail(0)->find("5 Ekim Pazartesi") != std::string::npos);
+    r.now = localTimeValue(2026, 10, 5, 13, 0, 0);  // Monday before 14:00: today, no badge
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F" + sep + "\nKağıt kebabı", 0) == 0);
+    // The hour from menu-settings.txt (settings window), read after reload().
+    r.now = localTimeValue(2026, 10, 5, 15, 0, 0);
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + "Sal 6" + sep, 0) == 0);
+    menuSettings.text = formatMenuSettings(16);
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + "Sal 6" + sep, 0) == 0);  // not read yet
+    menu.reload();
+    menu.onTick(ms += 500);
+    CHECK(menu.nextDayHour() == 16U && r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F", 0) == 0);
+    CHECK(!logs.empty() && logs.back() == "Menu: next day from 16:00.");
+    menuSettings.text = formatMenuSettings(0);  // off: today all day
+    menu.reload();
+    r.now = localTimeValue(2026, 10, 5, 23, 0, 0);
+    menu.onTick(ms += 500);
+    CHECK(r.dash.card(1).rfind("11" + sep + sep + sep + "3E9B5F", 0) == 0 && logs.back() == "Menu: next day from never.");
+    menuSettings.text.reset();
+    menu.reload();
+    menu.onTick(ms += 500);
+    CHECK(menu.nextDayHour() == MenuService::kNextDayHour);
+    CHECK(parseMenuNextDayHour(std::string("\xEF\xBB\xBF# x\r\nnext_day_hour = 9\r\n")) == 9U);
+    CHECK(parseMenuNextDayHour(std::string("next_day_hour=24\n")) == MenuService::kNextDayHour);
+    CHECK(parseMenuNextDayHour(std::string("next_day_hour=1x\nother=3\n")) == MenuService::kNextDayHour);
+    CHECK(parseMenuNextDayHour(formatMenuSettings(0)) == 0U && parseMenuNextDayHour(std::nullopt) == 14U);
+    r.now = localTimeValue(2026, 10, 3, 12, 0, 0);
+    menu.onTick(ms += 500);
     menu.setLanguage(1);
     CHECK(r.dash.card(1).rfind("11" + sep + sep + "Mon 5" + sep + "3E9B5F" + sep + "\n", 0) == 0);
     CHECK(menu.detail(0)->find("Monday 5 October") != std::string::npos);
@@ -3907,7 +3952,8 @@ void testMenuColoursAndWarning()
     MemoryFile warned;
     const std::string sep = "\x1F";
     r.now = localTimeValue(2026, 10, 5, 7, 59, 0);  // Monday 5 October, 07:59
-    MenuService menu(r.dash, files, lists, warned, [&r] { return r.now; }, nullptr);
+    MemoryFile menuSettings;
+    MenuService menu(r.dash, files, lists, warned, menuSettings, [&r] { return r.now; }, nullptr);
     std::uint64_t ms = 1000;
 
     // "Don't like" tarhana: yellow; then "never" kalem börek: orange.
@@ -3965,7 +4011,7 @@ void testMenuColoursAndWarning()
 
     // The next day, a tray restart (a new service) reads the file: Tuesday has
     // no menu; and on a Saturday there is none.
-    MenuService again(r.dash, files, lists, warned, [&r] { return r.now; }, nullptr);
+    MenuService again(r.dash, files, lists, warned, menuSettings, [&r] { return r.now; }, nullptr);
     again.updateWarning(true);
     CHECK(r.sink.sent.empty());  // already warned today (the file)
     r.now = localTimeValue(2026, 10, 3, 9, 0, 0);

@@ -60,7 +60,8 @@ host/
 │   ├── MenuHtmlImport.*    # saved portal pages (.html) -> days, without the Claude API
 │   ├── MenuImport.*        # images -> Claude API (structured output) -> month files
 │   ├── MenuLists.*         # menu-lists.txt: "never" / "don't like" dishes, Turkish case rules (ADR-010)
-│   └── MenuService.*       # card slot 1 (coloured by the lists), the day detail, the 08:00 warning
+│   └── MenuService.*       # card slot 1 (coloured by the lists), the day detail, the 08:00 warning,
+│                           #   menu-settings.txt (the next-day hour)
 ├── Picture/                # the picture card (ADR-010, #47)
 │   ├── PictureSource.h     # IPictureSource: the 480 x 272 RGB565 picture, or none
 │   ├── PictureLibrary.*    # pictures.json: photos, crops, shuffle (ADR-012)
@@ -219,9 +220,14 @@ language (settings record). WMO weather codes map to the icon numbers of
 ## Menu of the day (#20)
 
 The Dashboard's second card (slot 1): the main dish, the soup and
-"Salata bar: 6 çeşit"; "Resmi tatil" on a holiday, the next Monday at the
-weekend, "Menü yüklenmedi" without data. Its detail shows the day's five
-lines and the salad bar; ‹ › move by working day.
+"Salata bar: 6 çeşit"; "Resmi tatil" on a holiday, "Menü yüklenmedi"
+without data. From 14:00 on a working day (lunch is over) and at the
+weekend it shows the next working day, with a badge ("Sal 27", "Pzt 2").
+The hour is set in the settings window (Dashboard → Menu → "Ertesi
+günün menüsü": 11:00 … 20:00 or off) and kept in `menu-settings.txt`
+(`next_day_hour=14`; `0` off).
+Its detail opens on the card's day and shows the day's five lines and the
+salad bar; ‹ › move by working day.
 
 Import: tray menu "Menü görüntülerini yükle…" (one or more PNG, JPEG,
 WebP or GIF files, at most 10 and 5 MB each) or
@@ -342,8 +348,8 @@ and the settings window (left click):
 
 Start with Windows (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
 value `STM32 Desk Dashboard`, current user only), the menu import, the
-picture, the food lists, the Claude Code hook snippet and the settings
-folder are in the settings window (#66).
+picture, the food lists, the menu's next-day hour, the Claude Code hook
+snippet and the settings folder are in the settings window (#66).
 
 The menu and tooltip text follow the language in the board's settings
 record (Turkish or English). Logging off or shutting down Windows stops

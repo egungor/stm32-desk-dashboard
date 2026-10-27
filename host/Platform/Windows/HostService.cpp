@@ -159,7 +159,8 @@ int runHostService(WinAudioSystem& audio, EventQueue& events, const HostServiceH
     WinMenuFiles menuFiles;
     WinPreferenceFile menuLists(L"menu-lists");
     WinPreferenceFile menuWarned(L"menu-warned");
-    MenuService menu(dash, menuFiles, menuLists, menuWarned, localTimeNow, log);
+    WinPreferenceFile menuSettings(L"menu-settings");
+    MenuService menu(dash, menuFiles, menuLists, menuWarned, menuSettings, localTimeNow, log);
     // The bell, its list and the banners (slot 2, ADR-009, ADR-010): the
     // notification listener, polled on its own thread.
     WinNotificationListener notificationListener(events, log);
