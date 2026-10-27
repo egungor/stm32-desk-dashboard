@@ -252,20 +252,30 @@ missing trailing fields count as empty.
 
 | Record | Max bytes | Lines |
 |---|---|---|
-| Card | 256 | 1: `icon` ␟ `title` ␟ `badge` ␟ `bg` ␟ `flags` (version 6); 2–4: text lines |
+| Card | 256 | 1: `icon` ␟ `title` ␟ `badge` ␟ `bg` ␟ `flags` (version 6) ␟ `frame` ␟ `icon colour` (2026-10-27); 2–4: text lines |
 | Detail | 2048 | 1: `title` ␟ `subtitle` ␟ `flags`; then rows, section titles and buttons. `flags`: letters, `n` = show previous / next (`OPEN_DETAIL` −1 / +1) in the header, `c` = a clear button at the right of the header (`ACTION` 255); others are ignored |
-| Prompt | 1024 | 1: `title` ␟ `subtitle` ␟ `seconds` (countdown, decimal; empty = none); then as a detail |
+| Prompt | 1024 | 1: `title` ␟ `subtitle` ␟ `seconds` (countdown, decimal; empty = none) ␟ `bg` ␟ `frame` ␟ `flags` ␟ `icon` (2026-10-27); then as a detail |
 
 Card fields of version 6 (ADR-010): `bg` is the card's background as six
 hex digits `RRGGBB` (empty: the theme's card colour; the board picks white
 or dark text by its brightness); `flags` are letters, `L` = the first text
-line in the large font. An empty `title` is not drawn. The board shows the
+line in the large font. `frame` (RRGGBB, empty: none) draws a 4 px
+gold-leaf frame: a vertical gradient of the colour, lightened at the top
+and darkened at the bottom, around the card; `icon colour` (RRGGBB, empty:
+the text's) paints the card's icon. An empty `title` is not drawn. The board shows the
 cards of slots 0 and 1 (the bottom row is its own: now playing and the
 picture); the details of every slot stay available.
 
+Prompt fields of 2026-10-27 (ADR-010 amendment): `bg` (RRGGBB) paints
+the panel, its text white or dark by brightness; with the flag `s` only a
+title strip (and the panel's border) is in `bg`; `frame` (RRGGBB) draws
+the gold-leaf frame around the panel; `icon` is the title's icon number
+(empty: the warning sign). Empty fields keep the theme's look.
+
 Detail and prompt lines after the first:
 
-- a row: `icon` ␟ `label` ␟ `value`;
+- a row: `icon` ␟ `label` ␟ `value` ␟ `colour` (RRGGBB, empty: the
+  theme's; paints the icon, the label and the value);
 - a section title: a line starting with `#` (the rest is the title);
 - a button: a line starting with `!`: `!action` ␟ `label`, `action`
   decimal 1–255; at most 3 buttons, drawn at the bottom in their order.
@@ -291,9 +301,14 @@ fit with "…" and never wraps a card line.
 | 11 | menu of the day | utensils |
 | 12 | notifications | bell |
 | 13 | Claude Code | the Claude symbol (#59; a robot before) |
+| 14 | a liked dish | star |
+| 15 | a dish never wanted | times (cross) |
+| 16 | a dish not liked | exclamation-triangle |
 
 (Numbers are added here with the features that use them; 1–10: weather,
-#18; 11: menu, #20; 12: notifications, #34; 13: Claude Code, #47.) A detail row whose `icon` field is not empty keeps an icon column,
+#18; 11: menu, #20; 12: notifications, #34; 13: Claude Code, #47; 14–16:
+the food lists, ADR-010 amendment of 2026-10-27; 14–16 are drawn in detail
+and prompt rows, not as a card's 40 px icon.) A detail row whose `icon` field is not empty keeps an icon column,
 also for 0, so that labels of rows with and without an icon line up; a
 row with an empty field has no column.
 
@@ -555,4 +570,4 @@ A receiver rejects frames of any other version (`UNSUPPORTED_VERSION`).
 | 4 | ADR-008: `MEDIA_PART`, `MEDIA_STATE`, `ART_PART`, `GET_MEDIA` (now playing, 120 × 120 RGB565 cover); `startup_screen` 2 = Music. |
 | 5 | ADR-009: `BANNER_PART` (a short banner over every screen, used for new notifications); icon 12 = bell. |
 | 6 | ADR-010: `INDICATORS`, `PICTURE`, `PICTURE_PART` (200 × 92 RGB565); card record fields `bg` and `flags`; icon 13 = robot. |
-| 7 | ADR-010 amendment: the picture at 480 × 272 (#53). ADR-008 amendment: `SEEK`, `MEDIA_STATE` `controls` bit 3 (#55). Later, without a new version: detail flag `c` (the header's clear button, `ACTION` 255; an older board ignores the flag). |
+| 7 | ADR-010 amendment: the picture at 480 × 272 (#53). ADR-008 amendment: `SEEK`, `MEDIA_STATE` `controls` bit 3 (#55). Later, without a new version: detail flag `c` (the header's clear button, `ACTION` 255; an older board ignores the flag); ADR-010 amendment of 2026-10-27: card fields `frame` and `icon colour`, row field `colour`, prompt fields `bg`, `frame`, `flags`, `icon`, icons 14–16 (an older board ignores the fields and draws no unknown icon). |
