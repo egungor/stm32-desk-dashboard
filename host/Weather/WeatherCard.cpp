@@ -215,15 +215,25 @@ std::optional<std::string> WeatherCard::detail(std::uint32_t localTime) const
     subtitle += stale_ ? std::string(t.updated) + " " + hhmm(updatedAt_) : hhmm(updatedAt_);
 
     std::string text = recordLine({t.title, subtitle, ""});
-    text += "\n#" + std::string(t.now);
-    text += "\n" + recordLine({iconField(weatherIcon(now.code, now.isDay)), formatDegrees(now.temperatureC),
-                               weatherText(now.code, language_)});
-    text += "\n" + recordLine({"0", t.feelsLike, formatDegrees(now.feelsLikeC)});
-    text += "\n" + recordLine({"0", t.humidity, percent(language_, now.humidityPercent)});
-    text += "\n" + recordLine({"0", t.windLabel, format(t.speed, static_cast<int>(now.windKmh + 0.5))});
 
+    // A band in the card's colour: the icon, the temperature, the condition
+    // and today's range; then the tiles; then the days side by side (the
+    // rich lines of the detail, protocol.md).
+    const int icon = weatherIcon(now.code, now.isDay);
     const long today = static_cast<long>(localTime / 86400U);
-    std::string rows;
+    std::string todayRange;
+    for (const WeatherDay& d : report_->days) {
+        if (dayNumber(d) == today) {
+            todayRange = range(d);
+        }
+    }
+    text += "\n*" + recordLine({iconField(icon), formatDegrees(now.temperatureC), weatherText(now.code, language_),
+                                todayRange, weatherColour(icon)});
+    text += "\n=" + recordLine({t.feelsLike, formatDegrees(now.feelsLikeC), t.humidity,
+                                percent(language_, now.humidityPercent), t.windLabel,
+                                format(t.speed, static_cast<int>(now.windKmh + 0.5))});
+
+    std::string tiles;
     int shown = 0;
     for (const WeatherDay& d : report_->days) {
         const long n = dayNumber(d);
@@ -239,15 +249,14 @@ std::optional<std::string> WeatherCard::detail(std::uint32_t localTime) const
             label = std::string(t.weekdays[static_cast<std::size_t>(((n % 7) + 11) % 7)]) + " " +
                     std::to_string(d.day);
         }
-        std::string value = range(d);
-        if (d.precipitationPercent) {
-            value += " \xC2\xB7 " + format(t.rain, *d.precipitationPercent);
-        }
-        rows += "\n" + recordLine({iconField(weatherIcon(d.code, true)), label, value});
+        // The high large, the low small, the chance of rain below.
+        tiles += "\n>" + recordLine({label, iconField(weatherIcon(d.code, true)), formatDegrees(d.maxC),
+                                     formatDegrees(d.minC),
+                                     d.precipitationPercent ? percent(language_, *d.precipitationPercent) : ""});
         ++shown;
     }
     if (shown > 0) {
-        text += "\n#" + format(t.days, shown) + rows;
+        text += "\n#" + format(t.days, shown) + tiles;
     }
     return text;
 }

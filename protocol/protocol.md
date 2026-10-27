@@ -279,7 +279,19 @@ Detail and prompt lines after the first:
   theme's; paints the icon, the label and the value);
 - a section title: a line starting with `#` (the rest is the title);
 - a button: a line starting with `!`: `!action` ␟ `label`, `action`
-  decimal 1–255; at most 3 buttons, drawn at the bottom in their order.
+  decimal 1–255; at most 3 buttons, drawn at the bottom in their order;
+- a band (2026-10-27): `*icon` ␟ `big` ␟ `text` ␟ `side` ␟ `bg`: the
+  icon at 40 px, the big text (22 px) with the text below it, the side text
+  on the right, on `bg` (RRGGBB; empty: the card colour);
+- tiles (2026-10-27): `=label` ␟ `value` ␟ `label` ␟ `value` …: up to
+  four small tiles in a row, the label small above the value;
+- a strip (2026-10-27): consecutive lines `>label` ␟ `icon` ␟ `big` ␟
+  `small` ␟ `note` are tiles in one strip that scrolls sideways (label,
+  icon, big text, small text, the note in the accent colour).
+
+An older board draws band, tiles and strip lines as rows (their first
+field taken as an icon it does not know): readable, not designed; the
+weather detail uses them (ADR-010 amendment of 2026-10-27).
 
 `icon` is a decimal number from the table below. The board draws nothing
 for 0, an empty field, or a number it does not know, so numbers can be

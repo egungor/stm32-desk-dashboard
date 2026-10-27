@@ -28,6 +28,10 @@
  *           row:     icon ␟ label ␟ value ␟ colour (RRGGBB: icon, label and
  *                    value in that colour)
  *           section: #title
+ *           banner:  *icon ␟ big ␟ text ␟ side ␟ bg   (a coloured band)
+ *           tiles:   =label ␟ value ␟ label ␟ value ... (up to four)
+ *           strip:   >label ␟ icon ␟ big ␟ small ␟ note (consecutive lines:
+ *                    tiles in one strip that scrolls sideways)
  *           button:  !action ␟ label   (at most 3, at the bottom)
  *           flags:   "n" shows previous / next in the header, "c" a clear
  *                    button at its right (ACTION 255)
@@ -775,6 +779,122 @@ static lv_obj_t *add_button_strip(lv_obj_t *parent, char **buttons, uint32_t cou
     return strip;
 }
 
+/* ------------------------------------------------- rich detail lines */
+
+/* "*icon ␟ big ␟ text ␟ side ␟ bg": a banner at the top of a detail, the
+ * icon (40 px) and the big text on the left, the text below the big one,
+ * the side text on the right; in bg (RRGGBB) or the card colour. */
+static void add_hero(lv_obj_t *list, char *line)
+{
+    char *f[5];
+    uint32_t bg = g_ui.pal.btn;
+    uint32_t fg;
+    const char *icon;
+    lv_obj_t *box;
+    lv_obj_t *col;
+    lv_obj_t *label;
+
+    split_fields(line, f, 5U);
+    fg = parse_rgb(f[4], &bg) ? text_on(bg) : g_ui.pal.text;
+    box = ui_make_box(list);
+    ui_style_card(box, BTN_RADIUS);
+    lv_obj_set_style_bg_color(box, ui_color(bg), 0);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_size(box, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_hor(box, 12, 0);
+    lv_obj_set_style_pad_ver(box, 8, 0);
+    lv_obj_set_style_margin_bottom(box, 6, 0);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(box, 12, 0);
+    icon = icon_symbol(f[0]);
+    if (icon != NULL)
+    {
+        (void)ui_make_label(box, &ui_icons_40, fg, icon);
+    }
+    col = ui_make_box(box);
+    lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(col, 1);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    (void)ui_make_label(col, &ui_font_22, fg, f[1]);
+    (void)ui_make_label(col, &ui_font_16, fg, f[2]);
+    label = ui_make_label(box, &ui_font_14, fg, f[3]);
+    lv_obj_set_style_text_opa(label, LV_OPA_80, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_RIGHT, 0);
+}
+
+/* "=label ␟ value ␟ label ␟ value ...": up to four tiles in a row. */
+static void add_tiles(lv_obj_t *list, char *line)
+{
+    char *f[8];
+    lv_obj_t *row = ui_make_box(list);
+
+    split_fields(line, f, 8U);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_set_style_margin_bottom(row, 6, 0);
+    for (uint32_t i = 0U; (i + 1U) < 8U; i += 2U)
+    {
+        lv_obj_t *tile;
+        lv_obj_t *label;
+
+        if ((f[i][0] == '\0') && (f[i + 1U][0] == '\0'))
+        {
+            continue;
+        }
+        tile = ui_make_box(row);
+        ui_style_card(tile, 8);
+        lv_obj_set_height(tile, LV_SIZE_CONTENT);
+        lv_obj_set_flex_grow(tile, 1);
+        lv_obj_set_style_pad_hor(tile, 8, 0);
+        lv_obj_set_style_pad_ver(tile, 5, 0);
+        lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
+        label = ui_make_label(tile, &ui_font_14, g_ui.pal.muted, f[i]);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_width(label, LV_PCT(100));
+        (void)ui_make_label(tile, &ui_font_16, g_ui.pal.text, f[i + 1U]);
+    }
+}
+
+/* ">label ␟ icon ␟ big ␟ small ␟ note" lines in a row: tiles in one strip
+ * that scrolls sideways. @p lines from @p first; returns the next line. */
+static uint32_t add_tile_strip(lv_obj_t *list, char **lines, uint32_t first, uint32_t n)
+{
+    lv_obj_t *strip = ui_make_box(list);
+    uint32_t i = first;
+
+    lv_obj_set_size(strip, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(strip, 6, 0);
+    lv_obj_set_style_pad_bottom(strip, 4, 0);
+    lv_obj_add_flag(strip, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE); /* takes the sideways drag */
+    lv_obj_set_scroll_dir(strip, LV_DIR_HOR);
+    lv_obj_set_scrollbar_mode(strip, LV_SCROLLBAR_MODE_OFF);
+    for (; (i < n) && (lines[i][0] == '>'); i++)
+    {
+        char *f[5];
+        const char *icon;
+        lv_obj_t *tile = ui_make_box(strip);
+
+        split_fields(&lines[i][1], f, 5U);
+        ui_style_card(tile, 8);
+        lv_obj_set_size(tile, 66, LV_SIZE_CONTENT);
+        lv_obj_set_style_pad_ver(tile, 6, 0);
+        lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_row(tile, 2, 0);
+        lv_obj_remove_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+        (void)ui_make_label(tile, &ui_font_14, g_ui.pal.muted, f[0]);
+        icon = icon_symbol(f[1]);
+        (void)ui_make_label(tile, &ui_font_22, g_ui.pal.text, (icon != NULL) ? icon : "");
+        (void)ui_make_label(tile, &ui_font_16, g_ui.pal.text, f[2]);
+        (void)ui_make_label(tile, &ui_font_14, g_ui.pal.muted, f[3]);
+        (void)ui_make_label(tile, &ui_font_14, g_ui.pal.accent, f[4]);
+    }
+    return i;
+}
+
 static void build_detail_body(lv_obj_t *view, char **lines, uint32_t n)
 {
     char *buttons[MAX_BUTTONS];
@@ -799,20 +919,29 @@ static void build_detail_body(lv_obj_t *view, char **lines, uint32_t n)
     lv_obj_set_style_pad_ver(list, 6, 0);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
 
-    for (uint32_t i = 1U; i < n; i++)
+    for (uint32_t i = 1U; i < n;)
     {
-        if (lines[i][0] == '#')
+        switch (lines[i][0])
         {
+        case '#':
             add_section(list, &lines[i][1], 0U);
-        }
-        else if (lines[i][0] != '!')
-        {
+            break;
+        case '*':
+            add_hero(list, &lines[i][1]);
+            break;
+        case '=':
+            add_tiles(list, &lines[i][1]);
+            break;
+        case '>':
+            i = add_tile_strip(list, lines, i, n);
+            continue;
+        case '!':
+            break; /* a button, below */
+        default:
             add_row(list, lines[i], 0U, 0U);
+            break;
         }
-        else
-        {
-            /* a button, below */
-        }
+        i++;
     }
 
     if (button_count > 0U)

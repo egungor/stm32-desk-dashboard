@@ -222,7 +222,17 @@ protocol version stays 7:
 | Prompt line 1 | 4 `bg` RRGGBB: the panel (its text white or dark by brightness); 5 `frame` RRGGBB; 6 `flags`: `s` = only the title strip in `bg`, the panel's border too; 7 `icon`: the title's icon number (default the warning sign) |
 
 Icons 14 (star), 15 (cross) and 16 (warning) are glyphs the firmware's
-16 px font already has. The Claude Code list gets the header's clear button (flag `c`, ACTION
+16 px font already has. The weather detail (the owner's choice of two simulator designs, same
+day): a band in the card's colour (icon, temperature, condition, today's
+range), tiles for feels like, humidity and wind, and the days as tiles in
+a strip that scrolls sideways (high, low, chance of rain). Three generic
+detail line kinds carry it (protocol.md: `*` band, `=` tiles, `>` strip),
+so the board still knows nothing about weather. No new protocol version:
+it would stop an older board talking to the host at all (every frame
+carries the version); an older board shows these lines as plain rows.
+LVGL heap peak with the weather detail: 93.0 KB of 128 KB.
+
+The Claude Code list gets the header's clear button (flag `c`, ACTION
 255 on slot 3) for its last decisions (the owner's request, same day).
 Memory: the framed warning peaks at 89.8 KB of
 the 128 KB LVGL heap in the simulator (before: 89.7 KB).

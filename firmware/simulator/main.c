@@ -1005,24 +1005,22 @@ static void run_dashboard_script(void)
         "3" F "Ankara" F "" F "3D86C6" F "L\n"
         "18\xC2\xB0\n"
         "11\xC2\xB0 / 21\xC2\xB0";
+    /* The rich lines: a band, tiles, the days side by side. */
     static const char *const weather_detail =
         "Hava durumu" F "\xC4\xB0stanbul \xC2\xB7 14:00" F "\n"
-        "#\xC5\x9Eimdi\n"
-        "3" F "18\xC2\xB0" F "Par\xC3\xA7" "al\xC4\xB1 bulutlu\n"
-        "0" F "Hissedilen" F "16\xC2\xB0\n"
-        "0" F "Nem" F "%65\n"
-        "0" F "R\xC3\xBCzg\xC3\xA2r" F "12 km/s\n"
+        "*3" F "18\xC2\xB0" F "Par\xC3\xA7" "al\xC4\xB1 bulutlu" F "11\xC2\xB0 / 21\xC2\xB0" F "3D86C6\n"
+        "=Hissedilen" F "16\xC2\xB0" F "Nem" F "%65" F "R\xC3\xBCzg\xC3\xA2r" F "12 km/s\n"
         "#10 g\xC3\xBCn\n"
-        "3" F "Bug\xC3\xBCn" F "11\xC2\xB0 / 21\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %20\n"
-        "7" F "Yar\xC4\xB1n" F "13\xC2\xB0 / 17\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %85\n"
-        "5" F "Cum 23" F "11\xC2\xB0 / 16\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %30\n"
-        "1" F "Cmt 24" F "10\xC2\xB0 / 20\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %0\n"
-        "7" F "Paz 25" F "10\xC2\xB0 / 18\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %60\n"
-        "10" F "Pzt 26" F "10\xC2\xB0 / 16\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %90\n"
-        "6" F "Sal 27" F "0\xC2\xB0 / 15\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %10\n"
-        "9" F "\xC3\x87" "ar 28" F "-4\xC2\xB0 / 4\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %70\n"
-        "3" F "Per 29" F "5\xC2\xB0 / 13\xC2\xB0 \xC2\xB7 Ya\xC4\x9F\xC4\xB1\xC5\x9F %5\n"
-        "5" F "Cum 30" F "6\xC2\xB0 / 13\xC2\xB0";
+        ">Bug\xC3\xBCn" F "3" F "21\xC2\xB0" F "11\xC2\xB0" F "%20\n"
+        ">Yar\xC4\xB1n" F "7" F "17\xC2\xB0" F "13\xC2\xB0" F "%85\n"
+        ">Cum 23" F "5" F "16\xC2\xB0" F "11\xC2\xB0" F "%30\n"
+        ">Cmt 24" F "1" F "20\xC2\xB0" F "10\xC2\xB0" F "%0\n"
+        ">Paz 25" F "7" F "18\xC2\xB0" F "10\xC2\xB0" F "%60\n"
+        ">Pzt 26" F "10" F "16\xC2\xB0" F "10\xC2\xB0" F "%90\n"
+        ">Sal 27" F "6" F "15\xC2\xB0" F "0\xC2\xB0" F "%10\n"
+        ">\xC3\x87" "ar 28" F "9" F "4\xC2\xB0" F "-4\xC2\xB0" F "%70\n"
+        ">Per 29" F "3" F "13\xC2\xB0" F "5\xC2\xB0" F "%5\n"
+        ">Cum 30" F "5" F "13\xC2\xB0" F "6\xC2\xB0" F "";
     /* Card and detail as host/Menu/MenuService makes them (#20). */
     static const char *const menu_card =
         "11" F "" F "" F "3E9B5F" F "\n"
@@ -1083,6 +1081,13 @@ static void run_dashboard_script(void)
     check(Ui_DashView() == UI_DASH_VIEW_DETAIL, "the detail is shown when it arrives");
     snapshot("82-detail-weather");
     report_memory("82-detail-weather");
+    drag_v(300, 230, 60); /* the days below */
+    run_ms(600U);
+    snapshot("82c-detail-weather-days");
+    drag(420, 100, 235); /* the days scroll sideways */
+    run_ms(600U);
+    snapshot("82d-detail-weather-days-scrolled");
+    report_memory("82d-detail-weather");
 
     snapshot("82b-detail-back-button");
     /* Back to the cards: a touch a little below the button counts (#49: the
