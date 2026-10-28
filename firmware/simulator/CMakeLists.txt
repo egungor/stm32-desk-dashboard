@@ -57,3 +57,10 @@ add_executable(ui_simulator main.c)
 target_link_libraries(ui_simulator PRIVATE ui)
 target_compile_options(ui_simulator PRIVATE ${UI_WARNINGS})
 set_target_properties(ui_simulator PROPERTIES C_STANDARD ${UI_C_STANDARD})
+
+# Screenshots of every screen with demo data for the README and the wiki
+# (tools/doc-screens/make.sh); not run in CI.
+add_executable(ui_doc_shots doc_shots.c)
+target_link_libraries(ui_doc_shots PRIVATE ui)
+target_compile_options(ui_doc_shots PRIVATE ${UI_WARNINGS})
+set_target_properties(ui_doc_shots PROPERTIES C_STANDARD ${UI_C_STANDARD})

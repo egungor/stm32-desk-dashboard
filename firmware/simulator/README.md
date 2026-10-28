@@ -118,6 +118,13 @@ rail and pills switch tabs, the vertical slider reports the volume, the
 layout row switches layouts, and the grid row does nothing outside A. The
 simulator exits non-zero if a check fails.
 
+## Documentation screenshots
+
+A second program of the same build, `ui_doc_shots` (`doc_shots.c`),
+renders every screen with one consistent set of demo data for the README
+and the wiki. It checks nothing and does not run in CI:
+`tools/doc-screens/make.sh` builds it and writes `docs/images/screens/`.
+
 ## How it works
 
 - `main.c` creates the LVGL display in direct mode on a static
