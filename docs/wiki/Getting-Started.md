@@ -18,13 +18,34 @@ No build needed. From the [Releases page](https://github.com/egungor/stm32-desk-
    The output ends with `Download verified successfully`. The `.hex` and
    `.bin` files are the same firmware for other tools (`.bin` at
    `0x08000000`).
-2. **Install the host.** Run the setup. It installs for the current user,
-   without administrator rights, and starts the tray program. It is not
-   code-signed: if SmartScreen warns, "More info" → "Run anyway".
+2. **Install the PC program.** Run the setup. It installs for the
+   current user, without administrator rights, starts the tray program
+   and starts it with Windows from then on. Until the setup is signed
+   (SignPath, see the README's code signing policy), SmartScreen may
+   warn: "More info" → "Run anyway".
 3. **Connect.** Plug the board's **USB OTG FS** micro-USB connector into
    the PC. The tray icon says "Kumanda bağlı" and the LCD shows the
-   Dashboard tab; the speaker on the left rail opens the playback
-   devices.
+   Dashboard.
+
+![The board right after it connected](https://raw.githubusercontent.com/egungor/stm32-desk-dashboard/main/docs/images/screens/dash-empty.png)
+
+## First set-up on the PC
+
+A left click on the tray icon opens the
+[settings window](Settings-Window). Fill in what you want to use; each
+part works without the others.
+
+| What | Where in the window | Result |
+|---|---|---|
+| Weather | Dashboard → Hava durumu: type your city, "Ara", pick it | the weather card ([Dashboard](Dashboard#weather-card)) |
+| Menu | Dashboard → Yemek menüsü: the API key, then "Görüntü seç…" with the month's images (or saved portal pages, no key) | the menu card ([Menu of the Day](Menu-of-the-Day)) |
+| Food lists | Dashboard → Yemek listeleri, "Kaydet" | colours and the morning warning |
+| Pictures | Resimler → "Fotoğraf seç…", then "Göster" or the shuffle | the picture card |
+| Claude Code | Claude Code → "Kopyala", merge into `%USERPROFILE%\.claude\settings.json` | requests on the board ([Claude Code Approvals](Claude-Code-Approvals)) |
+| Notifications | Windows Settings → Privacy & security → Notifications: let apps access them | the bell and banners ([Notifications](Notifications)) |
+| Output names | Ses: a name per output, ★, ↑ ↓ | the [Audio tab](Audio-Tab) |
+
+Now playing, media keys and the volume need no set-up.
 
 How to use it: [User Guide](User-Guide). To build everything yourself,
 read on.
@@ -107,8 +128,12 @@ All commands: [Host Application](Host-Application).
 ## 5. Try the UI without a board
 
 ```text
-tools/run-ui-simulator.sh      # Linux; writes PNG screenshots to build/ui-sim
+tools/run-ui-simulator.sh      # Linux; the test script, PNG screenshots in build/ui-sim
+tools/doc-screens/make.sh      # Linux; every screen with demo data, into docs/images/screens
 ```
 
-The *UI Simulator and Link CI* job also uploads them as the
-`ui-screenshots` artifact.
+The *UI Simulator and Link CI* job also uploads the test script's
+screenshots as the `ui-screenshots` artifact. A firmware built with
+`-DAPP_UI_DEMO=ON` runs the UI on the board with demo devices, without a
+PC. How the documentation screenshots are made:
+[Screen Gallery](Screen-Gallery#how-the-pictures-are-made).

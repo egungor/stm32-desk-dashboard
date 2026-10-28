@@ -1,7 +1,8 @@
 # Hardware Test Checklist
 
-All of these checks ran on the board and on Windows on 2026-10-14 (#48);
-the results are in the bring-up log of
+Sections 1–7 ran on the board and on Windows on 2026-10-14 (#48), when
+the project was still the audio controller; the results are in the
+bring-up log of
 [docs/hardware.md](https://github.com/egungor/stm32-desk-dashboard/blob/main/docs/hardware.md).
 Keep this list as the procedure for re-testing after firmware or host
 changes. Work top to bottom; each step needs the previous one. Record
@@ -45,7 +46,7 @@ Firmware built with `-DAPP_UI_DEMO=ON` (no PC needed).
 Default firmware, board connected to the PC through **USB OTG FS**.
 
 - [ ] `USB CONFIGURED` in the log
-- [ ] Device Manager shows a HID device with VID `1209`, PID `0001`
+- [ ] Device Manager shows a HID device with VID `1209`, PID `0002`
 
 ## 5. Windows audio — #28
 
@@ -83,3 +84,30 @@ Default firmware, `dashboard-host run`.
 - [ ] Boot after a power cycle (SDRAM from cold)
 - [ ] LCD screenshots of the final UI into `docs/images/` (framebuffer
       dump + `tools/fb2png.py`)
+
+## 8. Dashboard v1 (open)
+
+Each line is a row of "Pending hardware and Windows tests" in
+`docs/hardware.md`, with the full procedure; record results there.
+
+- [ ] Dashboard redesign (#47): weather card coloured by the weather;
+      menu card coloured by the food lists; the 08:00 warning once a day;
+      bell and Claude Code symbol; now-playing card; picture card, cropped
+      not stretched; light theme; `MEM` healthy
+- [ ] Liked dishes (gold-leaf frame), the detail's marks and the three
+      kinds of warning
+- [ ] Full-screen picture (#53): sharp, not stretched; a prompt or a
+      banner over it
+- [ ] Picture library (#72): add, crop, show, shuffle, remove
+- [ ] Music tab with Spotify, a YouTube tab and the Media Player; seek
+      (#55); a paused session (#75) — Deezer: VERIFIED 2026-10-22
+- [ ] Notifications (#34): count, list, banner over every screen, Do not
+      disturb, clearing from the board
+- [ ] Claude Code approvals (#26): Onayla / Reddet / Terminalde sor, 60 s,
+      "1/2", unplugged board, a cut request; answered in Claude Desktop
+- [ ] Settings window (#61): every page, both directions with the board,
+      About with the firmware version
+- [ ] M7 leftovers: settings page, screen timeout, edit mode, layouts B
+      and C, memory watermarks, the tray program
+
+The screens to compare with are in the [Screen Gallery](Screen-Gallery).

@@ -10,7 +10,7 @@ Every message is one 64-byte frame, which is exactly one HID report.
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | magic `0xA5` |
-| 1 | 1 | version `6` |
+| 1 | 1 | version `7` |
 | 2 | 1 | command |
 | 3 | 1 | sequence (per sender, wraps) |
 | 4 | 1 | payload length, 0–57 |
@@ -80,7 +80,52 @@ User renames, stars or moves a device
 User changes a setting
   STM32 → SET_SETTINGS record
   host  → SETTINGS record
+
+Dashboard after connect
+  STM32 → GET_CARDS, GET_MEDIA
+  host  → TIME, CARD_PART × parts (slots 0, 1), INDICATORS,
+          MEDIA_PART, MEDIA_STATE, ART_PART × 534, PICTURE, PICTURE_PART × 4836
+
+User taps the weather card
+  STM32 → OPEN_DETAIL slot 0
+  host  → DETAIL_PART × parts          (or ERROR: "Ayrıntı alınamadı")
+
+Claude Code asks for a permission
+  host  → PROMPT_PART × parts          (over every screen)
+  STM32 → ACTION kind 1 (prompt), ref = prompt id, action 1 / 2 / 3
+  host  → PROMPT_CLOSE id
+
+A new Windows notification
+  host  → BANNER_PART × parts, INDICATORS (the bell's number)
 ```
+
+## Records
+
+Cards, details, prompts, banners and the media record are UTF-8 text:
+lines end with `\n`, fields are separated by `0x1F` (␟). They are sent in
+parts of 53 bytes behind a small header (record id, part, parts); the
+board shows a record only when all its parts have arrived.
+
+```text
+card:    11␟␟␟3E9B5F␟          icon 11 (menu), no title, no badge, green, no flags
+         Izgara köfte             four text lines
+         Bulgur pilavı
+         Mercimek çorba
+         Sütlaç
+
+prompt:  Claude Code izin istiyor␟desk-dashboard · 1/1␟60
+         ␟Araç␟Bash                a row: icon ␟ label ␟ value
+         ␟Komut␟git push origin …
+         !1␟Onayla                  a button: !action ␟ label
+         !2␟Reddet
+         !3␟Terminalde sor
+```
+
+Icons are numbers (1–10 weather, 11 menu, 12 bell, 13 Claude Code,
+14–16 the food lists); the board draws nothing for a number it does not
+know, so new icons need no new version. The full grammar, with bands,
+tiles and the sideways strip of the weather detail, is in
+[protocol.md, "Record text"](https://github.com/egungor/stm32-desk-dashboard/blob/main/protocol/protocol.md#record-text).
 
 ## USB transport
 
@@ -97,3 +142,10 @@ and both implementations. Version 2 added the generation to
 Version 3 adds the dashboard: `TIME`, cards, details and prompts sent as
 chunked text records, `ACTION` (detail buttons, prompt answers, media
 keys), and `startup_screen` in the settings record (ADR-005, ADR-006).
+Version 4 adds now playing (ADR-008), 5 the banner (ADR-009), 6 status
+icons, card colours and the picture (ADR-010), 7 the picture at the
+screen's size and `SEEK`. Fields added later without a new version (the
+gold-leaf frame, row colours, icons 14–16) are ignored by an older board.
+
+The settings window's About page warns when the board and the program
+speak different versions.

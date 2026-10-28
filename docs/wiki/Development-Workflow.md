@@ -13,6 +13,14 @@
 - Pull requests follow the template: summary, issue, changes,
   verification (automated and hardware/manual), risks.
 
+## Screens in the documentation
+
+The README and the wiki show every screen from `docs/images/screens/`.
+When a change alters a screen, run `tools/doc-screens/make.sh` and commit
+the new pictures with the change
+([Screen Gallery](Screen-Gallery#how-the-pictures-are-made)). New demo
+data goes into `firmware/simulator/doc_shots.c`.
+
 ## Definition of done
 
 - the code is there, builds and its tests pass;
