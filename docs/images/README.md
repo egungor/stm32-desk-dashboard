@@ -3,6 +3,32 @@
 Board photos, LCD screenshots and simulator screenshots used by the
 documentation and the project presentation live here.
 
+## Screens of the README and the wiki (`screens/`)
+
+Every screen of the board and of the settings window, made on
+2026-10-28 from `main` + #88 with `tools/doc-screens/make.sh`:
+
+- **Board screens** (`dash-*`, `music-*`, `audio-*`, `settings-*`,
+  `en-*`, `accent-*`, `waiting`): `firmware/simulator/doc_shots.c` runs
+  `firmware/ui` headless with one set of demo data (a Wednesday morning in
+  Istanbul; made-up names, track, menu and notifications) and writes the
+  RGB565 framebuffer, converted with `tools/fb2png.py`. The same method
+  gave the LCD screenshots below pixel for pixel; colours on the panel
+  are REQUIRES HARDWARE. The picture and the cover are drawn by
+  `tools/doc-screens/assets.py`, not photos.
+- **Settings window** (`win-*-light`, `win-*-dark`, `win-crop-light`):
+  `host/Platform/Windows/settings.html` in headless Chromium with demo
+  state (`tools/doc-screens/settings_window.py`); no title bar, Inter
+  instead of Segoe UI.
+- **Composites**: `hero.png` (Music, Dashboard, Audio in a bezel, the
+  README's header) and `accents.png` (the six accent colours), made by
+  `tools/doc-screens/contact.py`.
+
+The wiki's [Screen Gallery](https://github.com/egungor/stm32-desk-dashboard/wiki/Screen-Gallery)
+shows and describes each file. Make them again after a UI change and
+commit them with it; the file names are referenced by the README and the
+wiki pages, so keep them.
+
 ## LCD screenshots of the UI
 
 Exact captures of the LCD: the framebuffer dumped over SWD and converted
