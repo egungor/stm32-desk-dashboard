@@ -7,7 +7,7 @@
 | LCD | 4.3" 480×272, ROCKTECH RK043FN48H-CT672B, LTDC RGB565 | VERIFIED |
 | Touch | FT5336 capacitive, I²C3 | VERIFIED |
 | SDRAM | 8 MB usable on FMC bank 1 (`0xC0000000`) | VERIFIED (self-test) |
-| USB to PC | USB OTG FS micro-USB connector | VERIFIED; vendor HID `1209:0002` |
+| USB to PC | USB OTG FS micro-USB connector, vendor HID `1209:0002` | VERIFIED as `1209:0001` (audio controller firmware); as `1209:0002` REQUIRES HARDWARE |
 | Debug | ST-LINK/V2-1 (flash, SWD, virtual COM port) | VERIFIED |
 
 ## Peripherals in use

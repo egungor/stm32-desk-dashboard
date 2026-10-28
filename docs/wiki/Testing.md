@@ -23,6 +23,20 @@ cmake -S tests/integration -B build/integration && cmake --build build/integrati
 tools/run-ui-simulator.sh
 ```
 
+## The UI simulator
+
+`firmware/simulator` builds the firmware's UI code (`firmware/ui`, the
+same LVGL and `lv_conf.h`) headless on Linux or Windows, renders into a
+480 × 272 RGB565 framebuffer and writes PNG screenshots. Two programs:
+
+| Program | Run by | What |
+|---|---|---|
+| `ui_simulator` (`main.c`) | `tools/run-ui-simulator.sh`, CI | A script of states and taps with **checks**: callbacks, paging, settings, edit mode, layouts, details, prompts, banners, media, the picture; LVGL memory below 90 % of its heap and no leaks. Exits non-zero on a failed check |
+| `ui_doc_shots` (`doc_shots.c`) | `tools/doc-screens/make.sh` | Every screen with consistent demo data for the README and the wiki; checks nothing ([Screen Gallery](Screen-Gallery#how-the-pictures-are-made)) |
+
+The simulator shows layout and behaviour, not the panel: speed, touch
+accuracy and colours on the LCD are REQUIRES HARDWARE.
+
 On Windows add `--config Debug` to the build and `--build-config Debug`
 to `ctest`.
 

@@ -1,8 +1,24 @@
 **STM32 Desk Dashboard**
 
 - [Home](Home)
-- [User Guide](User-Guide)
 - [Getting Started](Getting-Started)
+- [Screen Gallery](Screen-Gallery)
+
+**Using it**
+
+- [User Guide](User-Guide)
+- [Dashboard](Dashboard)
+- [Menu of the Day](Menu-of-the-Day)
+- [Notifications](Notifications)
+- [Claude Code Approvals](Claude-Code-Approvals)
+- [Music Tab](Music-Tab)
+- [Audio Tab](Audio-Tab)
+- [Board Settings](Board-Settings)
+- [Settings Window](Settings-Window)
+- [Troubleshooting](Troubleshooting)
+
+**Inside**
+
 - [Architecture](Architecture)
 - [Hardware](Hardware)
 - [Firmware](Firmware)
@@ -11,7 +27,6 @@
 - [Testing](Testing)
 - [Hardware Test Checklist](Hardware-Test-Checklist)
 - [Development Workflow](Development-Workflow)
-- [Troubleshooting](Troubleshooting)
 
 [Releases](https://github.com/egungor/stm32-desk-dashboard/releases) ·
 [Repository](https://github.com/egungor/stm32-desk-dashboard) ·
